@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FOLO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='14' width='5' height='15' rx='2' fill='%230033CC'/%3E%3Crect x='10' y='6' width='5' height='23' rx='2' fill='%234B00FF'/%3E%3Crect x='17' y='10' width='5' height='19' rx='2' fill='%23FF3399'/%3E%3Crect x='24' y='3' width='5' height='26' rx='2' fill='%238F00FF'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="studio.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <div>
+      <h1>FOLO</h1>
+      <p>Fear of lights out</p>
+    </div>
+  </div>
+  <div class="status">
+    <span class="pill" id="st-audio" title=""><i></i><span>Audio</span></span>
+    <span class="pill" id="st-hyperion" title=""><i></i><span>Hyperion</span></span>
+    <span class="pill mono" id="st-fps">– fps</span>
+  </div>
+  <div class="top-controls">
+    <label for="master">Brightness</label>
+    <input type="range" id="master" min="0" max="100" step="1">
+    <output id="master-out" class="mono" for="master"></output>
+    <button type="button" id="output-toggle" class="btn toggle-btn" aria-pressed="true">Output on</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="card menu" id="presets" aria-label="Effects" data-collapse="effects">
+    <div class="menu-head">
+      <h2>Effects</h2>
+      <button type="button" class="btn small" id="save-preset">Save current</button>
+    </div>
+    <input type="search" id="preset-search" class="menu-search" placeholder="Search effects, genres, tags" aria-label="Search effects, genres and tags" autocomplete="off">
+    <p class="menu-hint">Click an effect to apply it (Undo brings yours back). ▾ shows its ranges and tags, and ★ marks the default that Reset all restores.</p>
+    <div id="preset-form"></div>
+    <div id="preset-menu"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="card" data-collapse="spectrum">
+      <div class="card-head">
+        <h2>Spectrum</h2>
+        <p class="hint">Drag a box's sides to set its frequency range. The solid line is the threshold where the segment starts to light, the dashed line is full brightness. Drag empty space to add a segment.</p>
+      </div>
+      <div class="analyzer-wrap">
+        <canvas id="analyzer" aria-label="Live spectrum with segment frequency ranges and thresholds"></canvas>
+        <span class="readout mono" id="an-readout"></span>
+      </div>
+    </div>
+
+    <div class="card" data-collapse="strip">
+      <div class="card-head">
+        <h2>LED strip</h2>
+        <p class="hint">Live output. Add lows, mids or highs to the strip, then drag segments sideways to move them, up or down to another row, their ends to resize, or drag on empty space to create one. Overlapping segments mix, brightest wins.</p>
+      </div>
+      <div class="brightness">
+        <label for="brightness">Brightness</label>
+        <svg class="sun dim" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 5v1M12 18v1M5 12h1M18 12h1M7 7l.7.7M16.3 16.3l.7.7M7 17l.7-.7M16.3 7.7l.7-.7"/></svg>
+        <input type="range" id="brightness" min="0" max="100" step="1" aria-describedby="brightness-out">
+        <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+        <output id="brightness-out" class="mono" for="brightness"></output>
+      </div>
+      <div class="strip-area">
+        <div class="strip-wrap">
+          <canvas id="strip-glow" aria-hidden="true"></canvas>
+          <canvas id="strip" aria-label="Live LED colors"></canvas>
+        </div>
+        <div class="track-bar" role="group" aria-label="Segments on the strip">
+          <button type="button" class="btn small add-kind" data-kind="Lows"><i class="kind-dot lows" aria-hidden="true"></i>+ Lows</button>
+          <button type="button" class="btn small add-kind" data-kind="Mids"><i class="kind-dot mids" aria-hidden="true"></i>+ Mids</button>
+          <button type="button" class="btn small add-kind" data-kind="Highs"><i class="kind-dot highs" aria-hidden="true"></i>+ Highs</button>
+          <button type="button" class="btn small ghost danger" id="track-delete">Delete</button>
+        </div>
+        <canvas id="track" aria-label="Segment LED ranges"></canvas>
+        <span class="readout mono" id="strip-readout"></span>
+      </div>
+    </div>
+
+    <div class="card" data-collapse="segments">
+      <div class="card-head">
+        <h2>Segments</h2>
+        <div class="actions">
+          <button type="button" class="btn" id="add-seg">+ Add</button>
+          <span class="split-group">
+            <button type="button" class="btn" id="auto-split">Auto split</button>
+            <input type="number" id="split-n" min="2" max="16" value="6" aria-label="Number of segments for auto split">
+          </span>
+          <button type="button" class="btn ghost danger" id="clear-all">Clear</button>
+          <button type="button" class="btn ghost danger" id="reset-all" title="Back to your default preset (★ in Presets), brightness 100% and black background. Audio source, Hyperion connection and saved presets are kept.">Reset all</button>
+        </div>
+      </div>
+      <div id="seg-list" class="seg-list"></div>
+    </div>
+
+    <div class="card" id="colors" data-collapse="colors">
+      <div class="card-head">
+        <h2>Colors by range</h2>
+        <p class="hint">Recolor every segment in a part of the spectrum at once. A segment belongs to the range its frequency band is centered in.</p>
+      </div>
+      <div id="color-ranges" class="cr-list"></div>
+    </div>
+
+    <div class="card reactive" id="reactive" data-collapse="reactive">
+      <div class="card-head">
+        <h2>Reactive presets</h2>
+        <p class="hint">How a segment reacts: frequency range, threshold and motion. Colors are not changed.</p>
+      </div>
+      <div class="rx-controls">
+        <div class="seg-ctl" role="group" aria-label="Apply presets to" id="rx-scope">
+          <button type="button" data-scope="selected" aria-pressed="true">Selected segment</button>
+          <button type="button" data-scope="all">All segments</button>
+          <button type="button" data-scope="new">As new segment</button>
+        </div>
+        <label class="switch" id="rx-keep-wrap">
+          <input type="checkbox" role="switch" id="rx-keep">
+          <span class="track"></span>
+          <span class="switch-label">Keep frequency range</span>
+        </label>
+        <p class="note" id="rx-note"></p>
+      </div>
+      <div id="rx-groups"></div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="card" data-collapse="inspector">
+      <div class="card-head"><h2>Selected segment</h2></div>
+      <div class="inspector" id="inspector"></div>
+    </div>
+
+    <div class="card settings" data-collapse="settings" data-collapsed>
+      <div class="card-head"><h2>Settings</h2></div>
+      <div class="settings-body">
+        <div class="field">
+          <label for="set-device">Audio source</label>
+          <div class="ctl"><select id="set-device"></select><button type="button" class="btn small" id="rescan">Rescan</button></div>
+        </div>
+        <div class="field">
+          <label for="set-host">Hyperion host</label>
+          <div class="ctl"><input type="text" id="set-host" spellcheck="false" autocomplete="off"></div>
+        </div>
+        <div class="field">
+          <label for="set-port">JSON port</label>
+          <div class="ctl"><input type="number" id="set-port" min="1" max="65535"></div>
+        </div>
+        <div class="field">
+          <label for="set-priority">Priority</label>
+          <div class="ctl"><input type="number" id="set-priority" min="1" max="253"><span class="unit">lower wins</span></div>
+        </div>
+        <div class="field">
+          <label for="set-fps">Send rate</label>
+          <div class="ctl"><input type="number" id="set-fps" min="5" max="60"><span class="unit">fps</span></div>
+        </div>
+        <div class="field">
+          <label for="set-bg">Background</label>
+          <div class="ctl"><input type="color" id="set-bg"><span class="unit">LEDs outside segments</span></div>
+        </div>
+        <div class="field">
+          <label>LEDs</label>
+          <div class="ctl"><span class="mono" id="set-leds"></span><button type="button" class="btn small" id="reload-layout">Reload from Hyperion</button></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="studio.js"></script>
+</body>
+</html>

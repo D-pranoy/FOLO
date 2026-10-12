@@ -5,6 +5,7 @@ import webcolors
 
 from app import hyperion
 from effects.spectrum_dump import GstSpectrumDump
+from effects.palette import parse_palette, palette_color
 
 BLACK = (0, 0, 0)
 
@@ -60,21 +61,28 @@ class Effect(object):
                 for i in range(self.right_start, self.right_end + step_right, step_right):
                     self.leds_right.append(i)
 
-        print 'Effect: VU meter'
-        print '----------------'
-        print 'Left leds:'
-        print self.leds_left
-        print 'Right leds:'
-        print self.leds_right
+        print('Effect: VU meter')
+        print('----------------')
+        print('Left leds:')
+        print(self.leds_left)
+        print('Right leds:')
+        print(self.leds_right)
 
         self.height = len(self.leds_left)
 
         # Helper for color function
         self.height_float = float(self.height)
 
+        # A list of colors overrides color-start and color-end
+        palette = parse_palette(args.get('palette'))
+
         self.color_map = []
         for i in range(0, self.height):
-            self.color_map.append(self.get_led_color(i))
+            if palette:
+                r, g, b = palette_color(palette, i / max(1.0, self.height_float - 1))
+                self.color_map.append((int(255*r), int(255*g), int(255*b)))
+            else:
+                self.color_map.append(self.get_led_color(i))
 
         self._spectrum = GstSpectrumDump(
             source=hyperion.args.get('audiosrc', 'autoaudiosrc'),
@@ -86,7 +94,7 @@ class Effect(object):
             )
         self._spectrum.start()
 
-        print 'Effect started, waiting for gstreamer messages...'
+        print('Effect started, waiting for audio...')
 
     def __del__(self):
         self.stop()

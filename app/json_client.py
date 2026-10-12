@@ -7,15 +7,44 @@ Created on 27.11.2014, last updated on 02.02.2015
 @author: Juha Rantanen
 """
 
+import json
 import socket
+from threading import Thread
+
+ORIGIN = 'Audio Effects'
+
+
+def fetch_server_info(host, port, timeout=10):
+    """
+    Returns the serverinfo of a running hyperion (Hyperion.NG JSON API).
+    """
+    sock = socket.create_connection((host, port), timeout)
+    try:
+        sock.sendall(b'{"command":"serverinfo","tan":1}\n')
+        buf = b''
+        while not buf.endswith(b'\n'):
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+    finally:
+        sock.close()
+    reply = json.loads(buf.decode('utf-8'))
+    if not reply.get('success'):
+        raise RuntimeError('serverinfo failed: {}'.format(reply.get('error')))
+    return reply['info']
+
 
 class JsonClient(object):
 
-    def __init__(self, host, port, timeout=10):
+    def __init__(self, host, port, timeout=10, priority=100, duration=None):
 
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.priority = priority
+        # Milliseconds hyperion keeps the colors if no new data arrives
+        self.duration = duration
         self.connected = False
         self.socket = None
 
@@ -39,17 +68,32 @@ class JsonClient(object):
         try:
             self.socket.connect((self.host, self.port))
             self.connected = True
-        except socket.error, exc:
-            print "Error on connection to ", self.host, ":", self.port, "\nMessage: ", exc
+            # Hyperion answers every command, read and discard the replies so
+            # the socket buffers never fill up
+            reader = Thread(target=self._drain, args=(self.socket,))
+            reader.daemon = True
+            reader.start()
+        except socket.error as exc:
+            print("Error on connection to ", self.host, ":", self.port, "\nMessage: ", exc)
+
+    def _drain(self, sock):
+        try:
+            while sock.recv(65536):
+                pass
+        except (socket.error, OSError, ValueError):
+            pass
+
+    def send(self, command):
+        self.socket.sendall((json.dumps(command) + '\n').encode('ascii'))
 
     def disconnect(self):
         if self.connected:
             try:
-                self.socket.send('{"command":"clearall"}\n')
+                self.send({"command": "clear", "priority": self.priority})
                 self.socket.close()
                 self.connected = False
-            except socket.error, exc:
-                print "Could not close socket connection\nMessage: ", exc
+            except socket.error as exc:
+                print("Could not close socket connection\nMessage: ", exc)
 
     def send_led_data(self, led_data):
         """
@@ -58,24 +102,26 @@ class JsonClient(object):
         """
 
         if not self.connected:
+            self.connect()
+            if not self.connected:
+                return
+        if not led_data:
             return
-        # create a message to send
-        message = '{"color":['
-        # add all the color values to the message
-        for i in range(len(led_data)):
-            message += repr(led_data[i])
-            # separate the color values with ",", but do not add a "," at the end
-            if not i == len(led_data) - 1:
-                message += ','
-        # complete message
-        message += '],"command":"color","priority":100}\n'
+        message = {
+            "command": "color",
+            "color": list(led_data),
+            "priority": self.priority,
+            "origin": ORIGIN
+        }
+        if self.duration:
+            message["duration"] = self.duration
         try:
-            self.socket.send(message)
-        except socket.error, exc:
-            print "Error while sending the led data\nMessage: ", exc
+            self.send(message)
+        except socket.error as exc:
+            print("Error while sending the led data\nMessage: ", exc)
             # Recreate the socket
             self.connected = False
-            print "Reconnecting..."
+            print("Reconnecting...")
             self.connect()
             if self.connected:
-                print "Connected."
+                print("Connected.")

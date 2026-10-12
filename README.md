@@ -1,5 +1,7 @@
-Hyperion audio effects
-======================
+FOLO
+====
+
+A Windows / Python 3 fork of [RanzQ/hyperion-audio-effects](https://github.com/RanzQ/hyperion-audio-effects), with *Fear of lights out*: a live audio-reactive LED studio for Hyperion.NG. The original project's notes follow.
 
 ##### Examples: https://www.youtube.com/watch?v=zLPZ6Lzbmgc https://www.youtube.com/watch?v=AOv9BwbtA6w
 
@@ -8,6 +10,28 @@ Dev kit for creating audio visualizations for [hyperion](https://github.com/tvdz
 - Update 27/3/2016: Config file (config.json), matrix configurator, protobuf support
 - Update 8/4/2015: Some improvements and cleanup, new video
 - Update 31/3/2015: New parameters and hyperion config file parsing
+
+### FOLO studio (Windows, Hyperion.NG)
+
+A web UI for building audio reactive segments: split the strip into LED ranges, give each one a frequency range, a threshold and a full brightness level, and see the result live.
+
+Setup (Python 3.13): `py -3.13 -m venv .venv`, then `.venv\Scripts\python.exe -m pip install -r requirements.txt`. Audio is captured from a Windows output device (what you hear) and analysed as each 10 ms packet arrives. Every channel that carries sound counts, and Hits triggers use a shorter FFT window, so they react 10–20 ms sooner than level triggers. Pick it under Settings → Audio source. With an audio router such as SteelSeries Sonar, pick the physical device it outputs to, so the lights follow the processed mix.
+
+1. Run `studio.bat` (or `.venv\Scripts\python.exe studio.py`). It opens http://127.0.0.1:8777/ in your browser.
+2. On the spectrum, drag a box's sides to change its frequency range, its solid line to set the threshold and its dashed line to set full brightness. Drag empty space to add a segment.
+3. On the LED track, drag segments to move them, their ends to resize, or an empty lane to create one. + Lows, + Mids and + Highs above the track add a segment that reacts like the others of its kind, in free space or in the right half of the selected segment. Delete removes the selected one. Both can be undone. Drag a segment up or down to put it on another row (the empty row at the bottom starts a new one). Overlapping segments mix, and the brightest wins.
+4. Fine tune in the side panel: gain, curve, attack/release, idle glow, mode, direction and colors. Fill, pulse, spectrum and color shift follow the level directly. Scroll, drops, scan, wipe, flow and fire move by themselves (after LedFx effects) and get their own speed and size settings.
+5. Pick a trigger per segment. **Level** lights when the band is louder than the threshold. **Hits** lights on sudden peaks above the band's average over the last second, so fast flicker keeps working across songs and volumes.
+
+The brightness bar dims the whole strip on a perceptual scale (also `[` and `]`). The studio follows Hyperion's LED count by itself and scales the segments when it changes.
+
+Effects: the menu on the left groups whole-strip looks under umbrella categories: My presets, LedFx, Electronic, Hip-hop & R&B, Pop & Rock, Jazz & Classical, Chill & Ambient and Visualizers. The LedFx group (marked with an LedFx badge) holds ports of [LedFx](https://github.com/LedFx/LedFx)'s audio reactive effects: Energy, Scroll, Wavelength, Power, Rain, Spotlight, Scan, Scan multi, Strobe, Blade Power+, Bar, Multicolor bar, Bands, Equalizer, Blocks, Fire, Lava lamp and Marching. Bar and Multicolor bar move on hits rather than LedFx's beat tracking. Genre presets (EDM, Techno, Drum & Bass, Dubstep, Trap, Hip-hop, Pop, R&B, Rock, Metal, Jazz, Classical, Lo-fi, Ambient) give each frequency range its own reactive preset. Click an effect to apply it, use ▾ for its ranges and tags, search by name, genre or tag, save your own with "Save current" (name and tags, editable later), and star one as the default that Reset all restores. Colors by range recolors every segment in a part of the spectrum at once.
+
+Every panel folds away with the arrow next to its title, and the browser remembers which panels are folded. Settings starts folded.
+
+Segments and saved presets are saved to `studio.json`. Stop the studio with Ctrl+C or by closing its window; Hyperion releases the LEDs within two seconds. `studio.py --help` lists the options.
+
+The original effects also run on Windows: `run.bat --effect color_spectrum` or `run.bat --effect vumeter` (`--list-devices` lists audio sources). They read the LED layout from the running Hyperion.NG and take a `palette` list in `effects/*.json`.
 
 ### Installation and running on Debian **
 

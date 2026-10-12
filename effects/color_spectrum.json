@@ -1,10 +1,9 @@
 {
-    "name" : "Color Spectrum",
-    "script" : "color_spectrum.py",
-    "args" :
-    {
-        "brightness" : 1.0,
-        "reverse" : true,
+    "name": "Color Spectrum",
+    "script": "color_spectrum.py",
+    "args": {
+        "brightness": 1.0,
+        "reverse": true,
         "magnitude-min": 0.0,
         "magnitude-max": 100.0,
         "color-speed": 0,
@@ -14,6 +13,16 @@
         "interval": 50,
         "hue-from": 0.0,
         "hue-to": 1.0,
-        "debug": false
+        "debug": false,
+        "palette": [
+            "#0033CC",
+            "#000080",
+            "#4B00FF",
+            "#FF3399",
+            "#FF00FF",
+            "#800080",
+            "#8F00FF",
+            "#4B0082"
+        ]
     }
 }

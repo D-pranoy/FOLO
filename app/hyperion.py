@@ -9,7 +9,9 @@ Last updated on 13.3.2016
 @author: Juha Rantanen
 """
 
-import imp
+import threading
+
+_lock = threading.Lock()
 
 ledCount = 0
 
@@ -71,17 +73,17 @@ def set_abort(abort_hyperion):
 def get_led_data():
     led_data_copy = bytearray()
     if _ledData:
-        imp.acquire_lock()
+        _lock.acquire()
         led_data_copy = bytearray(_ledData)
-        imp.release_lock()
+        _lock.release()
     return led_data_copy
 
 def get_image_data():
     img_data_copy = bytearray()
     if _imageData:
-        imp.acquire_lock()
+        _lock.acquire()
         img_data_copy = bytearray(_imageData)
-        imp.release_lock()
+        _lock.release()
     return (_imageWidth, _imageHeight, img_data_copy)
 
 def set_args(_args):
@@ -96,19 +98,19 @@ def abort():
 
 def set_color_led_data(led_data):
     global _ledData
-    imp.acquire_lock()
+    _lock.acquire()
     _ledData = bytearray(led_data)
-    imp.release_lock()
+    _lock.release()
 
 
 def set_color_rgb(red, green, blue):
     global _ledData
-    imp.acquire_lock()
-    for i in range(len(_ledData) / 3):
+    _lock.acquire()
+    for i in range(len(_ledData) // 3):
         _ledData[3*i] = red
         _ledData[3*i + 1] = green
         _ledData[3*i + 2] = blue
-    imp.release_lock()
+    _lock.release()
 
 def setColor(*args):
     if len(args) == 1:
@@ -119,9 +121,9 @@ def setColor(*args):
         raise TypeError('setColor takes 1 or 3 arguments')
 
 def setImage(width, height, image_data):
-    global _imageData
-    imp.acquire_lock()
+    global _imageData, _imageWidth, _imageHeight
+    _lock.acquire()
     _imageWidth = width
     _imageHeight = height
     _imageData = bytearray(image_data)
-    imp.release_lock()
+    _lock.release()

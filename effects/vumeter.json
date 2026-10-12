@@ -1,8 +1,7 @@
 {
-    "name" : "VU Meter",
-    "script" : "vumeter.py",
-    "args" :
-    {
+    "name": "VU Meter",
+    "script": "vumeter.py",
+    "args": {
         "color-start": "#00FF00",
         "color-end": "#FF0000",
         "level-min": 90,
@@ -11,6 +10,16 @@
         "left-end": null,
         "right-start": null,
         "right-end": null,
-        "interval": 50
+        "interval": 50,
+        "palette": [
+            "#0033CC",
+            "#000080",
+            "#4B00FF",
+            "#FF3399",
+            "#FF00FF",
+            "#800080",
+            "#8F00FF",
+            "#4B0082"
+        ]
     }
 }

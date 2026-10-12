@@ -1,4 +1,5 @@
-argparse==1.2.1
-commentjson==0.4
-webcolors==1.5
-protobuf==3.0.0
+commentjson
+webcolors
+protobuf
+numpy
+soundcard

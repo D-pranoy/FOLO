@@ -1,29 +1,34 @@
-### GStreamer Spectrum Dump ####
-# Modified for hyperion effect and Gstreamer 1.0 by RanzQ
-# ranzq87 [(at)] gmail.com
+### Spectrum Dump ####
+# Originally a GStreamer 1.0 spectrum/level reader by RanzQ, based on
+# https://github.com/Wintervenom/gst-spectrumdump by Scott Garrett.
 #
-# Original:
-# https://github.com/Wintervenom/gst-spectrumdump
-# V20111005-1 by Scott Garrett
-# Wintervenom [(at)] gmail.com
+# Ported to Python 3 / Windows: audio is captured from a WASAPI loopback
+# device (what you hear) with the `soundcard` library, and the GStreamer
+# `spectrum` and `level` elements are emulated with numpy so the effects
+# receive magnitudes in the same format as before.
 ################################
 # Dependencies:
-# PyGI (python-gi)
-#
+# numpy, soundcard
 #################################
 
 import sys
-import json
-import re
 import math
-from threading import Thread
-import gi
-from gi.repository import GObject, Gst, GLib
+import ctypes
+import warnings
+from threading import Thread, current_thread
 
-gi.require_version('Gst', '1.0')
+import numpy as np
+import soundcard as sc
 
-GObject.threads_init()
-Gst.init(None)
+warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)
+
+SAMPLERATE = 44100
+
+# GStreamer level element defaults
+PEAK_TTL = 0.3          # seconds the decay value holds the peak
+PEAK_FALLOFF = 10.0     # dB per second after the hold
+
+SILENCE_DB = -200.0
 
 
 def stdout(message):
@@ -42,13 +47,43 @@ def stderr(message):
     sys.stderr.flush()
 
 
-def fatal(error):
+def list_devices():
     """
-    Output an error message to STDERR and exit with status 1.
+    Prints the capture devices that can be used as audio source.
     """
-    stderr("Error: {0}".format(error))
-    sys.exit(1)
+    default = sc.default_speaker()
+    stdout('Default output (used for "autoaudiosrc"/"default"): {}'.format(default.name))
+    stdout('Available sources (loopback devices capture what is played on them):')
+    for mic in sc.all_microphones(include_loopback=True):
+        kind = 'loopback' if mic.isloopback else 'input'
+        stdout('  [{}] {}'.format(kind, mic.name))
 
+
+def find_device(source):
+    """
+    Resolves an audio source string to a soundcard microphone object.
+    "autoaudiosrc", "default" or empty selects the loopback of the default
+    speaker. Anything else is matched (case insensitive substring) against
+    device names, loopback devices first.
+    """
+    if not source or source in ('autoaudiosrc', 'default', 'loopback'):
+        return sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
+
+    wanted = source.lower()
+    mics = sc.all_microphones(include_loopback=True)
+    mics.sort(key=lambda m: not m.isloopback)
+    for mic in mics:
+        if wanted in mic.name.lower():
+            return mic
+    raise ValueError('Audio source "{}" not found, run main.py --list-devices'.format(source))
+
+
+def _init_com():
+    # WASAPI needs COM initialised in every thread that uses it
+    try:
+        ctypes.windll.ole32.CoInitializeEx(None, 0)
+    except AttributeError:
+        pass
 
 
 class GstSpectrumDump(object):
@@ -56,7 +91,8 @@ class GstSpectrumDump(object):
     Dumps the spectrum magnitudes of incoming audio as volume units per band.
 
     Optional arguments:
-    <source>        Source of the audio (default: alsasrc or gconf setting).
+    <source>        Audio source: "autoaudiosrc"/"default" for the loopback of
+                    the default speaker, or part of a device name.
     <precision>     How many decimal places to round the magnitudes to
                     (default: 16).
     <bands>         How many frequency bands to output (default: 128).
@@ -103,68 +139,19 @@ class GstSpectrumDump(object):
         self.multichannel = opts.get('multichannel', False)
         self.bands_cutoff = opts.get('cutoff', 96)
         self.quiet = opts.get('quiet', self.callback is not None)
-        self.pipeline = None
         self.gainhits = 0
         self.origamp = self.amplify
-        self.bus = None
-        self.conn = None
-        self.loop = None
-        self.loop_thread = None
-        if not self.source:
-            self.source = 'autoaudiosrc'
-            # defaultsrc = 'alsasrc'
-            # try:
-            #     conf = gconf.client_get_default()
-            #     source = conf.get('/system/gstreamer/%d.%d/default/audiosrc' %
-            #                       Gst.gst_version[:-1])
-            #     if source:
-            #         self.source = source.get_string()
-            #     else:
-            #         self.source = defaultsrc
-            # except NameError:
-            #     stderr('Python2 GConf module not installed; using default source.')
-            #     self.source = defaultsrc
-        elif self.source.startswith('mpd'):
-            fifo = self.source.split(' ', 1)
-            fifo = fifo[1] if len(fifo) > 1 else '/tmp/mpd.fifo'
-            pipeline = 'filesrc location={} ! audio/x-raw-int, ' \
-                       'rate=44100, channels=2, endianness=1234, width=16, ' \
-                       'depth=16, signed=true ! audioconvert'
-            self.source = pipeline.format(fifo)
+        self.device = find_device(self.source)
+        self.thread = None
 
+        # Spectrum state
+        self.nfft = 2 * self.bands - 2
+        self.window = np.hamming(self.nfft) if self.nfft > 0 else None
+        self.pending = np.zeros(0, dtype=np.float32)
 
-    # From: https://github.com/Roadmaster/audio_test/blob/master/minimal_gstreamer_messages.py
-    def parse_spectrum_structure(self, text):
-        # First let's jsonize this
-        # This is the message name, which we don't need
-        text = text.replace("spectrum, ", "")
-        # name/value separator in json is : and not =
-        text = text.replace("=", ": ")
-        # Mutate the {} array notation from the structure to
-        # [] notation for json.
-        # Sometimes arrays are notated using < >
-        text = text.replace("{", "[")
-        text = text.replace("}", "]")
-        text = text.replace("<", "[")
-        text = text.replace(">", "]")
-        # Remove a few stray semicolons that aren't needed
-        text = text.replace(";", "")
-        # Remove the data type fields, as json doesn't need them
-        text = re.sub(r"\(.+?\)", "", text)
-        # double-quote the identifiers
-        text = re.sub(r"([\w-]+):", r'"\1":', text)
-        # Wrap the whole thing in brackets
-        text = ("{"+text+"}")
-        # Try to parse and return something sensible here, even if
-        # the data was unparsable.
-        try:
-            return json.loads(text)
-        except ValueError:
-            return None
-
-    def parse_magnitude(self, s):
-        # Faster way to parse magnitudes
-        return map(float, s[s.find('{')+1:-3].split(','))
+        # Level state (per channel)
+        self.decay_db = None
+        self.peak_age = None
 
 
     def round(self, n):
@@ -231,149 +218,127 @@ class GstSpectrumDump(object):
             downscaled = []
             incr = len(scaled) / float(maxlen)
             index = 0
-            # TODO: Figure out why v is not used
-            # pylint: disable=unused-variable
-            for v in range(0, maxlen):
+            for _ in range(0, maxlen):
                 downscaled.append(scaled[int(round(index, 0))])
                 index += incr
             return downscaled
         else:
             return scaled
 
-    # pylint: disable=unused-argument
-    def on_message(self, bus, message):
-        # We should return false if the pipeline has stopped
-        if not self.running:
-            return False
 
-        try:
-            # s = message.structure
-            s = message.get_structure()
-            if not s:
-                return
-            name = s.get_name()
-
-
-            if name == 'spectrum' and s.has_field('magnitude'):
-
-                # mags = s.get_value('magnitude')
-
-                # PyGI doesn't fully support spectrum yet:
-                # https://bugzilla.gnome.org/show_bug.cgi?id=693168
-
-                if self.multichannel:
-                    mags = self.parse_spectrum_structure(s.to_string())['magnitude']
-                    magnitudes = mags[0][:self.bands_cutoff] # We use only the first channel for now
-                else:
-                    mags = self.parse_magnitude(s.to_string())
-                    magnitudes = mags[:self.bands_cutoff]
+    def compute_spectrum(self, frames):
+        """
+        Emulates the GStreamer spectrum element: averaged power of Hamming
+        windowed FFTs of size 2*bands-2, in dB, clamped to -threshold.
+        Returns None if not enough samples were collected yet.
+        """
+        mono = frames.mean(axis=1) if frames.ndim > 1 else frames
+        data = np.concatenate((self.pending, mono.astype(np.float32)))
+        chunks = len(data) // self.nfft
+        if chunks == 0:
+            self.pending = data
+            return None
+        self.pending = data[chunks * self.nfft:]
+        blocks = data[:chunks * self.nfft].reshape(chunks, self.nfft) * self.window
+        spec = np.fft.rfft(blocks, axis=1)
+        power = (spec.real ** 2 + spec.imag ** 2).mean(axis=0) / float(self.nfft * self.nfft)
+        with np.errstate(divide='ignore'):
+            mags = 10.0 * np.log10(power)
+        mags = np.maximum(mags, -float(self.threshold))
+        return mags[:self.bands].tolist()
 
 
+    def compute_level(self, frames):
+        """
+        Emulates the GStreamer level element: peak and decaying peak in dB
+        per channel.
+        """
+        dt = len(frames) / float(SAMPLERATE)
+        channels = frames.shape[1]
+        if self.decay_db is None:
+            self.decay_db = [SILENCE_DB] * channels
+            self.peak_age = [0.0] * channels
+        peaks = []
+        decays = []
+        for c in range(channels):
+            amp = float(np.max(np.abs(frames[:, c]))) if len(frames) else 0.0
+            peak = 20.0 * math.log10(amp) if amp > 0 else SILENCE_DB
+            self.peak_age[c] += dt
+            if peak >= self.decay_db[c]:
+                self.decay_db[c] = peak
+                self.peak_age[c] = 0.0
+            elif self.peak_age[c] > PEAK_TTL:
+                falloff = PEAK_FALLOFF * min(dt, self.peak_age[c] - PEAK_TTL)
+                self.decay_db[c] = max(peak, self.decay_db[c] - falloff)
+            peaks.append(peak)
+            decays.append(self.decay_db[c])
+        return peaks, decays
+
+
+    def on_frames(self, frames):
+        if self.vumeter:
+            peaks, decays = self.compute_level(frames)
+            magnitudes = []
+            for channel in range(0, min(self.bands, len(peaks))):
+                peak = max(-self.threshold, min(0, peaks[channel]))
+                decay = max(-self.threshold, min(0, decays[channel]))
                 if not self.db:
                     if self.logamplify:
-                        magnitudes = [self.dbtopct(db, i) for i, db
-                                      in enumerate(magnitudes)]
+                        peak = self.dbtopct(peak, peak)
+                        decay = self.dbtopct(decay, decay)
                     else:
-                        magnitudes = [self.dbtopct(db) for i, db
-                                      in enumerate(magnitudes)]
-                if not self.raw:
-                    magnitudes = self.scale(magnitudes, self.bands)
-                magnitudes = [self.round(m) for m in magnitudes]
-            elif name == 'level' and s.has_field('peak') and s.has_field('decay'):
-                magnitudes = []
-                peaks = s.get_value('peak')
-                decays = s.get_value('decay')
-                for channel in range(0, min(self.bands, len(peaks))):
-                    peak = max(-self.threshold, min(0, peaks[channel]))
-                    decay = max(-self.threshold, min(0, decays[channel]))
-                    if not self.db:
-                        if self.logamplify:
-                            peak = self.dbtopct(peak, peak)
-                            decay = self.dbtopct(decay, decay)
-                        else:
-                            peak = self.dbtopct(peak)
-                            decay = self.dbtopct(decay)
-                    magnitudes.append(self.round(peak))
-                    magnitudes.append(self.round(decay))
-            else:
-                return True
-            if not self.quiet:
-                try:
-                    print ' | '.join(('%.3f' % m for m in magnitudes))
-                except IOError:
-                    self.loop.quit()
-
-            if self.callback:
-                self.callback(magnitudes)
-        except KeyboardInterrupt:
-            self.loop.quit()
-        return True
-
-
-    def start_pipeline(self):
-        self.running = True
-        pipeline = [self.source]
-        interval = 'interval={0}'.format(1000000 * self.interval)
-        if self.vumeter:
-            pipeline.append('level message=true {}'.format(interval))
+                        peak = self.dbtopct(peak)
+                        decay = self.dbtopct(decay)
+                magnitudes.append(self.round(peak))
+                magnitudes.append(self.round(decay))
         else:
-            spectrum = 'spectrum {} bands={} threshold=-{}'
-            spectrum = spectrum.format(interval, self.bands, self.threshold)
-            if self.multichannel:
-                spectrum += ' multi-channel=true'
-            pipeline.append(spectrum)
-        pipeline.append('fakesink')
+            magnitudes = self.compute_spectrum(frames)
+            if magnitudes is None:
+                return
+            magnitudes = magnitudes[:self.bands_cutoff]
+            if not self.db:
+                if self.logamplify:
+                    magnitudes = [self.dbtopct(db, i) for i, db
+                                  in enumerate(magnitudes)]
+                else:
+                    magnitudes = [self.dbtopct(db) for db in magnitudes]
+            if not self.raw:
+                magnitudes = self.scale(magnitudes, self.bands)
+            magnitudes = [self.round(m) for m in magnitudes]
 
-        # stdout('Launching pipeline: ' + ' ! '.join(pipeline))
-        self.pipeline = Gst.parse_launch(' ! '.join(pipeline))
-        # self.pipeline = Gst.parse_launch('alsasrc ! level message=true in ! fakesink')
+        if not self.quiet:
+            print(' | '.join(('%.3f' % m for m in magnitudes)))
 
-        # self.pipeline = Gst.Pipeline()
-        # for element in pipeline:
-        #     self.pipeline.add(element)
-
-        self.bus = self.pipeline.get_bus()
-        self.bus.enable_sync_message_emission()
-        self.bus.add_signal_watch()
-        # self.bus.add_signal_watch_full(GLib.PRIORITY_DEFAULT)
-        self.conn = self.bus.connect('message', self.on_message)
-        # self.source_id = self.bus.add_watch(GLib.PRIORITY_DEFAULT, self.on_message, None)
-        # stdout("Bus connected.")
-        self.pipeline.set_state(Gst.State.PLAYING)
-        # stdout("Pipeline STATE_PLAYING set.")
+        if self.callback:
+            self.callback(magnitudes)
 
 
-    def stop_pipeline(self):
-        self.running = False
-        if self.pipeline:
-            self.bus.disconnect(self.conn)
-            # GLib.Source.remove(self.source_id) # Not working?
-            # stdout("Bus disconnected.")
-            self.bus.remove_signal_watch()
-            # stdout("Signal watch removed.")
-            self.pipeline.set_state(Gst.State.NULL)
-            # stdout("Pipeline STATE_NULL set.")
+    def capture_loop(self):
+        _init_com()
+        frames_per_interval = max(1, int(SAMPLERATE * self.interval / 1000.0))
+        try:
+            with self.device.recorder(samplerate=SAMPLERATE, channels=2) as recorder:
+                while self.running:
+                    frames = recorder.record(numframes=frames_per_interval)
+                    if not self.running:
+                        break
+                    self.on_frames(frames)
+        except Exception as exc: # pylint: disable=broad-except
+            stderr('Audio capture failed: {}'.format(exc))
+            self.running = False
 
 
     def start(self):
-
-        # stdout(Gst.version())
-
-        self.start_pipeline()
-        self.loop = GLib.MainLoop()
-        # self.loop_context = self.loop.get_context()
-
-        self.loop_thread = Thread(target=self.loop.run)
-        self.loop_thread.daemon = True
-        self.loop_thread.start()
-        # stdout("Pipeline initialized.")
+        if not self.quiet:
+            stdout('Capturing audio from: {}'.format(self.device.name))
+        self.running = True
+        self.thread = Thread(target=self.capture_loop)
+        self.thread.daemon = True
+        self.thread.start()
 
 
     def stop(self):
-        # stdout("Stopping pipeline...")
-        self.stop_pipeline()
-        # Quit the MainLoop
-        self.loop.quit()
-        # Wait for the thread
-        self.loop_thread.join()
-        # stdout("Done.")
+        self.running = False
+        if (self.thread is not None and self.thread.is_alive()
+                and self.thread is not current_thread()):
+            self.thread.join(2)

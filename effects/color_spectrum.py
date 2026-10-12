@@ -7,6 +7,7 @@ import math
 from app import hyperion
 
 from effects.spectrum_dump import GstSpectrumDump
+from effects.palette import parse_palette, palette_color
 
 
 BLACK = (0, 0, 0)
@@ -20,6 +21,8 @@ class Effect(object):
         saturation = float(hyperion.args.get('saturation', 1.0))
         hue_from = float(hyperion.args.get('hue-from', 0.0))
         hue_to = float(hyperion.args.get('hue-to', 1.0))
+        # A list of colors overrides the hue range
+        self.palette = parse_palette(hyperion.args.get('palette'))
 
         self.mag_min = float(hyperion.args.get('magnitude-min', 40.0))
         self.mag_max = float(hyperion.args.get('magnitude-max', 100.0))
@@ -33,12 +36,12 @@ class Effect(object):
         self.debug = hyperion.args.get('debug', False)
 
         if self.mirror:
-            print "Warning: 'mirror' mode needs a fix to flip the other side"
+            print("Warning: 'mirror' mode needs a fix to flip the other side")
 
         if self.matrix:
             self.width = len(hyperion.leds_top) + 2
             self.height = len(hyperion.leds_left)
-            print "W: {}, H: {}".format(self.width, self.height)
+            print("W: {}, H: {}".format(self.width, self.height))
 
         self._magnitudes = None # store incoming messages
 
@@ -54,7 +57,7 @@ class Effect(object):
         color_steps = hyperion.ledCount
 
         if self.mirror:
-            color_steps = color_steps / 2
+            color_steps = color_steps // 2
 
         if self.matrix:
             color_steps = self.width
@@ -84,7 +87,7 @@ class Effect(object):
 
         self.band_width = 2**self.bw_exp
 
-        self.bands = int(math.ceil(22050 / self.band_width))
+        self.bands = int(math.ceil(22050 // self.band_width))
 
         self.octaves = []
 
@@ -103,12 +106,12 @@ class Effect(object):
         if self.matrix:
             self.led_count = self.width
             self._image_data = bytearray(3 * self.width * self.height)
-            print "ImageData size: {}".format(len(self._image_data))
+            print("ImageData size: {}".format(len(self._image_data)))
 
         if self.mirror:
-            self.led_count = self.led_count / 2
+            self.led_count = self.led_count // 2
 
-        self.leds_per_octave = int(math.floor(self.led_count / self.octave_count))
+        self.leds_per_octave = self.led_count // self.octave_count
 
         self.leds_per_last_octave = self.leds_per_octave
 
@@ -120,7 +123,7 @@ class Effect(object):
         self.bins = []
 
         for octave in self.octaves[:8]:
-            octave_divisor = octave/self.leds_per_octave
+            octave_divisor = octave // self.leds_per_octave
             for i in range(0, self.leds_per_octave):
                 self.bins.append(octave + i*octave_divisor)
         self.bins.append(self.octaves[8])
@@ -144,7 +147,7 @@ class Effect(object):
 
         self.mag_min_orig = self.mag_min
 
-        self._leds_data_center = (hyperion.ledCount/2) * 3
+        self._leds_data_center = (hyperion.ledCount // 2) * 3
 
         self._spectrum = GstSpectrumDump(
             source=hyperion.args.get('audiosrc', 'autoaudiosrc'),
@@ -158,10 +161,15 @@ class Effect(object):
             )
         self._spectrum.start()
 
-        print 'Effect started, waiting for gstreamer messages...'
+        print('Effect started, waiting for audio...')
 
     def __del__(self):
         self.stop()
+
+
+    def _palette_rgb(self, s, brightness):
+        r, g, b = palette_color(self.palette, s)
+        return (r * brightness, g * brightness, b * brightness)
 
 
     def _setup_leds_data(self, color_steps, saturation=1.0, brightness=1.0, hue_from=0.0, hue_to=1.0):
@@ -186,12 +194,19 @@ class Effect(object):
                     hue = hue_from + (1.0 - s) * (hue_to - hue_from) * 2
 
 
-            self.colors.append(colorsys.hsv_to_rgb(hue, saturation, brightness))
+            if self.palette:
+                s = float(i) / max(1, color_steps - 1)
+                self.colors.append(self._palette_rgb(s, brightness))
+            else:
+                self.colors.append(colorsys.hsv_to_rgb(hue, saturation, brightness))
 
         if self.mirror:
             for i in range(color_steps):
                 hue = float(color_steps-i)/color_steps
-                self.colors.append(colorsys.hsv_to_rgb(hue, saturation, brightness))
+                if self.palette:
+                    self.colors.append(self._palette_rgb(hue, brightness))
+                else:
+                    self.colors.append(colorsys.hsv_to_rgb(hue, saturation, brightness))
 
         if not self.reverse:
             for i in range(color_steps):
@@ -241,7 +256,7 @@ class Effect(object):
         if self.processing:
             return
         elif len(magnitudes) < self.cutoff:
-            print 'Invalid len: {}, {}'.format(len(magnitudes), self.cutoff)
+            print('Invalid len: {}, {}'.format(len(magnitudes), self.cutoff))
         else:
             self._magnitudes = magnitudes
             self.update_leds()

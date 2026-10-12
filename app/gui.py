@@ -7,9 +7,9 @@ Last updated on 13.3.2016
 @author: Fabian Hertwig
 @authir: Juha Rantanen
 """
-from Tkinter import *
-import tkFont
-import hyperion
+from tkinter import Tk, Canvas, mainloop
+import tkinter.font as tkFont
+from app import hyperion
 
 _led_height = 16
 _led_width = 16
@@ -24,8 +24,8 @@ def rgb_to_string(r, g, b):
 
 def createWindow(show_idx):
     # the empty window
-    window_width = 1920/2-100
-    window_height = 1080/2-100
+    window_width = 1920//2-100
+    window_height = 1080//2-100
 
     canvas = Canvas(master, width=window_width, height=window_height)
     canvas.pack()
@@ -45,7 +45,7 @@ def createWindow(show_idx):
 
         rect = canvas.create_rectangle(x, y, x + _led_width, y + _led_height, fill="black", outline="white")
         if show_idx:
-            canvas.create_text(x + _led_width/2, y + _led_height/2, font=gui_font, fill="white", text=str(i))
+            canvas.create_text(x + _led_width//2, y + _led_height//2, font=gui_font, fill="white", text=str(i))
 
         # leds_without_offset.append(rect)
         gui_leds.append(rect)

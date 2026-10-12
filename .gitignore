@@ -2,3 +2,5 @@
 .venv
 *.json
 !config.json
+AGENTS.local.md
+CLAUDE.local.md
