@@ -8,10 +8,9 @@ import threading
 import time
 
 import numpy as np
-import soundcard as sc
 
+from app import audio_input
 from app.json_client import JsonClient
-from effects.spectrum_dump import find_device, _init_com
 
 SAMPLERATE = 48000
 FFT_SIZE = 4096             # spectrum and level triggers: 11.7 Hz bins, 85 ms window
@@ -44,21 +43,39 @@ HIT_OFF = 0.25
 HIT_GAP = 0.06              # shortest time between two hits of a segment
 MAX_DROPS = 32
 
+# Ambient light (config 'reactive' and 'ambient'): what the leds show when
+# audio reactiveness is off, or in auto mode after a stretch of silence
+QUIET_DB = -70.0            # audio counts as silent while its loudest bin is below this
+AMBIENT_FADE_IN = 1.5       # seconds to fade into the ambient light
+AMBIENT_FADE_OUT = 0.15     # seconds back to the reactive look, so the first beat shows
+BREATHE_PERIOD = 8.0        # seconds per breath of the breathe style
+BREATHE_LOW = 0.3           # breathe style: dimmest point, as a share of the color
+# Without audio packets (nothing playing on some devices, or no device) the
+# engine still renders, so the ambient light fades in and keeps going
+IDLE_AFTER = 0.1            # seconds without a packet before idle rendering starts
+IDLE_FPS = 30
+
+# Auto level (config audio.auto_level): follows how loud the music's loud
+# moments are and adds gain so they sit where the presets were tuned (the hot
+# output of the original setup). Silence holds the gain where it was.
+AUTO_TARGET_DB = -15.0      # loudest bin of loud moments, after the gain
+AUTO_MIN_DB = -12.0
+AUTO_MAX_DB = 30.0
+AUTO_RISE_MS = 300          # how fast it follows louder music
+AUTO_FALL_MS = 8000         # and quieter music
+
 # Hyperion drops our colors after this many ms without updates, so the leds
 # are released even if the studio is killed
 HYPERION_DURATION = 2000
 RECONNECT_DELAY = 5.0
 
 
-def list_audio_devices():
+def audio_sources():
     """
-    Returns the default output name and the available capture devices.
+    The default output, the devices and the apps playing audio (see
+    audio_input.sources).
     """
-    _init_com()
-    default = sc.default_speaker().name
-    devices = [{'name': mic.name, 'loopback': bool(mic.isloopback)}
-               for mic in sc.all_microphones(include_loopback=True)]
-    return default, devices
+    return audio_input.sources()
 
 
 def hex_to_rgb(color):
@@ -82,12 +99,18 @@ class Spectrum(object):
     arrays with one SILENCE_DB bin of padding at the top, which band_levels()
     needs.
     """
-    __slots__ = ('full', 'padded', '_fast')
+    __slots__ = ('full', 'padded', '_fast', 'offset')
 
-    def __init__(self, full_padded, fast):
+    def __init__(self, full_padded, fast, offset=0.0):
         self.full = full_padded[:-1]
         self.padded = {False: full_padded}
         self._fast = fast           # padded array, or a function returning it
+        self.offset = offset        # input gain included in the levels
+
+    @property
+    def loudest(self):
+        """The loudest bin without the input gain: how loud the source really is."""
+        return float(self.full.max()) - self.offset
 
     def padded_for(self, fast):
         if fast and fast not in self.padded:
@@ -116,16 +139,25 @@ class Analyzer(object):
         self.display_edges = np.geomspace(DISPLAY_MIN_HZ, DISPLAY_MAX_HZ, DISPLAY_BANDS + 1)
         self.samples = np.zeros((0, FFT_SIZE))      # channels x latest samples
         self.active = np.zeros(0, dtype=bool)
+        self.offset = 0.0                           # input gain in dB, added to every level
         self._windows = {}
         for size in (FFT_SIZE, FAST_FFT_SIZE):
             window = np.hanning(size)
             self._windows[size] = (window, (2.0 / window.sum()) ** 2)
         self._plans = {}
 
-    def push(self, frames):
+    def clear(self):
+        """
+        Forgets the samples, after a gap in the audio: they no longer belong
+        to what's playing.
+        """
+        self.samples[:] = 0.0
+
+    def push(self, frames, peaks=None):
         """
         Adds captured frames (samples x channels, or mono) and returns the new
-        Spectrum.
+        Spectrum. `peaks`: each channel's peak in the frames, if the caller
+        has them already.
         """
         frames = np.asarray(frames, dtype=np.float64)
         if frames.ndim == 1:
@@ -142,18 +174,21 @@ class Analyzer(object):
             self.samples[:, -count:] = frames
         # A channel counts from the first time it carries sound
         if count:
-            self.active |= np.abs(frames).max(axis=1) > ACTIVE_LEVEL
+            if peaks is None or len(peaks) != len(frames):
+                peaks = np.abs(frames).max(axis=1)
+            self.active |= np.asarray(peaks) > ACTIVE_LEVEL
         if not self.active.any():
             return Spectrum.silent()
         playing = self.samples[self.active]
-        return Spectrum(self._db(playing, FFT_SIZE), lambda: self._db(playing, FAST_FFT_SIZE))
+        offset = self.offset
+        return Spectrum(self._db(playing, FFT_SIZE, offset), lambda: self._db(playing, FAST_FFT_SIZE, offset), offset)
 
-    def _db(self, playing, size):
+    def _db(self, playing, size, offset):
         window, norm = self._windows[size]
         bins = np.fft.rfft(playing[:, -size:] * window, axis=1)
         power = (bins.real ** 2 + bins.imag ** 2).mean(axis=0) * norm
         db = np.full(len(power) + 1, SILENCE_DB)
-        np.maximum(10.0 * np.log10(np.maximum(power, 1e-30)) + CALIBRATION_DB, SILENCE_DB, out=db[:-1])
+        np.maximum(10.0 * np.log10(np.maximum(power, 1e-30)) + (CALIBRATION_DB + offset), SILENCE_DB, out=db[:-1])
         return db
 
     def band_levels(self, spectrum, edges, fast=False):
@@ -206,12 +241,86 @@ class SegmentState(object):
         self.color_index = 0
 
 
+class AutoLevel(object):
+    """
+    Follows how loud the source's loud moments are (an envelope of the
+    loudest bin without gain) and works out the gain that puts them at
+    AUTO_TARGET_DB. It keeps tracking while switched off, so switching it on
+    takes effect at once.
+    """
+    def __init__(self):
+        self.envelope = None
+        self.gain = 0.0
+
+    def reset(self):
+        self.envelope = None
+        self.gain = 0.0
+
+    def update(self, loudest, dt):
+        if loudest < QUIET_DB:
+            return
+        if self.envelope is None:
+            self.envelope = loudest
+        ms = AUTO_RISE_MS if loudest > self.envelope else AUTO_FALL_MS
+        self.envelope += (loudest - self.envelope) * smoothing(ms, dt)
+        self.gain = min(AUTO_MAX_DB, max(AUTO_MIN_DB, AUTO_TARGET_DB - self.envelope))
+
+
+class Ambient(object):
+    """
+    Crossfades between the reactive frame and the ambient light. `amount` is
+    0 for the reactive look and 1 for the ambient light; `quiet` counts the
+    seconds the audio has been silent.
+    """
+    def __init__(self):
+        self.amount = 0.0
+        self.quiet = 0.0
+        self.phase = 0.0
+
+    def wanted(self, config):
+        mode = config['reactive']
+        if mode == 'off':
+            return 1.0
+        if mode == 'auto' and self.quiet >= config['ambient']['idle_after']:
+            return 1.0
+        return 0.0
+
+    def update(self, config, spectrum, dt):
+        self.quiet = 0.0 if spectrum.loudest >= QUIET_DB else self.quiet + dt
+        self.phase = (self.phase + dt / BREATHE_PERIOD) % 1.0
+        want = self.wanted(config)
+        if want > self.amount:
+            self.amount = min(want, self.amount + dt / AMBIENT_FADE_IN)
+        elif want < self.amount:
+            self.amount = max(want, self.amount - dt / AMBIENT_FADE_OUT)
+
+    def color(self, config):
+        ambient = config['ambient']
+        rgb = np.array(hex_to_rgb(ambient['color']), dtype=np.float64) * ambient['level']
+        if ambient['style'] == 'breathe':
+            breath = 0.5 - 0.5 * math.cos(2.0 * math.pi * self.phase)
+            rgb *= BREATHE_LOW + (1.0 - BREATHE_LOW) * breath
+        return rgb
+
+    def blend(self, out, config, spectrum, dt):
+        """
+        Mixes the ambient light into `out` (leds x rgb, before `master`).
+        """
+        self.update(config, spectrum, dt)
+        if self.amount <= 0.0:
+            return out
+        a = self.amount * self.amount * (3.0 - 2.0 * self.amount)     # eased
+        return out * (1.0 - a) + self.color(config) * a
+
+
 class Renderer(object):
     """
-    Turns the spectrum into led colors according to the segments.
+    Turns the spectrum into led colors according to the segments, and blends
+    in the ambient light.
     """
     def __init__(self, analyzer):
         self.analyzer = analyzer
+        self.ambient = Ambient()
         self.states = {}
         self.rng = np.random.default_rng()
         self._layouts = {}
@@ -550,6 +659,7 @@ class Renderer(object):
             if seg_id not in levels:
                 del self.states[seg_id]
 
+        out = self.ambient.blend(out, config, spectrum, dt)
         out *= config['master']
         return np.clip(out, 0, 255).astype(np.uint8).tobytes(), levels
 
@@ -626,77 +736,92 @@ class HyperionSender(object):
 
 class StudioEngine(object):
     """
-    Captures audio in a thread and keeps the latest spectrum, led frame and
-    segment levels for the web UI and the hyperion sender.
+    Analyses the audio from the input thread (audio_input.AudioInput) and
+    keeps the latest spectrum, led frame and segment levels for the web UI
+    and the hyperion sender.
     """
     def __init__(self, store):
         self.store = store
         self.analyzer = Analyzer()
         self.renderer = Renderer(self.analyzer)
+        self.level = AutoLevel()
+        self.input = audio_input.AudioInput(store, self._on_audio)
+        self._source = None         # the audio source auto level has been following
         self.sender = HyperionSender(self)
         self.lock = threading.Lock()
+        # The capture thread and the idle thread both render
+        self._render_lock = threading.Lock()
+        self._last_render = time.perf_counter()
         self.spectrum = Spectrum.silent()
         self.sequence = 0           # counts analysed packets
         self._display = (-1, [])    # display bands of one packet: (sequence, bands)
         self.frame = b''
         self.levels = {}
-        self.audio = {'ok': False, 'device': '', 'message': 'starting'}
         self.fps = 0.0
         self.running = False
-        self.thread = None
         self._frames = 0
         self._fps_time = time.perf_counter()
 
     def start(self):
         self.running = True
-        self.thread = threading.Thread(target=self._capture_loop)
-        self.thread.daemon = True
-        self.thread.start()
+        self.input.start()
+        idle = threading.Thread(target=self._idle_loop)
+        idle.daemon = True
+        idle.start()
         self.sender.start()
 
     def stop(self):
         self.running = False
+        self.input.stop()
         self.sender.stop()
 
-    def _capture_loop(self):
-        _init_com()
+    def _idle_loop(self):
+        """
+        Renders silence while no audio packets arrive, so time keeps moving
+        for the ambient light, the release of the segments and the moving
+        modes. Packets stop when nothing plays on some devices, or when the
+        capture fails.
+        """
         while self.running:
-            wanted = self.store.config['audio']['device']
-            try:
-                device = find_device(wanted)
-                self.audio = {'ok': True, 'device': device.name, 'message': ''}
-                with device.recorder(samplerate=SAMPLERATE) as recorder:
-                    # WASAPI hands over one packet per device period (10 ms).
-                    # Each one is analysed as it lands, so the leds follow the
-                    # newest audio. In between, sleeping through most of the
-                    # period saves soundcard's sub-millisecond polling.
-                    period = recorder.deviceperiod[0]
-                    while self.running and self.store.config['audio']['device'] == wanted:
-                        frames = recorder.record(numframes=None)
-                        started = time.perf_counter()
-                        if len(frames):
-                            self._process(frames)
-                        time.sleep(max(0.0, period * 0.7 - (time.perf_counter() - started)))
-            except Exception as exc: # pylint: disable=broad-except
-                self.audio = {'ok': False, 'device': '', 'message': str(exc)}
-                time.sleep(2)
+            time.sleep(1.0 / IDLE_FPS)
+            gap = time.perf_counter() - self._last_render
+            if gap >= IDLE_AFTER:
+                with self._render_lock:
+                    self._render(Spectrum.silent(), min(MAX_DT, gap), packet=False)
 
-    def _process(self, frames):
-        spectrum = self.analyzer.push(frames)
-        dt = min(MAX_DT, len(frames) / float(SAMPLERATE))
+    def _render(self, spectrum, dt, packet):
+        # Called with _render_lock held. fps counts audio packets only.
         frame, levels = self.renderer.render(self.store.config, spectrum, dt)
+        now = self._last_render = time.perf_counter()
         with self.lock:
             self.spectrum = spectrum
             self.frame = frame
             self.levels = levels
             self.sequence += 1
-
-        self._frames += 1
-        now = time.perf_counter()
+        self._frames += int(packet)
         if now - self._fps_time >= 1.0:
             self.fps = self._frames / (now - self._fps_time)
             self._frames = 0
             self._fps_time = now
+
+    def _on_audio(self, frames, peaks, fresh):
+        """
+        New audio from the input thread. `fresh` after a gap: the analysis
+        window starts empty instead of mixing in what played before it.
+        """
+        audio = self.store.config['audio']
+        with self._render_lock:
+            source = (audio['device'], audio['app'], audio['app_mode'])
+            if source != self._source:
+                self._source = source
+                self.level.reset()
+            if fresh:
+                self.analyzer.clear()
+            self.analyzer.offset = audio['gain'] + (self.level.gain if audio['auto_level'] else 0.0)
+            spectrum = self.analyzer.push(frames, peaks)
+            dt = min(MAX_DT, len(frames) / float(SAMPLERATE))
+            self.level.update(spectrum.loudest, dt)
+            self._render(spectrum, dt, packet=True)
 
     def snapshot(self):
         """
@@ -717,8 +842,13 @@ class StudioEngine(object):
             'leds': frame.hex(),
             'levels': levels,
             'status': {
-                'audio': self.audio,
+                'audio': {'ok': self.input.state == 'ok', 'device': self.input.label, 'message': self.input.message},
+                'input': dict(self.input.status(), gain=self.store.config['audio']['gain'],
+                              auto=round(self.level.gain, 1)),
                 'hyperion': self.sender.status,
                 'fps': int(round(self.fps)),
+                # 0 reactive ... 1 ambient light, and seconds of silence so far
+                'ambient': round(self.renderer.ambient.amount, 3),
+                'quiet': round(self.renderer.ambient.quiet, 1),
             },
         }

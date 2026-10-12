@@ -1,11 +1,21 @@
 :root {
   color-scheme: dark;
-  --bg: #08080d;
-  --panel: #111119;
-  --panel-2: #181823;
-  --panel-3: #21212f;
-  --line: #262636;
-  --line-2: #35354d;
+  --bg: #07060d;
+  /* Glass: translucent surfaces over the glowing background (body::before) */
+  --panel: rgba(255, 255, 255, 0.05);         /* pills and small chips */
+  --panel-2: rgba(255, 255, 255, 0.04);       /* rows and tiles */
+  --panel-3: rgba(255, 255, 255, 0.09);       /* raised controls */
+  --well: rgba(6, 4, 14, 0.42);               /* inputs, switches, meters: sunk into the glass */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --line-hover: rgba(255, 255, 255, 0.24);
+  --hover: rgba(255, 255, 255, 0.07);
+  --glass:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025) 42%, rgba(255, 255, 255, 0.04)),
+    rgba(14, 10, 28, 0.38);
+  --glass-line: rgba(255, 255, 255, 0.11);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 20px 50px -24px rgba(0, 0, 0, 0.75);
+  --glass-blur: blur(22px) saturate(160%);
   --text: #ecebf5;
   --muted: #9391ad;
   --faint: #5f5d78;
@@ -14,7 +24,7 @@
   --ok: #3ddc97;
   --warn: #ffb020;
   --err: #ff5470;
-  --radius: 12px;
+  --radius: 16px;
   --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   --seg: var(--accent);
 }
@@ -27,13 +37,23 @@ html, body {
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-body {
-  min-height: 100vh;
+body { min-height: 100vh; background: var(--bg); }
+/* Deep Night glows behind the glass panels. A fixed layer of its own, so
+   scrolling moves the panels over it without repainting it. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
-    radial-gradient(1100px 480px at 15% -12%, #1c0b3a 0%, transparent 62%),
-    radial-gradient(900px 420px at 100% -5%, #2b0a26 0%, transparent 58%),
+    radial-gradient(42vmax 34vmax at 6% 8%, rgba(75, 0, 255, 0.42), transparent 70%),
+    radial-gradient(36vmax 30vmax at 96% 4%, rgba(255, 51, 153, 0.26), transparent 70%),
+    radial-gradient(46vmax 36vmax at 84% 92%, rgba(0, 51, 204, 0.34), transparent 70%),
+    radial-gradient(34vmax 30vmax at 14% 96%, rgba(143, 0, 255, 0.3), transparent 70%),
+    radial-gradient(30vmax 24vmax at 52% 46%, rgba(255, 0, 255, 0.09), transparent 70%),
     var(--bg);
-  background-attachment: fixed;
+  transform: translateZ(0);
 }
 
 h1, h2, h3, p { margin: 0; }
@@ -52,9 +72,10 @@ h1, h2, h3, p { margin: 0; }
   gap: 16px 24px;
   flex-wrap: wrap;
   padding: 12px 20px;
-  background: rgba(8, 8, 13, 0.82);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)), rgba(9, 7, 18, 0.5);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-line);
+  box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.8);
 }
 .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
 .brand h1 { font-size: 17px; font-weight: 650; letter-spacing: 0.01em; }
@@ -91,6 +112,22 @@ h1, h2, h3, p { margin: 0; }
 .top-controls label { color: var(--muted); font-size: 13px; }
 .top-controls input[type=range] { width: 120px; }
 .top-controls output { width: 3.2em; color: var(--muted); font-size: 12px; }
+.top-label { color: var(--muted); font-size: 13px; }
+.reactive-modes { width: 156px; }
+.reactive-modes button { padding: 3px 4px; }
+/* The ambient light's color; lit while the strip shows it */
+.amb-dot {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: var(--amb, #4b00ff);
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 0.4s, box-shadow 0.4s;
+}
+.amb-dot.on { opacity: 1; box-shadow: 0 0 10px var(--amb, #4b00ff); }
 
 /* Layout */
 /* Effects menu on the left, editor in the middle, inspector on the right */
@@ -110,9 +147,11 @@ h1, h2, h3, p { margin: 0; }
 .stage, .side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 .card {
-  background: rgba(17, 17, 25, 0.92);
-  border: 1px solid var(--line);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
   border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
   padding: 14px 16px 16px;
 }
 .card-head {
@@ -154,7 +193,7 @@ h1, h2, h3, p { margin: 0; }
   padding: 9px 14px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--panel-2);
+  background: var(--well);
 }
 .brightness label { font-size: 13px; font-weight: 600; margin-right: 4px; }
 .brightness output { width: 3.4em; text-align: right; color: var(--text); font-size: 13px; }
@@ -204,7 +243,7 @@ h1, h2, h3, p { margin: 0; }
   padding: 3px 8px;
   border: 1px solid var(--line-2);
   border-radius: 6px;
-  background: rgba(8, 8, 13, 0.85);
+  background: rgba(8, 6, 16, 0.78);
   color: var(--text);
   font-size: 11.5px;
   white-space: nowrap;
@@ -248,7 +287,7 @@ canvas { display: block; width: 100%; touch-action: none; }
   cursor: pointer;
   white-space: nowrap;
 }
-.btn:hover { border-color: #4b4b6b; background: #282838; }
+.btn:hover { border-color: var(--line-hover); background: rgba(255, 255, 255, 0.13); }
 .btn.small { padding: 4px 9px; font-size: 12px; }
 .btn.ghost { background: transparent; }
 .btn.danger:hover, .btn.danger.confirm { border-color: var(--err); color: #ffc2cd; }
@@ -269,7 +308,7 @@ input[type=text], input[type=number], select {
   padding: 5px 8px;
   border: 1px solid var(--line-2);
   border-radius: 7px;
-  background: var(--panel-2);
+  background: var(--well);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -286,6 +325,8 @@ input[type=color] {
   cursor: pointer;
 }
 select { width: 100%; }
+/* The drop-down list itself isn't see-through */
+option { background: #15111f; color: var(--text); }
 
 .split-group { display: inline-flex; }
 .split-group .btn { border-radius: 8px 0 0 8px; }
@@ -333,15 +374,15 @@ select { width: 100%; }
   background: var(--panel-2);
   cursor: pointer;
 }
-.seg-row:hover { border-color: var(--line-2); }
+.seg-row:hover { border-color: var(--line-2); background: var(--hover); }
 .seg-row.selected { border-color: var(--seg-row, var(--accent)); box-shadow: inset 0 0 0 1px var(--seg-row, var(--accent)); }
 .seg-row.muted .meta, .seg-row.muted .swatch { opacity: 0.45; }
 .swatch { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12); }
 .meta { min-width: 0; display: flex; flex-direction: column; }
 .meta strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mini-meter { height: 6px; border-radius: 3px; background: var(--panel-3); overflow: hidden; }
-.mini-meter i { display: block; height: 100%; width: 0; background: var(--seg-row, var(--accent)); }
+.mini-meter { height: 6px; border-radius: 3px; background: var(--well); overflow: hidden; }
+.mini-meter i { display: block; height: 100%; background: var(--seg-row, var(--accent)); transform: scaleX(0); transform-origin: left; will-change: transform; }
 .solo {
   width: 28px;
   height: 26px;
@@ -402,10 +443,10 @@ select { width: 100%; }
   padding: 2px 9px;
   cursor: pointer;
 }
-.chip-btn:hover { color: var(--text); border-color: #4b4b6b; }
+.chip-btn:hover { color: var(--text); border-color: var(--line-hover); }
 .chip-btn[aria-pressed=true] { color: #fff; border-color: var(--seg); background: color-mix(in srgb, var(--seg) 22%, transparent); }
 
-.seg-ctl { display: flex; padding: 3px; gap: 3px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; }
+.seg-ctl { display: flex; padding: 3px; gap: 3px; background: var(--well); border: 1px solid var(--line); border-radius: 9px; }
 .seg-ctl button {
   flex: 1;
   border: 0;
@@ -424,14 +465,62 @@ select { width: 100%; }
 .seg-ctl button[aria-pressed=true] { background: var(--panel-3); color: #fff; box-shadow: inset 0 0 0 1px var(--line-2); }
 
 /* Meters */
-.meter { position: relative; height: 16px; margin-top: 4px; border-radius: 5px; background: var(--panel-2); overflow: hidden; }
-.meter .zone { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--seg) 26%, transparent); }
-.meter .raw { position: absolute; left: 0; top: 5px; bottom: 5px; width: 0; border-radius: 3px; background: rgba(255, 255, 255, 0.75); }
-.meter .mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--seg); }
-.meter .mark.ceil { background: transparent; border-left: 2px dashed var(--seg); }
-.out-meter { height: 8px; margin-top: 6px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
-.out-meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--seg) 55%, transparent), var(--seg)); }
+.meter { position: relative; height: 16px; margin-top: 4px; border-radius: 5px; background: var(--well); overflow: hidden; }
+/* Every moving part spans the whole meter and is placed by transform (see
+   updateMeters), so live updates skip layout */
+.meter .zone, .meter .raw, .meter .mark { position: absolute; left: 0; width: 100%; transform-origin: left; will-change: transform; }
+.meter .zone { top: 0; bottom: 0; background: color-mix(in srgb, var(--seg) 26%, transparent); transform: scaleX(0); }
+.meter .raw { top: 5px; bottom: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.75); transform: scaleX(0); }
+.meter .mark { top: 0; bottom: 0; margin-left: -1px; border-left: 2px solid var(--seg); }
+.meter .mark.ceil { border-left-style: dashed; }
+.out-meter { height: 8px; margin-top: 6px; border-radius: 4px; background: var(--well); overflow: hidden; }
+.out-meter i { display: block; height: 100%; background: linear-gradient(90deg, color-mix(in srgb, var(--seg) 55%, transparent), var(--seg)); transform: scaleX(0); transform-origin: left; will-change: transform; }
 .meter-text { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 5px; }
+
+/* Ambient light card (--seg is the ambient color) */
+.ambient .note { margin: -4px 0 8px; }
+.ambient .ctl output { width: 3.6em; color: var(--muted); font-size: 12px; text-align: right; }
+/* Eight Deep Night swatches and a custom color, one row at any width */
+.amb-swatches { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); align-items: center; gap: 5px; max-width: 290px; }
+.amb-swatch { width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; cursor: pointer; }
+.amb-swatch[aria-pressed=true] { outline: 2px solid #fff; outline-offset: 2px; }
+.amb-swatches input[type=color] { width: 100%; height: auto; aspect-ratio: 1; padding: 1px; }
+.amb-now { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px 104px; color: var(--muted); font-size: 12px; }
+.amb-now i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ok); }
+.amb-now.ambient i, .amb-now.fading i { background: var(--seg); box-shadow: 0 0 8px var(--seg); }
+
+/* Audio input card */
+.audio-in .ctl select { flex: 1; }
+.audio-in .ctl output { width: 4.6em; color: var(--muted); font-size: 12px; text-align: right; }
+.ai-status { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px 104px; color: var(--muted); font-size: 12px; }
+.ai-status i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.ai-status.idle i { background: var(--faint); box-shadow: none; }
+.ai-status.err i { background: var(--err); box-shadow: none; }
+.ai-meters { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; }
+.ai-rows { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
+.ai-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 2.4em; align-items: center; gap: 8px; }
+.ai-ch { color: var(--muted); font-size: 11px; font-weight: 650; }
+.ai-row output { color: var(--muted); font-size: 11px; text-align: right; }
+/* The bar is the whole scale (-60 to 0 dBFS); a cover hides what's above the level */
+.ai-meter {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #0033cc 0%, #4b00ff 45%, #ff3399 78%, #ffb020 92%, #ff5470 100%);
+}
+.ai-cover { position: absolute; inset: 0; background: #0d0a18; transform: scaleX(1); transform-origin: right; will-change: transform; }
+.ai-clip {
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--well);
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.ai-clip.on { border-color: var(--err); background: var(--err); color: #fff; box-shadow: 0 0 10px var(--err); }
 
 /* Palette */
 .chips { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
@@ -485,7 +574,7 @@ select { width: 100%; }
   padding: 3px 9px 3px 4px;
   cursor: pointer;
 }
-.preset:hover { color: var(--text); border-color: #4b4b6b; }
+.preset:hover { color: var(--text); border-color: var(--line-hover); }
 .preset span { width: 26px; height: 14px; border-radius: 999px; }
 .insp-foot { display: flex; gap: 8px; margin-top: 16px; }
 
@@ -516,7 +605,7 @@ input[type=search] {
   padding: 6px 10px;
   border: 1px solid var(--line-2);
   border-radius: 8px;
-  background: var(--panel-2);
+  background: var(--well);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -665,7 +754,7 @@ input[type=search] {
   display: block;
   height: 26px;
   border-radius: 6px;
-  background: #0c0c13;
+  background: var(--well);
   border: 1px solid var(--line);
   overflow: hidden;
 }
@@ -692,6 +781,12 @@ input[type=search] {
   0% { transform: scaleX(0.55); opacity: 0.8; } 20% { transform: scaleX(0.8); opacity: 1; } 40% { transform: scaleX(0.6); opacity: 0.85; }
   60% { transform: scaleX(0.9); opacity: 1; } 80% { transform: scaleX(0.65); opacity: 0.9; } 100% { transform: scaleX(0.75); opacity: 1; }
 }
+
+/* Previews loop only while their item is hovered or focused, and otherwise
+   look as they do with reduced motion. Any running animation makes the browser
+   render the whole page at the display's full rate (144 Hz here), while the
+   live view only needs the stream's 30 frames a second. */
+:is(.menu-item, .rx-tile):not(:hover, :focus-within) .fx-block { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .fx-block { animation: none !important; }
@@ -725,7 +820,7 @@ input[type=search] {
   text-align: left;
   cursor: pointer;
 }
-.rx-tile:hover { border-color: var(--line-2); background: #1d1d2a; }
+.rx-tile:hover { border-color: var(--line-2); background: var(--hover); }
 .rx-tile[aria-pressed=true] { border-color: var(--seg); box-shadow: inset 0 0 0 1px var(--seg); }
 .rx-text { display: flex; flex-direction: column; min-width: 0; }
 .rx-text strong { font-size: 13px; font-weight: 600; }
@@ -752,7 +847,7 @@ input[type=search] {
   height: 34px;
   padding: 5px;
   border-radius: 8px;
-  background: #0c0c13;
+  background: var(--well);
   border: 1px solid var(--line);
 }
 .rx-preview i { flex: 1; height: 100%; border-radius: 2px; background: var(--seg); transform-origin: bottom; }
@@ -770,6 +865,8 @@ input[type=search] {
 @keyframes rx-eq { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
 @keyframes rx-drift { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
 
+.rx-tile:not(:hover, :focus-within) .rx-preview i { animation: none; opacity: 0.85; }
+
 @media (prefers-reduced-motion: reduce) {
   .rx-preview i { animation: none !important; opacity: 0.85; }
 }
@@ -781,9 +878,11 @@ input[type=search] {
   bottom: 20px;
   transform: translate(-50%, 20px);
   padding: 9px 16px;
-  border: 1px solid var(--line-2);
-  border-radius: 10px;
-  background: var(--panel-3);
+  border: 1px solid var(--glass-line);
+  border-radius: 12px;
+  background: var(--glass);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
   color: var(--text);
   font-size: 13px;
   opacity: 0;
@@ -823,6 +922,7 @@ input[type=search] {
   .seg-row { grid-template-columns: 26px minmax(0, 1fr) 48px auto auto; gap: 8px; }
   .swatch { width: 26px; height: 26px; }
   .field { grid-template-columns: 80px minmax(0, 1fr); }
+  .amb-now, .ai-status { margin-left: 88px; }
   .brightness { gap: 8px; padding: 9px 12px; }
   .cr-row { grid-template-columns: minmax(0, 1fr); }
   .pf-field { grid-template-columns: minmax(0, 1fr); }

@@ -23,7 +23,7 @@ sys.path.insert(0, BASE_DIR)
 
 from app.json_client import fetch_server_info
 from app.studio_config import ConfigStore
-from app.studio_engine import (StudioEngine, list_audio_devices, DISPLAY_BANDS,
+from app.studio_engine import (StudioEngine, audio_sources, DISPLAY_BANDS,
                                DISPLAY_MIN_HZ, DISPLAY_MAX_HZ)
 
 WEB_DIR = os.path.join(BASE_DIR, 'web')
@@ -89,16 +89,21 @@ class StudioHandler(BaseHTTPRequestHandler):
     def _send_json(self, data, status=200):
         self._send(status, json.dumps(data).encode('utf-8'), 'application/json')
 
-    def _state(self):
+    @staticmethod
+    def _sources():
         try:
-            default, devices = list_audio_devices()
+            return audio_sources()
         except Exception as exc: # pylint: disable=broad-except
-            print('Could not list audio devices: {}'.format(exc))
-            default, devices = '', []
+            print('Could not list audio sources: {}'.format(exc))
+            return {'default': '', 'devices': [], 'apps': []}
+
+    def _state(self):
+        sources = self._sources()
         return {
             'config': self.server.store.versioned(),
-            'devices': devices,
-            'default_device': default,
+            'devices': sources['devices'],
+            'default_device': sources['default'],
+            'apps': sources['apps'],
             'display': {
                 'bands': DISPLAY_BANDS,
                 'min_hz': DISPLAY_MIN_HZ,
@@ -116,6 +121,9 @@ class StudioHandler(BaseHTTPRequestHandler):
                 self._send(200, static_file.read(), content_type)
         elif path == '/api/state':
             self._send_json(self._state())
+        elif path == '/api/sources':
+            # devices and the apps playing audio, refreshed by the Audio input card
+            self._send_json(self._sources())
         elif path == '/api/stream':
             self._stream()
         else:

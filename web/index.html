@@ -22,6 +22,11 @@
     <span class="pill mono" id="st-fps">– fps</span>
   </div>
   <div class="top-controls">
+    <span class="top-label" id="reactive-label">Audio reactive</span>
+    <div class="seg-ctl reactive-modes" id="reactive-top" role="group" aria-labelledby="reactive-label"></div>
+    <button type="button" class="amb-dot" id="ambient-dot" aria-label="Ambient light settings"></button>
+  </div>
+  <div class="top-controls">
     <label for="master">Brightness</label>
     <input type="range" id="master" min="0" max="100" step="1">
     <output id="master-out" class="mono" for="master"></output>
@@ -36,7 +41,7 @@
       <button type="button" class="btn small" id="save-preset">Save current</button>
     </div>
     <input type="search" id="preset-search" class="menu-search" placeholder="Search effects, genres, tags" aria-label="Search effects, genres and tags" autocomplete="off">
-    <p class="menu-hint">Click an effect to apply it (Undo brings yours back). ▾ shows its ranges and tags, and ★ marks the default that Reset all restores.</p>
+    <p class="menu-hint">Hover an effect to play its preview, click it to apply it (Undo brings yours back). ▾ shows its ranges and tags, and ★ marks the default that Reset all restores.</p>
     <div id="preset-form"></div>
     <div id="preset-menu"></div>
   </aside>
@@ -133,13 +138,18 @@
       <div class="inspector" id="inspector"></div>
     </div>
 
+    <div class="card ambient" id="ambient" data-collapse="ambient">
+      <div class="card-head"><h2>Ambient light</h2></div>
+      <p class="note">What the strip shows when audio reactive is off, or in Auto once the music has been quiet for a while. It fades in and out.</p>
+      <div id="ambient-body"></div>
+    </div>
+    <div class="card audio-in" id="audio-input" data-collapse="audio-input">
+      <div class="card-head"><h2>Audio input</h2><button type="button" class="btn small push" id="rescan">Rescan</button></div>
+      <div id="audio-input-body"></div>
+    </div>
     <div class="card settings" data-collapse="settings" data-collapsed>
       <div class="card-head"><h2>Settings</h2></div>
       <div class="settings-body">
-        <div class="field">
-          <label for="set-device">Audio source</label>
-          <div class="ctl"><select id="set-device"></select><button type="button" class="btn small" id="rescan">Rescan</button></div>
-        </div>
         <div class="field">
           <label for="set-host">Hyperion host</label>
           <div class="ctl"><input type="text" id="set-host" spellcheck="false" autocomplete="off"></div>

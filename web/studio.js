@@ -137,6 +137,7 @@ const DIRECTIONS = [
 let config = null;
 let devices = [];
 let defaultDevice = '';
+let apps = [];                  // apps with audio on an output right now (see /api/sources)
 let display = { bands: 192, min_hz: 20, max_hz: 20000 };
 let centers = [];
 let selectedId = null;
@@ -152,6 +153,15 @@ let syncers = [];
 let meterRefs = null;
 const listRows = new Map();
 const spec = { smooth: null, peaks: null };
+// The canvases and meters only change with new stream data or user input, so
+// a frame is drawn only after one of those (at most one per display frame)
+// instead of on every display refresh
+let frameRequested = false;
+function invalidate() {
+  if (frameRequested) return;
+  frameRequested = true;
+  requestAnimationFrame(frame);
+}
 
 /* ---------- helpers ---------- */
 
@@ -243,6 +253,24 @@ function fitCanvas(canvas) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, w, h: hgt };
+}
+
+// A static layer (the analyzer's grid, the strip's LED shapes) is drawn once
+// into an offscreen canvas the size of `canvas`, and again only when that size
+// or `key` changes. Copy it in with drawImage(layer, 0, 0, w, h).
+function cachedLayer(slot, canvas, key, draw) {
+  const dpr = window.devicePixelRatio || 1;
+  const fullKey = `${canvas.width}x${canvas.height}@${dpr}|${key}`;
+  if (slot.key !== fullKey) {
+    slot.key = fullKey;
+    slot.canvas = slot.canvas || document.createElement('canvas');
+    slot.canvas.width = canvas.width;
+    slot.canvas.height = canvas.height;
+    const ctx = slot.canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw(ctx, canvas.width / dpr, canvas.height / dpr);
+  }
+  return slot.canvas;
 }
 
 function localPos(e, canvas) {
@@ -648,12 +676,9 @@ function boxOf(seg) {
   return { x0: fx(seg.freq_lo), x1: fx(seg.freq_hi), yT: dy(base + seg.ceiling), yB: dy(base + seg.threshold) };
 }
 
-function drawAnalyzer() {
-  const { ctx, w, h: hgt } = fitCanvas(anCanvas);
-  ag = { x0: AN_PAD.l, y0: AN_PAD.t, w: Math.max(1, w - AN_PAD.l - AN_PAD.r), h: Math.max(1, hgt - AN_PAD.t - AN_PAD.b) };
-  ctx.clearRect(0, 0, w, hgt);
+const anGrid = {};
 
-  // Grid
+function drawAnalyzerGrid(ctx) {
   ctx.font = '11px ui-monospace, Consolas, monospace';
   ctx.lineWidth = 1;
   ctx.textBaseline = 'middle';
@@ -686,6 +711,13 @@ function drawAnalyzer() {
       lastLabel = x;
     }
   }
+}
+
+function drawAnalyzer() {
+  const { ctx, w, h: hgt } = fitCanvas(anCanvas);
+  ag = { x0: AN_PAD.l, y0: AN_PAD.t, w: Math.max(1, w - AN_PAD.l - AN_PAD.r), h: Math.max(1, hgt - AN_PAD.t - AN_PAD.b) };
+  ctx.clearRect(0, 0, w, hgt);
+  ctx.drawImage(cachedLayer(anGrid, anCanvas, `${display.min_hz}-${display.max_hz}`, drawAnalyzerGrid), 0, 0, w, hgt);
 
   ctx.save();
   ctx.beginPath();
@@ -960,26 +992,57 @@ function ledGeom(w) {
   };
 }
 
+// The LED colors as one row of pixels (unlit LEDs transparent), stretched over
+// the strip and its glow with smoothing off: two drawImage calls per frame
+// instead of a rounded rectangle per LED
+const ledRow = { canvas: document.createElement('canvas'), image: null };
+const ledShapes = {};
+
+function ledRowImage(n) {
+  const row = ledRow;
+  if (!row.image || row.image.width !== n) {
+    row.canvas.width = n;
+    row.canvas.height = 1;
+    row.image = row.canvas.getContext('2d').createImageData(n, 1);
+  }
+  const px = row.image.data;
+  for (let i = 0; i < n; i++) {
+    const r = ledBytes[i * 3] || 0;
+    const g = ledBytes[i * 3 + 1] || 0;
+    const b = ledBytes[i * 3 + 2] || 0;
+    px[i * 4] = r;
+    px[i * 4 + 1] = g;
+    px[i * 4 + 2] = b;
+    px[i * 4 + 3] = r + g + b > 0 ? 255 : 0;
+  }
+  row.canvas.getContext('2d').putImageData(row.image, 0, 0);
+  return row.canvas;
+}
+
 function drawStrip() {
   const { ctx, w, h: hgt } = fitCanvas(stripCanvas);
   const glow = fitCanvas(glowCanvas);
   const g = ledGeom(w);
+  const leds = ledRowImage(g.n);
   ctx.clearRect(0, 0, w, hgt);
-  glow.ctx.clearRect(0, 0, glow.w, glow.h);
-  const gap = g.cw > 6 ? 1.5 : g.cw > 3 ? 0.75 : 0;
-  for (let i = 0; i < g.n; i++) {
-    const r = ledBytes[i * 3] || 0;
-    const gr = ledBytes[i * 3 + 1] || 0;
-    const b = ledBytes[i * 3 + 2] || 0;
-    const lit = r + gr + b > 0;
-    ctx.fillStyle = lit ? `rgb(${r},${gr},${b})` : '#17171f';
-    rrect(ctx, g.x(i) + gap / 2, 8, Math.max(0.5, g.cw - gap), hgt - 16, Math.min(3, g.cw / 3));
-    ctx.fill();
-    if (lit) {
-      glow.ctx.fillStyle = `rgb(${r},${gr},${b})`;
-      glow.ctx.fillRect(g.x(i), 14, g.cw, glow.h - 28);
+  // Unlit LED shapes, then the colors painted only onto them
+  ctx.drawImage(cachedLayer(ledShapes, stripCanvas, g.n, (c) => {
+    const gap = g.cw > 6 ? 1.5 : g.cw > 3 ? 0.75 : 0;
+    c.fillStyle = '#17171f';
+    for (let i = 0; i < g.n; i++) {
+      rrect(c, g.x(i) + gap / 2, 8, Math.max(0.5, g.cw - gap), hgt - 16, Math.min(3, g.cw / 3));
+      c.fill();
     }
-  }
+  }), 0, 0, w, hgt);
+  ctx.imageSmoothingEnabled = false;
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.drawImage(leds, ST_PAD, 0, g.n * g.cw, hgt);
+  ctx.globalCompositeOperation = 'source-over';
+
+  glow.ctx.clearRect(0, 0, glow.w, glow.h);
+  glow.ctx.imageSmoothingEnabled = false;
+  glow.ctx.drawImage(leds, ST_PAD, 14, g.n * g.cw, glow.h - 28);
+
   const seg = selected();
   if (seg) {
     const x0 = g.x(seg.start);
@@ -1627,6 +1690,17 @@ function renderInspector() {
   syncInspector();
 }
 
+// Meter parts span their whole track and move by transform only, which skips
+// layout; unchanged values are not written again
+function setMeter(el, transform) {
+  if (el.dataset.t !== transform) {
+    el.dataset.t = transform;
+    el.style.transform = transform;
+  }
+}
+
+const meterScale = (fraction) => `scaleX(${clamp(fraction, 0, 1).toFixed(3)})`;
+
 function updateMeters() {
   const seg = selected();
   if (seg && meterRefs) {
@@ -1634,12 +1708,13 @@ function updateMeters() {
     const pct = (d) => clamp((d - DB_MIN) / (DB_MAX - DB_MIN), 0, 1) * 100;
     const m = meterRefs;
     const base = dbBase(seg);
-    m.zone.style.left = `${pct(base + seg.threshold)}%`;
-    m.zone.style.width = `${pct(base + seg.ceiling) - pct(base + seg.threshold)}%`;
-    m.thrMark.style.left = `${pct(base + seg.threshold)}%`;
-    m.ceilMark.style.left = `${pct(base + seg.ceiling)}%`;
-    m.raw.style.width = level ? `${pct(level[0])}%` : '0';
-    m.outBar.style.width = level ? `${level[1] * 100}%` : '0';
+    const lo = pct(base + seg.threshold);
+    const hi = pct(base + seg.ceiling);
+    setMeter(m.zone, `translateX(${lo.toFixed(2)}%) ${meterScale((hi - lo) / 100)}`);
+    setMeter(m.thrMark, `translateX(${lo.toFixed(2)}%)`);
+    setMeter(m.ceilMark, `translateX(${hi.toFixed(2)}%)`);
+    setMeter(m.raw, meterScale(level ? pct(level[0]) / 100 : 0));
+    setMeter(m.outBar, meterScale(level ? level[1] : 0));
     const text = level ? `${level[0].toFixed(1)} dB|${Math.round(level[1] * 100)}% out` : '–|–';
     if (text !== m.lastText) {
       m.lastText = text;
@@ -1648,7 +1723,7 @@ function updateMeters() {
   }
   for (const [id, row] of listRows) {
     const level = live.levels && live.levels[id];
-    row.meterBar.style.width = level ? `${level[1] * 100}%` : '0';
+    setMeter(row.meterBar, meterScale(level ? level[1] : 0));
   }
 }
 
@@ -2703,17 +2778,6 @@ function setupCollapsibles() {
 /* ---------- settings, status ---------- */
 
 function renderSettings() {
-  const select = $('#set-device');
-  const options = [h('option', { value: 'default' }, `Default output (what you hear)${defaultDevice ? ` · ${defaultDevice}` : ''}`)];
-  for (const d of devices) {
-    options.push(h('option', { value: d.name }, `${d.name} · ${d.loopback ? 'what plays on it' : 'input'}`));
-  }
-  const current = config.audio.device;
-  if (current !== 'default' && !devices.some((d) => d.name === current)) {
-    options.push(h('option', { value: current }, `${current} · not found`));
-  }
-  select.replaceChildren(...options);
-  select.value = current;
   $('#set-host').value = config.hyperion.host;
   $('#set-port').value = config.hyperion.port;
   $('#set-priority').value = config.hyperion.priority;
@@ -2724,6 +2788,152 @@ function renderSettings() {
   const out = $('#output-toggle');
   out.setAttribute('aria-pressed', String(config.hyperion.enabled));
   out.textContent = config.hyperion.enabled ? 'Output on' : 'Output off';
+  syncAmbient();
+  syncAudioInput();
+}
+
+/* ---------- audio reactive and ambient light ---------- */
+
+// config.reactive: on (segments follow the audio), auto (ambient light after
+// config.ambient.idle_after seconds of silence) or off (ambient light only).
+// The engine fades between the two (studio_engine.Ambient).
+const REACTIVE_MODES = [
+  ['on', 'On', 'The segments follow the music'],
+  ['auto', 'Auto', 'Follows the music, and fades to the ambient light once it has been quiet for a while'],
+  ['off', 'Off', 'Shows the ambient light and ignores the audio'],
+];
+const AMBIENT_COLORS = [
+  ['#0033CC', 'Deep blue'], ['#000080', 'Navy'], ['#4B00FF', 'UV'], ['#FF3399', 'Pink'],
+  ['#FF00FF', 'Magenta'], ['#800080', 'Purple'], ['#8F00FF', 'Violet'], ['#4B0082', 'Indigo'],
+];
+const AMBIENT_STYLES = [
+  ['solid', 'Solid', 'A steady color'],
+  ['breathe', 'Breathe', 'Slowly brightens and dims, one breath every 8 seconds'],
+];
+// Positions of the "switch after" slider, in seconds
+const IDLE_STEPS = [1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600];
+const fmtSeconds = (s) => (s < 60 ? `${s} s` : `${+(s / 60).toFixed(1)} min`);
+
+let ambientRefs = null;
+
+function setReactive(mode) {
+  config.reactive = mode;
+  syncAmbient();
+  commit();
+}
+
+function setAmbient(key, value) {
+  config.ambient[key] = value;
+  syncAmbient();
+  commit();
+}
+
+function reactiveButtons(container) {
+  const buttons = REACTIVE_MODES.map(([mode, text, title]) => {
+    const button = h('button', { type: 'button', title, 'data-mode': mode }, text);
+    button.addEventListener('click', () => setReactive(mode));
+    return button;
+  });
+  container.replaceChildren(...buttons);
+  return buttons;
+}
+
+function renderAmbient() {
+  const swatches = AMBIENT_COLORS.map(([color, name]) => {
+    const button = h('button', { type: 'button', class: 'amb-swatch', style: `background:${color}`, title: name, 'aria-label': name, 'data-color': color });
+    button.addEventListener('click', () => setAmbient('color', color));
+    return button;
+  });
+  const custom = h('input', { type: 'color', 'aria-label': 'Custom color', title: 'Custom color' });
+  custom.addEventListener('input', () => setAmbient('color', custom.value.toUpperCase()));
+  const styles = AMBIENT_STYLES.map(([style, text, title]) => {
+    const button = h('button', { type: 'button', title }, text);
+    button.addEventListener('click', () => setAmbient('style', style));
+    return [style, button];
+  });
+  const level = h('input', { type: 'range', min: 0, max: 100, step: 1, 'aria-label': 'Ambient brightness' });
+  const levelOut = h('output', { class: 'mono' });
+  level.addEventListener('input', () => {
+    setAmbient('level', Math.pow(Number(level.value) / 100, BRIGHTNESS_GAMMA));
+  });
+  const idle = h('input', { type: 'range', min: 0, max: IDLE_STEPS.length - 1, step: 1, 'aria-label': 'Switch to the ambient light after this much silence' });
+  const idleOut = h('output', { class: 'mono' });
+  idle.addEventListener('input', () => setAmbient('idle_after', IDLE_STEPS[Number(idle.value)]));
+  const modeHost = h('div', { class: 'seg-ctl', role: 'group', 'aria-label': 'Audio reactive' });
+  const now = h('p', { class: 'amb-now', role: 'status' }, [h('i'), h('span')]);
+  const idleRow = h('div', { class: 'field' }, [h('label', null, 'Switch after'), h('div', { class: 'ctl' }, [idle, idleOut])]);
+
+  $('#ambient-body').replaceChildren(
+    h('div', { class: 'field' }, [h('label', null, 'Audio reactive'), modeHost]),
+    now,
+    h('div', { class: 'field' }, [h('label', null, 'Color'), h('div', { class: 'amb-swatches' }, [...swatches, custom])]),
+    h('div', { class: 'field' }, [h('label', null, 'Style'), h('div', { class: 'seg-ctl', role: 'group', 'aria-label': 'Style' }, styles.map(([, b]) => b))]),
+    h('div', { class: 'field' }, [h('label', null, 'Brightness'), h('div', { class: 'ctl' }, [level, levelOut])]),
+    idleRow,
+  );
+  ambientRefs = {
+    modes: [...reactiveButtons(modeHost), ...reactiveButtons($('#reactive-top'))],
+    swatches, custom, styles, level, levelOut, idle, idleOut, idleRow, now, lastNow: '',
+  };
+  $('#ambient-dot').addEventListener('click', () => {
+    const card = $('#ambient');
+    if (card.classList.contains('collapsed')) card.querySelector('.collapse-btn').click();
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  syncAmbient();
+}
+
+function syncAmbient() {
+  const r = ambientRefs;
+  if (!r) return;
+  const a = config.ambient;
+  for (const button of r.modes) button.setAttribute('aria-pressed', String(button.dataset.mode === config.reactive));
+  for (const button of r.swatches) button.setAttribute('aria-pressed', String(button.dataset.color === a.color));
+  if (document.activeElement !== r.custom) r.custom.value = a.color.toLowerCase();
+  for (const [style, button] of r.styles) button.setAttribute('aria-pressed', String(style === a.style));
+  const percent = Math.round(Math.pow(a.level, 1 / BRIGHTNESS_GAMMA) * 100);
+  if (document.activeElement !== r.level) r.level.value = percent;
+  r.levelOut.textContent = `${percent}%`;
+  const step = IDLE_STEPS.reduce((best, s, i) => (Math.abs(s - a.idle_after) < Math.abs(IDLE_STEPS[best] - a.idle_after) ? i : best), 0);
+  if (document.activeElement !== r.idle) r.idle.value = step;
+  r.idleOut.textContent = fmtSeconds(a.idle_after);
+  r.idleRow.hidden = config.reactive !== 'auto';
+  // Sliders and buttons in the card take the ambient color
+  $('#ambient').style.setProperty('--seg', a.color);
+  $('#ambient-dot').style.setProperty('--amb', a.color);
+  $('#ambient-dot').title = `Ambient light: ${AMBIENT_COLORS.find(([c]) => c === a.color)?.[1] || a.color}, ${a.style}. Click for its settings.`;
+  updateAmbientStatus();
+}
+
+// What the strip shows right now, from the engine's fade (status.ambient)
+function updateAmbientStatus() {
+  const r = ambientRefs;
+  if (!r) return;
+  const status = online && live.status;
+  const amount = status ? status.ambient || 0 : 0;
+  const quiet = status ? status.quiet || 0 : 0;
+  let state = 'reactive';
+  let text;
+  if (!status) {
+    text = 'The studio is offline';
+  } else if (amount >= 0.99) {
+    state = 'ambient';
+    text = config.reactive === 'off' ? 'Showing the ambient light' : `Showing the ambient light, quiet for ${fmtSeconds(Math.floor(quiet))}`;
+  } else if (amount > 0.01) {
+    state = 'fading';
+    text = 'Fading…';
+  } else if (config.reactive === 'auto' && quiet >= 1) {
+    const left = Math.max(0, Math.ceil(config.ambient.idle_after - quiet));
+    text = `Quiet for ${fmtSeconds(Math.floor(quiet))}, ambient light in ${fmtSeconds(left)}`;
+  } else {
+    text = quiet >= 1 ? 'Showing the segments, no sound' : 'Showing the segments, following the music';
+  }
+  const key = `${state}|${text}`;
+  if (key === r.lastNow) return;
+  r.lastNow = key;
+  r.now.className = `amb-now ${state}`;
+  r.now.lastChild.textContent = text;
+  $('#ambient-dot').classList.toggle('on', state !== 'reactive');
 }
 
 // The brightness sliders are perceptual: LEDs look far brighter than their
@@ -2762,12 +2972,14 @@ function applyState(state) {
   config = state.config;
   devices = state.devices || [];
   defaultDevice = state.default_device || '';
+  apps = state.apps || [];
   display = state.display || display;
   centers = Array.from({ length: display.bands }, (_, i) => display.min_hz * Math.pow(display.max_hz / display.min_hz, (i + 0.5) / display.bands));
   if (!selected()) selectedId = config.segments.length ? config.segments[0].id : null;
   renderList();
   renderInspector();
   renderSettings();
+  invalidate();
 }
 
 function setupControls() {
@@ -2806,7 +3018,6 @@ function setupControls() {
     commit();
   });
 
-  $('#set-device').addEventListener('change', (e) => { config.audio.device = e.target.value; commit(); });
   $('#set-host').addEventListener('change', (e) => { config.hyperion.host = e.target.value.trim() || 'localhost'; commit(); });
   for (const [id, key] of [['#set-port', 'port'], ['#set-priority', 'priority'], ['#set-fps', 'fps']]) {
     $(id).addEventListener('change', (e) => {
@@ -2818,11 +3029,9 @@ function setupControls() {
   $('#set-bg').addEventListener('input', (e) => { config.background = e.target.value.toUpperCase(); commit(); });
   $('#rescan').addEventListener('click', async () => {
     try {
-      const state = await api('/api/state');
-      devices = state.devices || [];
-      defaultDevice = state.default_device || '';
-      renderSettings();
-      toast(`Found ${devices.length} audio devices`);
+      await refreshSources();
+      const playing = apps.filter((a) => a.active).length;
+      toast(`Found ${devices.length} audio devices and ${apps.length} apps with audio${playing ? `, ${playing} playing` : ''}`);
     } catch (err) {
       toast(`Rescan failed: ${err.message}`);
     }
@@ -2869,6 +3078,8 @@ function updateStatus() {
   const hypEl = $('#st-hyperion');
   const fpsEl = $('#st-fps');
   const status = live.status;
+  updateAmbientStatus();
+  updateAudioInput();
   if (!online || !status) {
     setPill(audioEl, 'err', 'Studio offline', 'The studio server is not running');
     setPill(hypEl, '', 'Hyperion', '');
@@ -2884,6 +3095,190 @@ function updateStatus() {
   else setPill(hypEl, 'warn', 'Hyperion offline', `Can't reach ${config.hyperion.host}:${config.hyperion.port}, retrying`);
   const fps = `${status.fps} fps`;
   if (fpsEl.textContent !== fps) fpsEl.textContent = fps;
+}
+
+/* ---------- audio input ---------- */
+
+// config.audio picks what the studio listens to: an output's loopback
+// (device: 'default' or a name), an input (device: 'in:' + name), or an app
+// (app: exe name, app_mode: 'only' it or everything 'except' it). The select
+// encodes all of them as 'out:', 'in:', 'only:' and 'except:' values.
+const METER_MIN_DB = -60;
+const SOURCE_REFRESH_MS = 5000;
+let audioRefs = null;
+
+function sourceValue() {
+  const a = config.audio;
+  if (a.app) return `${a.app_mode}:${a.app}`;
+  if (a.device.startsWith('in:')) return a.device;
+  return `out:${a.device}`;
+}
+
+function setSource(value) {
+  const cut = value.indexOf(':');
+  const kind = value.slice(0, cut);
+  const rest = value.slice(cut + 1);
+  if (kind === 'only' || kind === 'except') {
+    config.audio.app = rest;
+    config.audio.app_mode = kind;
+  } else {
+    config.audio.app = '';
+    config.audio.device = kind === 'in' ? value : rest;
+  }
+  syncAudioInput();
+  commit();
+}
+
+const appLabel = (exe) => {
+  const app = apps.find((a) => a.exe === exe);
+  return app ? app.name : exe.replace(/\.exe$/i, '');
+};
+
+function renderSourceOptions() {
+  const r = audioRefs;
+  if (!r || document.activeElement === r.select) return;
+  const outputs = devices.filter((d) => d.output);
+  const inputs = devices.filter((d) => !d.output);
+  const opt = (value, text) => h('option', { value }, text);
+  const group = (label, options) => (options.length ? h('optgroup', { label }, options) : null);
+  const groups = [
+    group('Everything you hear', [
+      opt('out:default', `Default output${defaultDevice ? ` · ${defaultDevice}` : ''}`),
+      ...outputs.map((d) => opt(`out:${d.name}`, d.name)),
+    ]),
+    group('Only one app', apps.map((a) => opt(`only:${a.exe}`, `${a.name}${a.active ? ' · playing' : ''}`))),
+    group('Everything except one app', apps.map((a) => opt(`except:${a.exe}`, `Everything except ${a.name}`))),
+    group('Inputs', inputs.map((d) => opt(`in:${d.name}`, d.name))),
+  ].filter(Boolean);
+  // Keep the saved source listed while its app isn't running or its device is unplugged
+  const current = sourceValue();
+  const listed = groups.some((g) => [...g.children].some((o) => o.value === current));
+  if (!listed) {
+    const a = config.audio;
+    const text = a.app
+      ? `${a.app_mode === 'except' ? 'Everything except ' : ''}${appLabel(a.app)} · not running`
+      : `${current.replace(/^(out|in):/, '')} · not connected`;
+    groups.unshift(opt(current, text));
+  }
+  r.select.replaceChildren(...groups);
+  r.select.value = current;
+}
+
+async function refreshSources() {
+  const sources = await api('/api/sources');
+  devices = sources.devices || [];
+  defaultDevice = sources.default || '';
+  apps = sources.apps || [];
+  renderSourceOptions();
+}
+
+function renderAudioInput() {
+  const select = h('select', { 'aria-label': 'Listen to' });
+  select.addEventListener('change', () => setSource(select.value));
+  const status = h('p', { class: 'ai-status', role: 'status' }, [h('i'), h('span')]);
+  const meters = ['L', 'R'].map((name) => {
+    const cover = h('i', { class: 'ai-cover' });
+    const value = h('output', { class: 'mono' });
+    const row = h('div', { class: 'ai-row' }, [h('span', { class: 'ai-ch' }, name), h('div', { class: 'ai-meter' }, cover), value]);
+    return { row, cover, value, last: '' };
+  });
+  const clip = h('span', { class: 'ai-clip', title: 'Lights up when the audio reaches full scale (0 dBFS) and distorts' }, 'CLIP');
+  const gain = h('input', { type: 'range', min: -24, max: 24, step: 0.5, 'aria-label': 'Input gain', title: 'Double-click to reset' });
+  const gainOut = h('output', { class: 'mono' });
+  const setGain = (db) => {
+    config.audio.gain = db;
+    syncAudioInput();
+    commit();
+  };
+  gain.addEventListener('input', () => setGain(Number(gain.value)));
+  gain.addEventListener('dblclick', () => setGain(0));
+  const auto = h('input', { type: 'checkbox', role: 'switch', 'aria-label': 'Auto level' });
+  auto.addEventListener('change', () => {
+    config.audio.auto_level = auto.checked;
+    syncAudioInput();
+    commit();
+  });
+  const autoOut = h('output', { class: 'mono ai-auto', title: 'Gain auto level adds right now' });
+
+  $('#audio-input-body').replaceChildren(
+    h('div', { class: 'field' }, [h('label', null, 'Listen to'), h('div', { class: 'ctl' }, select)]),
+    status,
+    h('div', { class: 'ai-meters' }, [h('div', { class: 'ai-rows' }, meters.map((m) => m.row)), clip]),
+    h('div', { class: 'field' }, [h('label', null, 'Gain'), h('div', { class: 'ctl' }, [gain, gainOut])]),
+    h('div', { class: 'field' }, [h('label', null, 'Auto level'), h('div', { class: 'ctl' }, [
+      h('label', { class: 'switch' }, [auto, h('span', { class: 'track' })]), autoOut,
+    ])]),
+    h('p', { class: 'note' }, 'Only one app: the lights follow just that app, so game sounds and notifications leave them alone. '
+      + 'Auto level keeps quiet and loud songs at a similar strength, so level triggers work at any volume.'),
+  );
+  audioRefs = { select, status, meters, clip, gain, gainOut, auto, autoOut, lastStatus: '' };
+  renderSourceOptions();
+  syncAudioInput();
+  // Keep the app list (and who is playing) current while the card is open
+  setInterval(() => {
+    if (document.hidden || $('#audio-input').classList.contains('collapsed')) return;
+    refreshSources().catch(() => {});
+  }, SOURCE_REFRESH_MS);
+}
+
+const fmtDb = (db) => `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`;
+
+function syncAudioInput() {
+  const r = audioRefs;
+  if (!r) return;
+  if (document.activeElement !== r.select) {
+    r.select.value = sourceValue();
+    if (r.select.value !== sourceValue()) renderSourceOptions();
+  }
+  if (document.activeElement !== r.gain) r.gain.value = config.audio.gain;
+  r.gainOut.textContent = fmtDb(config.audio.gain);
+  r.auto.checked = config.audio.auto_level;
+}
+
+// The live part, every frame: status line, meters (transforms only) and the auto gain
+function updateAudioInput() {
+  const r = audioRefs;
+  if (!r) return;
+  const input = online && live.status && live.status.input;
+  let state = 'err';
+  let text = 'The studio is offline';
+  if (input) {
+    if (input.state === 'ok') {
+      const silent = input.packets === 0 && input.kind === 'output';
+      state = silent ? 'idle' : 'ok';
+      const parts = [`${input.rate / 1000} kHz`, `${input.channels} ch`];
+      if (silent) parts.unshift('Nothing playing');
+      else parts.push(`${input.packets} packets/s`, `${input.delay} ms delay`);
+      if (input.glitches) parts.push(`${input.glitches} glitch${input.glitches === 1 ? '' : 'es'}`);
+      text = parts.join(' · ');
+    } else {
+      state = input.state === 'error' ? 'err' : 'idle';
+      text = input.message || 'Starting…';
+    }
+  }
+  const key = `${state}|${text}`;
+  if (key !== r.lastStatus) {
+    r.lastStatus = key;
+    r.status.className = `ai-status ${state}`;
+    r.status.lastChild.textContent = text;
+    r.status.title = input && input.event
+      ? 'Event driven: each packet is analysed the moment Windows delivers it. Delay: from Windows stamping the audio to the studio analysing it.'
+      : '';
+  }
+  const peaks = input ? input.peak : [];
+  r.meters.forEach((m, i) => {
+    const db = peaks[i] ?? -90;
+    const fraction = clamp((db - METER_MIN_DB) / -METER_MIN_DB, 0, 1);
+    setMeter(m.cover, `scaleX(${(1 - fraction).toFixed(3)})`);
+    const label = db <= METER_MIN_DB ? '–' : db.toFixed(0);
+    if (label !== m.last) {
+      m.last = label;
+      m.value.textContent = label;
+    }
+  });
+  r.clip.classList.toggle('on', !!(input && input.clip));
+  const autoText = input && config.audio.auto_level ? fmtDb(input.auto) : '';
+  if (r.autoOut.textContent !== autoText) r.autoOut.textContent = autoText;
 }
 
 /* ---------- live data ---------- */
@@ -2922,12 +3317,17 @@ function connectStream() {
     ingestSpectrum(live.spectrum);
     ledBytes = hexToBytes(live.leds || '');
     online = true;
+    invalidate();
     if (!dragging && !pendingSave && !saving && configIsStale()) reloadFromServer();
   };
-  stream.onerror = () => { online = false; };
+  stream.onerror = () => {
+    online = false;
+    invalidate();
+  };
 }
 
 function frame() {
+  frameRequested = false;
   if (config) {
     // Canvases in a collapsed card have no size and are skipped
     if (anCanvas.clientWidth) drawAnalyzer();
@@ -2939,7 +3339,6 @@ function frame() {
     updateMeters();
     updateStatus();
   }
-  requestAnimationFrame(frame);
 }
 
 async function init() {
@@ -2953,13 +3352,22 @@ async function init() {
   setupAnalyzer();
   setupStrip();
   setupControls();
+  renderAmbient();
+  renderAudioInput();
   setupReactive();
   setupColorRanges();
   setupCollapsibles();
   renderPresets();
   renderColorRanges();
+  // Anything the user does can change what the canvases show, and so can a
+  // canvas changing size (window resize, a card collapsing or expanding)
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'keydown', 'click', 'input', 'change', 'wheel']) {
+    document.addEventListener(type, invalidate, { capture: true, passive: true });
+  }
+  const resized = new ResizeObserver(invalidate);
+  for (const canvas of [anCanvas, stripCanvas, trackCanvas]) resized.observe(canvas);
   connectStream();
-  requestAnimationFrame(frame);
+  invalidate();
 }
 
 init();

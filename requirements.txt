@@ -3,3 +3,4 @@ webcolors
 protobuf
 numpy
 soundcard
+cffi

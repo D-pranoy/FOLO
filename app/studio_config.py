@@ -21,6 +21,13 @@ DIRECTIONS = ('forward', 'reverse', 'center', 'edges')
 # sudden peaks whatever the song's volume.
 TRIGGERS = ('level', 'hits')
 HITS_MAX_DB = 40.0
+# Audio reactiveness. on: the segments follow the audio. off: the leds show
+# the ambient light. auto: reactive while sound plays, the ambient light after
+# `idle_after` seconds of silence (see studio_engine.Ambient).
+REACTIVE_MODES = ('on', 'auto', 'off')
+AMBIENT_STYLES = ('solid', 'breathe')
+MAX_IDLE_AFTER = 600.0
+MAX_GAIN = 24.0             # input gain trim, dB either way
 
 MIN_HZ = 10.0
 MAX_HZ = 24000.0
@@ -133,6 +140,7 @@ def sanitize_config(cfg, led_count=None):
 
     audio = cfg.get('audio') if isinstance(cfg.get('audio'), dict) else {}
     hyperion = cfg.get('hyperion') if isinstance(cfg.get('hyperion'), dict) else {}
+    ambient = cfg.get('ambient') if isinstance(cfg.get('ambient'), dict) else {}
     segments = cfg.get('segments') if isinstance(cfg.get('segments'), list) else []
 
     clean = _sanitize_segments(segments, led_count)
@@ -149,7 +157,17 @@ def sanitize_config(cfg, led_count=None):
         'version': 1,
         'led_count': led_count,
         'audio': {
-            'device': str(audio.get('device') or 'default')[:200],
+            # 'default' (the default output), an output's name (its loopback)
+            # or 'in:' and an input's name
+            'device': str(audio.get('device') or 'default')[:300],
+            # an app's exe file name: capture only that app, or everything
+            # except it (app_mode), whatever output it plays on
+            'app': str(audio.get('app') or '').strip().lower()[:260],
+            'app_mode': 'except' if audio.get('app_mode') == 'except' else 'only',
+            # dB added to the analysis, by hand and (auto_level) to keep the
+            # music near the level the presets were tuned on
+            'gain': round(_float(audio.get('gain'), 0.0, -MAX_GAIN, MAX_GAIN), 1),
+            'auto_level': bool(audio.get('auto_level', False)),
         },
         'hyperion': {
             'enabled': bool(hyperion.get('enabled', True)),
@@ -160,6 +178,15 @@ def sanitize_config(cfg, led_count=None):
         },
         'master': _float(cfg.get('master'), 1.0, 0.0, 1.0),
         'background': _color(cfg.get('background'), '#000000'),
+        'reactive': cfg.get('reactive') if cfg.get('reactive') in REACTIVE_MODES else 'on',
+        'ambient': {
+            'color': _color(ambient.get('color'), '#4B00FF'),
+            'style': ambient.get('style') if ambient.get('style') in AMBIENT_STYLES else 'solid',
+            # output scale like `master` (the UI's slider is perceptual)
+            'level': _float(ambient.get('level'), 0.35, 0.0, 1.0),
+            # seconds of silence before auto switches to the ambient light
+            'idle_after': _float(ambient.get('idle_after'), 5.0, 1.0, MAX_IDLE_AFTER),
+        },
         'segments': clean,
         'presets': presets,
         # id of a saved preset or a built-in one (built-ins live in the web UI)
@@ -310,11 +337,11 @@ class ConfigStore(object):
 
     def reset(self):
         """
-        Back to the default segments, keeping the audio and hyperion settings
-        and the saved presets.
+        Back to the default segments, keeping the audio and hyperion settings,
+        the audio reactive mode, the ambient light and the saved presets.
         """
         fresh = default_config(self.config['led_count'])
-        for key in ('audio', 'hyperion', 'presets', 'default_preset'):
+        for key in ('audio', 'hyperion', 'reactive', 'ambient', 'presets', 'default_preset'):
             fresh[key] = self.config[key]
         return self.update(fresh)
 
