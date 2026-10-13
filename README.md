@@ -1,6 +1,16 @@
 FOLO
 ====
 
+**Rebuild in progress.** FOLO is being rebuilt into a modular, spatial lighting-management system:
+- a controller driving Philips Hue, WLED and Hyperion
+- sources on each computer for audio and screen sync
+- Hue-style zones
+- a desktop app for Windows and Linux
+
+The vision, roadmap, decisions and specifications live in [docs/](docs/README.md) and are the source of truth. The sections below describe the current studio.
+
+**Primary contributors:** Pranoy Das, Sayak Brahmachari.
+
 A Windows / Python 3 fork of [RanzQ/hyperion-audio-effects](https://github.com/RanzQ/hyperion-audio-effects), with *Fear of lights out*: a live audio-reactive LED studio for Hyperion.NG. The original project's notes follow.
 
 ##### Examples: https://www.youtube.com/watch?v=zLPZ6Lzbmgc https://www.youtube.com/watch?v=AOv9BwbtA6w

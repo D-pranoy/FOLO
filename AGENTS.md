@@ -2,6 +2,16 @@
 
 Guidance for AI coding agents (Claude Code, Codex and others) working in this repository.
 
+## Source of truth: `docs/`
+
+The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specifications, architecture, run books and process. **It is the source of truth; the software exists as the compliant implementation of it** ([ADR-0001](docs/decisions/ADR-0001-documentation-is-the-source-of-truth.md)).
+
+- FOLO is being rebuilt to the target described in `docs/` (see the [roadmap](docs/roadmap.md)). Until each milestone lands, the rest of this file describes the **current** code.
+- **Before changing behaviour,** read [docs/README.md](docs/README.md) and the relevant ADRs and specifications. Change the documents first, following [docs/process/workflow.md](docs/process/workflow.md).
+- **Implementation work** follows the [run books](docs/runbooks/README.md).
+- **Real devices:** anything that touches them follows [docs/process/testing-policy.md](docs/process/testing-policy.md).
+- **Writing docs:** no time estimates and no personal details.
+
 ## What this is
 
 **FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The original effect scripts (`main.py` + `effects/`) still work, ported to Python 3.
@@ -261,7 +271,7 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 - **Testing:** never test on a live config or real LEDs. Use the port-8778 copy with output off (see Commands), and afterwards confirm the live `studio.json` is untouched.
 - **Colors:** the built-in looks use the **Deep Night** palette: `#0033CC` deep blue, `#000080` navy, `#4B00FF` UV, `#FF3399` pink, `#FF00FF` magenta, `#800080` purple, `#8F00FF` violet, `#4B0082` indigo. Lows are blue (`LOWS_PAL`), mids pink (`MIDS_PAL`) and highs violet (`HIGHS_PAL`).
 - **Outside the repo:** say what you'll change before touching Hyperion settings, WLED state or anything else outside this folder. Hyperion's settings DB (`%USERPROFILE%\.hyperion\db\hyperion.db`) may only be edited while Hyperion is stopped, after a backup.
-- **Docs:** this file is the single agent guide (CLAUDE.md imports it). Update it and the README's FOLO studio section whenever features change.
+- **Docs:** `docs/` is the source of truth (see the top of this file). This file is the single agent guide to the current code (CLAUDE.md imports it). Update it, the README's FOLO studio section and the affected documents in `docs/` whenever features change.
 - **Machine-specific notes:** a particular setup's hardware, network, live state and owner preferences go in `AGENTS.local.md` (git-ignored, imported for Claude Code by `CLAUDE.local.md`). Read it when it exists.
 
 ## Troubleshooting
