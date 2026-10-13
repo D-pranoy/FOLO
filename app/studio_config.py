@@ -19,8 +19,13 @@ DIRECTIONS = ('forward', 'reverse', 'center', 'edges')
 # level: threshold and ceiling are dB levels of the band.
 # hits: they are dB above the band's recent average, so the segment reacts to
 # sudden peaks whatever the song's volume.
-TRIGGERS = ('level', 'hits')
+# beat: the segment flashes on the beats the studio finds in the music (every
+# `beats` beats, aligned to the bar), as bright as the band's level puts it
+# between threshold and ceiling (dB levels, like level).
+TRIGGERS = ('level', 'hits', 'beat')
+BEAT_DIVISIONS = (0.5, 1.0, 2.0, 4.0)
 HITS_MAX_DB = 40.0
+MAX_BEAT_OFFSET = 200.0     # ms the beats can be moved earlier (+) or later (-)
 # Audio reactiveness. on: the segments follow the audio. off: the leds show
 # the ambient light. auto: reactive while sound plays, the ambient light after
 # `idle_after` seconds of silence (see studio_engine.Ambient).
@@ -98,6 +103,7 @@ def sanitize_segment(seg, led_count):
 
     mode = seg.get('mode')
     direction = seg.get('direction')
+    beats = _float(seg.get('beats'), 1.0, 0.0, 16.0)
 
     return {
         'id': str(seg.get('id') or new_id())[:32],
@@ -109,6 +115,8 @@ def sanitize_segment(seg, led_count):
         'freq_lo': round(freq_lo, 2),
         'freq_hi': round(freq_hi, 2),
         'trigger': trigger,
+        # beat trigger: flash every this many beats (half, one, two or a bar)
+        'beats': beats if beats in BEAT_DIVISIONS else 1.0,
         'threshold': round(threshold, 1),
         'ceiling': round(ceiling, 1),
         'gain': _float(seg.get('gain'), 1.0, 0.1, 8.0),
@@ -141,6 +149,8 @@ def sanitize_config(cfg, led_count=None):
     audio = cfg.get('audio') if isinstance(cfg.get('audio'), dict) else {}
     hyperion = cfg.get('hyperion') if isinstance(cfg.get('hyperion'), dict) else {}
     ambient = cfg.get('ambient') if isinstance(cfg.get('ambient'), dict) else {}
+    beat = cfg.get('beat') if isinstance(cfg.get('beat'), dict) else {}
+    playing = cfg.get('now_playing') if isinstance(cfg.get('now_playing'), dict) else {}
     segments = cfg.get('segments') if isinstance(cfg.get('segments'), list) else []
 
     clean = _sanitize_segments(segments, led_count)
@@ -186,6 +196,19 @@ def sanitize_config(cfg, led_count=None):
             'level': _float(ambient.get('level'), 0.35, 0.0, 1.0),
             # seconds of silence before auto switches to the ambient light
             'idle_after': _float(ambient.get('idle_after'), 5.0, 1.0, MAX_IDLE_AFTER),
+        },
+        'beat': {
+            # ms the beat triggers fire before (+) or after (-) the beat is
+            # heard in the captured audio, to make up for the leds' delay
+            'offset': round(_float(beat.get('offset'), 0.0, -MAX_BEAT_OFFSET, MAX_BEAT_OFFSET)),
+        },
+        'now_playing': {
+            # follow Windows' media sessions (see now_playing)
+            'enabled': bool(playing.get('enabled', True)),
+            # the segments take their colors from the album art
+            'cover_colors': bool(playing.get('cover_colors', False)),
+            # in auto, the ambient light comes on as soon as the music is paused
+            'pause_ambient': bool(playing.get('pause_ambient', True)),
         },
         'segments': clean,
         'presets': presets,
@@ -338,10 +361,11 @@ class ConfigStore(object):
     def reset(self):
         """
         Back to the default segments, keeping the audio and hyperion settings,
-        the audio reactive mode, the ambient light and the saved presets.
+        the audio reactive mode, the ambient light, the beat and now playing
+        settings and the saved presets.
         """
         fresh = default_config(self.config['led_count'])
-        for key in ('audio', 'hyperion', 'reactive', 'ambient', 'presets', 'default_preset'):
+        for key in ('audio', 'hyperion', 'reactive', 'ambient', 'beat', 'now_playing', 'presets', 'default_preset'):
             fresh[key] = self.config[key]
         return self.update(fresh)
 

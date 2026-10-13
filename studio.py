@@ -126,6 +126,13 @@ class StudioHandler(BaseHTTPRequestHandler):
             self._send_json(self._sources())
         elif path == '/api/stream':
             self._stream()
+        elif path == '/api/art':
+            # the album art of what is playing (the page adds ?<art id> to skip its cache)
+            art = self.server.engine.media.art
+            if art:
+                self._send(200, art[0], art[1])
+            else:
+                self._send_json({'error': 'no album art'}, 404)
         else:
             self._send_json({'error': 'not found'}, 404)
 
@@ -153,6 +160,10 @@ class StudioHandler(BaseHTTPRequestHandler):
         elif path == '/api/reset':
             store.reset()
             self._send_json(store.versioned())
+        elif path == '/api/media':
+            # play_pause, next or previous on the player shown as now playing
+            done = self.server.engine.media.control(data.get('action') if isinstance(data, dict) else None)
+            self._send_json({'ok': done})
         elif path == '/api/layout':
             led_count = fetch_led_count(store.config['hyperion'])
             if led_count:

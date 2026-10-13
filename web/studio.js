@@ -29,13 +29,13 @@ const NEW_PALETTES = ['Abyss', 'Neon Pink', 'Violet', 'Synthwave', 'Ocean', 'Fir
 // the frequency range with thresholds tuned for it (and whether they are
 // levels or dB above the recent average), `response` the motion.
 // `anim` and `dur` drive the little preview animation.
-const RANGE_KEYS = ['freq_lo', 'freq_hi', 'threshold', 'ceiling', 'trigger'];
+const RANGE_KEYS = ['freq_lo', 'freq_hi', 'threshold', 'ceiling', 'trigger', 'beats'];
 const RESPONSE_KEYS = ['mode', 'direction', 'attack', 'release', 'gain', 'curve', 'floor', 'peak'];
 
-const rx = (name, tempo, anim, dur, desc, [freq_lo, freq_hi, threshold, ceiling, trigger = 'level'],
+const rx = (name, tempo, anim, dur, desc, [freq_lo, freq_hi, threshold, ceiling, trigger = 'level', beats = 1],
   [mode, direction, attack, release, gain, curve, floor, peak = false]) => ({
   name, tempo, anim, dur, desc,
-  range: { freq_lo, freq_hi, threshold, ceiling, trigger },
+  range: { freq_lo, freq_hi, threshold, ceiling, trigger, beats },
   response: { mode, direction, attack, release, gain, curve, floor, peak },
 });
 
@@ -88,6 +88,19 @@ const REACTIVE = [
     rx('Calm ambient', 'Slow', 'breathe', 6, 'Barely moving glow for background listening.',
       [20, 8000, -50, -15], ['pulse', 'center', 1200, 4000, 1, 1, 0.35]),
   ]],
+  // Beat trigger: thresholds are dB levels, below which a beat stays dark
+  ['On the beat', [
+    rx('Beat pulse', 'Fast', 'kick', 0.5, 'The whole band flashes on every beat of the music.',
+      [30, 16000, -70, -30, 'beat', 1], ['pulse', 'center', 0, 220, 1, 1.4, 0]),
+    rx('Bass on the beat', 'Fast', 'kick', 0.5, 'A punchy flash on each beat, as bright as the bass is loud.',
+      [35, 150, -60, -20, 'beat', 1], ['pulse', 'center', 0, 160, 1, 1.6, 0]),
+    rx('Half-beat strobe', 'Very fast', 'kick', 0.25, 'Short hard flashes twice a beat.',
+      [30, 16000, -75, -35, 'beat', 0.5], ['pulse', 'forward', 0, 45, 1, 1.8, 0]),
+    rx('Every other beat', 'Medium', 'heartbeat', 1, 'A deep pulse on the first and third beat of every bar.',
+      [30, 250, -60, -22, 'beat', 2], ['pulse', 'center', 0, 450, 1, 1.4, 0.04]),
+    rx('Bar swell', 'Slow', 'breathe', 2, 'One big swell at the start of every bar.',
+      [30, 16000, -70, -30, 'beat', 4], ['pulse', 'center', 40, 1400, 1, 1.2, 0.06]),
+  ]],
 ];
 
 let reactiveScope = 'selected';
@@ -115,18 +128,29 @@ const MODE_HELP = {
   fire: 'LedFx Fire: flames rise from the start, reaching higher the louder it gets. Colors go from cool (first) to hot (last).',
 };
 // Speed (LEDs per second) and size (% of the segment) only matter for moving
-// modes; the size field is named after what it sets
-const MOTION_DEFAULTS = { speed: 120, width: 20 };
+// modes, and beats for the beat trigger; the size field is named after what
+// it sets. Every segment builder spreads these (the server's defaults).
+const MOTION_DEFAULTS = { speed: 120, width: 20, beats: 1 };
 const SIZE_LABEL = { scroll: 'Trail', drops: 'Drop size', scan: 'Eye size', wipe: 'Bar size', flow: 'Blob size' };
 const SPEED_MODES = new Set(['scroll', 'drops', 'scan', 'wipe', 'flow', 'fire']);
 const TRIGGERS = [
   ['level', 'Level', 'Lights when the band is louder than the threshold'],
   ['hits', 'Hits', 'Lights on sudden peaks above the band’s recent average'],
+  ['beat', 'Beat', 'Flashes on the beat of the music'],
 ];
 const TRIGGER_HELP = {
   level: 'Lights when the band is louder than the threshold. Best for meters and steady glows.',
   hits: 'Lights on sudden peaks above the band’s average over the last second, so it adapts to every song and volume. Best for fast flicker.',
+  beat: 'Flashes on the beats the studio finds in the music, as bright as the band is loud: below the threshold a beat stays dark. Best for strobes, wipes and pulses in time.',
 };
+// Beat trigger: a flash every this many beats, lined up with the bar
+const BEAT_EVERY = [
+  [0.5, '½ beat', 'Twice a beat'],
+  [1, 'Beat', 'Every beat'],
+  [2, '2 beats', 'Every other beat: the first and third of the bar'],
+  [4, 'Bar', 'Once a bar, on its first beat'],
+];
+const BEAT_NAMES = { 0.5: 'Half beats', 1: 'Beat', 2: 'Every 2 beats', 4: 'Every bar' };
 const DIRECTIONS = [
   ['forward', '→ Forward', 'From the first LED to the last'],
   ['reverse', '← Reverse', 'From the last LED to the first'],
@@ -223,9 +247,19 @@ function newId() {
   return Math.random().toString(16).slice(2, 10);
 }
 
+// A lookup table instead of parseInt: four times faster on the LED colors of
+// every stream message
+const HEX_DIGITS = new Uint8Array(128);
+for (let i = 0; i < 16; i++) {
+  HEX_DIGITS['0123456789abcdef'.charCodeAt(i)] = i;
+  HEX_DIGITS['0123456789ABCDEF'.charCodeAt(i)] = i;
+}
+
 function hexToBytes(hex) {
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  const out = new Uint8Array(hex.length >> 1);
+  for (let i = 0, j = 0; i < out.length; i++, j += 2) {
+    out[i] = (HEX_DIGITS[hex.charCodeAt(j)] << 4) | HEX_DIGITS[hex.charCodeAt(j + 1)];
+  }
   return out;
 }
 
@@ -409,12 +443,13 @@ function setValue(key, value) {
   const seg = selected();
   if (!seg) return;
   if (key === 'trigger' && value !== seg.trigger) {
-    // Keep the box where it is right now when switching
+    // Keep the box where it is right now when switching between hits (dB
+    // above the recent average) and level or beat (dB levels)
     const base = recentAverage(seg);
     if (value === 'hits') {
       seg.threshold = 4;
       seg.ceiling = 12;
-    } else {
+    } else if (seg.trigger === 'hits') {
       seg.threshold = roundDb(clamp(base + seg.threshold, -120, -1));
       seg.ceiling = roundDb(base + seg.ceiling);
     }
@@ -713,6 +748,25 @@ function drawAnalyzerGrid(ctx) {
   }
 }
 
+// The x of every display band and the spectrum's fill only change with the
+// chart's size
+const specGeom = { key: '', ctx: null, xs: null, fill: null };
+
+function spectrumGeometry(ctx) {
+  const key = `${ag.x0},${ag.y0},${ag.w},${ag.h},${display.min_hz},${display.max_hz},${centers.length}`;
+  if (specGeom.key !== key || specGeom.ctx !== ctx) {
+    specGeom.key = key;
+    specGeom.ctx = ctx;
+    specGeom.xs = Float64Array.from(centers, fx);
+    const fill = ctx.createLinearGradient(0, ag.y0, 0, ag.y0 + ag.h);
+    fill.addColorStop(0, 'rgba(255,79,168,0.55)');
+    fill.addColorStop(0.55, 'rgba(143,0,255,0.28)');
+    fill.addColorStop(1, 'rgba(0,51,204,0.05)');
+    specGeom.fill = fill;
+  }
+  return specGeom;
+}
+
 function drawAnalyzer() {
   const { ctx, w, h: hgt } = fitCanvas(anCanvas);
   ag = { x0: AN_PAD.l, y0: AN_PAD.t, w: Math.max(1, w - AN_PAD.l - AN_PAD.r), h: Math.max(1, hgt - AN_PAD.t - AN_PAD.b) };
@@ -727,21 +781,18 @@ function drawAnalyzer() {
   // Spectrum
   if (spec.smooth) {
     const bottom = ag.y0 + ag.h;
-    const fill = ctx.createLinearGradient(0, ag.y0, 0, bottom);
-    fill.addColorStop(0, 'rgba(255,79,168,0.55)');
-    fill.addColorStop(0.55, 'rgba(143,0,255,0.28)');
-    fill.addColorStop(1, 'rgba(0,51,204,0.05)');
+    const { xs, fill } = spectrumGeometry(ctx);
     ctx.beginPath();
-    ctx.moveTo(fx(centers[0]), bottom);
-    for (let i = 0; i < spec.smooth.length; i++) ctx.lineTo(fx(centers[i]), dy(clamp(spec.smooth[i], DB_MIN, DB_MAX)));
-    ctx.lineTo(fx(centers[centers.length - 1]), bottom);
+    ctx.moveTo(xs[0], bottom);
+    for (let i = 0; i < spec.smooth.length; i++) ctx.lineTo(xs[i], dy(clamp(spec.smooth[i], DB_MIN, DB_MAX)));
+    ctx.lineTo(xs[xs.length - 1], bottom);
     ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
 
     ctx.beginPath();
     for (let i = 0; i < spec.smooth.length; i++) {
-      const x = fx(centers[i]);
+      const x = xs[i];
       const y = dy(clamp(spec.smooth[i], DB_MIN, DB_MAX));
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
@@ -751,7 +802,7 @@ function drawAnalyzer() {
 
     ctx.beginPath();
     for (let i = 0; i < spec.peaks.length; i++) {
-      const x = fx(centers[i]);
+      const x = xs[i];
       const y = dy(clamp(spec.peaks[i], DB_MIN, DB_MAX));
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
@@ -1102,14 +1153,39 @@ function currentLanes() {
 
 const laneY = (lane) => 4 + lane * (LANE_H + LANE_GAP);
 
+// Everything on the track but the level bars only changes with the segments,
+// the selection or a drag. It's drawn into a cached layer (its gradients,
+// clips and shadowed labels cost 0.7 ms a frame) with the bars on top.
+const trackLayer = {};
+
 function drawTrack() {
   const lanes = currentLanes();
   const wanted = laneY(lanes.count + 1) + 2;
   if (Math.abs(trackCanvas.clientHeight - wanted) > 0.5) trackCanvas.style.height = `${wanted}px`;
   const { ctx, w, h: hgt } = fitCanvas(trackCanvas);
   const g = ledGeom(w);
+  const solo = soloActive();
+  const create = dragging && dragging.area === 'track' && dragging.part === 'create'
+    ? [dragging.a, dragging.b, dragging.row] : null;
+  const key = JSON.stringify([lanes, selectedId, solo, !!dragging, create,
+    config.segments.map((s) => [s.id, s.start, s.end, s.name, s.palette, s.enabled, s.solo])]);
   ctx.clearRect(0, 0, w, hgt);
+  ctx.drawImage(cachedLayer(trackLayer, trackCanvas, `${g.n}|${key}`, (c) => drawTrackLayer(c, w, hgt, g, lanes, solo)), 0, 0, w, hgt);
 
+  // Live level bars
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (const seg of config.segments) {
+    const level = live.levels && live.levels[seg.id];
+    if (!level) continue;
+    const x0 = g.x(seg.start);
+    const width = Math.max(2, g.x(Math.min(seg.end, g.n - 1) + 1) - x0);
+    ctx.globalAlpha = !seg.enabled || (solo && !seg.solo) ? 0.35 : 1;
+    ctx.fillRect(x0 + 6, laneY(lanes.lanes[seg.id] ?? lanes.count) + LANE_H - 5, (width - 12) * level[1], 2.5);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawTrackLayer(ctx, w, hgt, g, lanes, solo) {
   // LED ticks
   ctx.font = '10px ui-monospace, Consolas, monospace';
   ctx.textAlign = 'center';
@@ -1138,7 +1214,6 @@ function drawTrack() {
     ctx.fillText('Drag here to add a segment, or drop one here for a new row', w / 2, emptyY + LANE_H / 2);
   }
 
-  const solo = soloActive();
   for (const seg of config.segments) {
     const lane = lanes.lanes[seg.id] ?? lanes.count;
     const y = laneY(lane);
@@ -1147,7 +1222,6 @@ function drawTrack() {
     const width = Math.max(2, x1 - x0);
     const isSelected = seg.id === selectedId;
     const dim = !seg.enabled || (solo && !seg.solo);
-    const level = live.levels && live.levels[seg.id];
 
     ctx.globalAlpha = dim ? 0.35 : 1;
     const grad = ctx.createLinearGradient(x0, 0, x0 + width, 0);
@@ -1157,11 +1231,6 @@ function drawTrack() {
     ctx.fill();
     ctx.fillStyle = 'rgba(8,8,13,0.35)';
     ctx.fill();
-
-    if (level) {
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(x0 + 6, y + LANE_H - 5, (width - 12) * level[1], 2.5);
-    }
 
     ctx.lineWidth = isSelected ? 2 : 1;
     ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255,255,255,0.16)';
@@ -1401,7 +1470,8 @@ function updateListRow(seg) {
   r.row.style.setProperty('--seg-row', `rgb(${accent.join(',')})`);
   r.swatch.style.background = gradientCss(seg.palette);
   r.name.textContent = seg.name;
-  r.meta.textContent = `LED ${seg.start}–${seg.end} · ${fmtHz(seg.freq_lo)}–${fmtHz(seg.freq_hi)} · ${mode ? mode[1] : seg.mode}${seg.trigger === 'hits' ? ' · Hits' : ''}`;
+  const trigger = seg.trigger === 'hits' ? ' · Hits' : seg.trigger === 'beat' ? ` · ${BEAT_NAMES[seg.beats] || 'Beat'}` : '';
+  r.meta.textContent = `LED ${seg.start}–${seg.end} · ${fmtHz(seg.freq_lo)}–${fmtHz(seg.freq_hi)} · ${mode ? mode[1] : seg.mode}${trigger}`;
   r.solo.setAttribute('aria-pressed', String(seg.solo));
   r.solo.setAttribute('aria-label', `Solo ${seg.name}`);
   r.enabled.checked = seg.enabled;
@@ -1662,6 +1732,9 @@ function renderInspector() {
       rangeField({ key: 'freq_lo', label: 'Low', min: HZ_MIN, max: HZ_MAX, step: 1, unit: 'Hz', log: true, digits: 1 }),
       rangeField({ key: 'freq_hi', label: 'High', min: HZ_MIN, max: HZ_MAX, step: 1, unit: 'Hz', log: true, digits: 1 }),
       h('div', { class: 'stack' }, [h('span', { class: 'stack-label' }, 'Trigger'), segmented('trigger', TRIGGERS, 'Trigger'), triggerHelp]),
+      seg.trigger === 'beat'
+        ? h('div', { class: 'stack' }, [h('span', { class: 'stack-label' }, 'Flash every'), segmented('beats', BEAT_EVERY, 'Flash every')])
+        : null,
       ...thresholdFields,
       h('div', { class: 'meter', role: 'img', 'aria-label': 'Band level against threshold and full brightness' }, [zone, raw, thrMark, ceilMark]),
       h('div', { class: 'out-meter', role: 'img', 'aria-label': 'Segment output' }, outBar),
@@ -1843,6 +1916,11 @@ const REACT = {
   vu: { freq_lo: 30, freq_hi: 16000, trigger: 'level', threshold: -38, ceiling: -14, mode: 'fill', attack: 5, release: 300, peak: true },
   drift: { freq_lo: 40, freq_hi: 4000, trigger: 'level', threshold: -42, ceiling: -14, mode: 'shift', attack: 400, release: 1500, floor: 0.45 },
   breathe: { freq_lo: 60, freq_hi: 2000, trigger: 'level', threshold: -40, ceiling: -16, mode: 'pulse', attack: 600, release: 2500, floor: 0.15 },
+  // On the beat (beat trigger: thresholds are dB levels)
+  beatFlash: { freq_lo: 30, freq_hi: 250, trigger: 'beat', beats: 1, threshold: -65, ceiling: -25, mode: 'pulse', attack: 0, release: 180, curve: 1.4 },
+  barWipe: { freq_lo: 30, freq_hi: 16000, trigger: 'beat', beats: 4, threshold: -75, ceiling: -35, mode: 'wipe', attack: 0, release: 600, floor: 0.3, speed: 600, width: 100 },
+  halfTime: { freq_lo: 30, freq_hi: 200, trigger: 'beat', beats: 2, threshold: -60, ceiling: -22, mode: 'pulse', attack: 0, release: 420, curve: 1.4 },
+  barFlash: { freq_lo: 30, freq_hi: 16000, trigger: 'beat', beats: 4, threshold: -75, ceiling: -35, mode: 'pulse', attack: 0, release: 300, curve: 1.2 },
 };
 
 // One segment over the fraction from..to of an n LED strip
@@ -1911,6 +1989,20 @@ const EFFECTS = [
     build: (n) => [part(n, 'Color drift', 0, 1, REACT.drift, PRESETS['Deep Night'])] },
   { name: 'Breathing', tags: ['R&B', 'Lo-fi', 'Chill'], tempo: 'Slow', desc: 'The whole strip slowly breathes with the overall energy.',
     build: (n) => [part(n, 'Breathing', 0, 1, REACT.breathe, ['#4B00FF', '#FF00FF', '#4B00FF'], { direction: 'center' })] },
+  { name: 'Beat sync', tags: ['EDM', 'House', 'Techno', 'Beat'], tempo: 'Fast', desc: 'Blue flashes from the middle on every beat, the next color sweeps across every bar, and hi-hats sparkle on top.',
+    build: (n) => [
+      part(n, 'Bar wipe', 0, 1, REACT.barWipe, PRESETS['Deep Night']),
+      part(n, 'Beat flash', 0.25, 0.75, REACT.beatFlash, LOWS_PAL, { direction: 'center' }),
+      part(n, 'Sparkles', 0, 1, REACT.highsSparkle, HIGHS_PAL),
+    ] },
+  { name: 'Half-time pulse', tags: ['Hip-hop', 'Trap', 'R&B', 'Beat'], tempo: 'Medium', desc: 'A deep pulse in the middle on every other beat, vocals glowing around it, and a flash at the ends once a bar.',
+    build: (n) => [
+      part(n, 'Bar flash left', 0, 0.15, REACT.barFlash, HIGHS_PAL, { direction: 'reverse' }),
+      part(n, 'Glow left', 0.15, 0.35, REACT.midsPulse, MIDS_PAL, { direction: 'reverse' }),
+      part(n, 'Half-time', 0.35, 0.65, REACT.halfTime, LOWS_PAL, { direction: 'center' }),
+      part(n, 'Glow right', 0.65, 0.85, REACT.midsPulse, MIDS_PAL),
+      part(n, 'Bar flash right', 0.85, 1, REACT.barFlash, HIGHS_PAL),
+    ] },
   { name: 'Ambient zones', tags: ['Ambient', 'Jazz', 'Chill'], tempo: 'Slow', desc: 'Three wide zones for lows, mids and highs, glowing softly for background listening.',
     build: (n) => [
       part(n, 'Lows zone', 0, 1 / 3, { ...REACT.breathe, freq_lo: 35, freq_hi: 200, threshold: -42, ceiling: -16, attack: 1200, release: 4000, floor: 0.3 }, LOWS_PAL, { direction: 'center' }),
@@ -1924,14 +2016,15 @@ const EFFECTS = [
 // Ports of LedFx's audio reactive effects (github.com/LedFx/LedFx,
 // ledfx/effects), built from segments in Deep Night colors. LedFx splits the
 // sound into lows (beat + bass), mids and highs; level thresholds are tuned
-// for the hot Sonar output. LedFx's BPM effects use hits instead of its beat
-// tracker.
+// for the hot Sonar output. LedFx's BPM effects (Bar, Multicolor bar) use the
+// beat trigger.
 const LFX_LOWS = { freq_lo: 30, freq_hi: 250, trigger: 'level', threshold: -48, ceiling: -14 };
 const LFX_MIDS = { freq_lo: 250, freq_hi: 3000, trigger: 'level', threshold: -52, ceiling: -22 };
 const LFX_HIGHS = { freq_lo: 3000, freq_hi: 10000, trigger: 'level', threshold: -64, ceiling: -34 };
 const LFX_KICK = { freq_lo: 35, freq_hi: 150 };
 const LFX_TOPS = { freq_lo: 2000, freq_hi: 10000 };
 const hitsOn = (band, threshold, ceiling) => ({ ...band, trigger: 'hits', threshold, ceiling });
+const onBeat = (band, threshold, ceiling, beats = 1) => ({ ...band, trigger: 'beat', beats, threshold, ceiling });
 // Dark to bright, for modes that pick the color by level or heat
 const LOWS_RAMP = ['#000080', '#0033CC', '#4B00FF'];
 const MIDS_RAMP = ['#800080', '#FF00FF', '#FF3399'];
@@ -2006,12 +2099,12 @@ const LEDFX_EFFECTS = [
   { name: 'Blade Power+', tempo: 'Fast', tags: ['Hip-hop', 'Trap', 'Meter'],
     desc: 'Your whole palette fills up from the bottom of the strip with the bass.',
     build: (n) => [part(n, 'Blade', 0, 1, { ...LFX_LOWS, mode: 'fill', attack: 0, release: 90 }, PRESETS['Deep Night'])] },
-  { name: 'Bar', tempo: 'Fast', tags: ['House', 'Pop'],
-    desc: 'A bar travels to the other end on every kick, turning around and changing color each time (hits stand in for LedFx’s beat tracking).',
-    build: (n) => [part(n, 'Bar', 0, 1, { ...hitsOn(LFX_KICK, 2, 10), mode: 'wipe', attack: 0, release: 400, floor: 0.5, speed: 700, width: 30 }, PRESETS['Deep Night'])] },
-  { name: 'Multicolor bar', tempo: 'Fast', tags: ['House', 'EDM', 'Pop'],
-    desc: 'Every kick sweeps the next color across the strip, back and forth (hits stand in for LedFx’s beat tracking).',
-    build: (n) => [part(n, 'Color wipe', 0, 1, { ...hitsOn(LFX_KICK, 2, 10), mode: 'wipe', attack: 0, release: 400, floor: 0.55, speed: 900, width: 100 }, PRESETS['Deep Night'])] },
+  { name: 'Bar', tempo: 'Fast', tags: ['House', 'Pop', 'Beat'],
+    desc: 'A bar travels to the other end on every beat, turning around and changing color each time.',
+    build: (n) => [part(n, 'Bar', 0, 1, { ...onBeat(LFX_LOWS, -70, -35), mode: 'wipe', attack: 0, release: 400, floor: 0.5, speed: 700, width: 30 }, PRESETS['Deep Night'])] },
+  { name: 'Multicolor bar', tempo: 'Fast', tags: ['House', 'EDM', 'Pop', 'Beat'],
+    desc: 'Every beat sweeps the next color across the strip, back and forth.',
+    build: (n) => [part(n, 'Color wipe', 0, 1, { ...onBeat(LFX_LOWS, -70, -35), mode: 'wipe', attack: 0, release: 400, floor: 0.55, speed: 900, width: 100 }, PRESETS['Deep Night'])] },
   { name: 'Bands', tempo: 'Fast', tags: ['Rock', 'Pop', 'Spectrum'],
     desc: 'Six level meters side by side, each for its own slice of the spectrum from bass to treble.',
     build: (n) => bandParts(n, 6, (i) => ({ trigger: 'level', threshold: -50 - 4.4 * i, ceiling: -18 - 4.4 * i, mode: 'fill', attack: 0, release: 150 })) },
@@ -2116,7 +2209,7 @@ function rangeSegment(name, start, end, range) {
     id: newId(), name, enabled: true, solo: false, start, end,
     ...MOTION_DEFAULTS,
     ...preset.response,
-    trigger: preset.range.trigger, threshold: preset.range.threshold, ceiling: preset.range.ceiling,
+    trigger: preset.range.trigger, beats: preset.range.beats, threshold: preset.range.threshold, ceiling: preset.range.ceiling,
     freq_lo: range.freq_lo, freq_hi: range.freq_hi,
     palette: [...range.palette],
     ...range.extra,
@@ -2212,6 +2305,7 @@ function reactionName(seg) {
     && RESPONSE_KEYS.every((k) => sameValue(seg[k], p.response[k])));
   if (match) return match.name;
   if (MOTION_REACTION[seg.mode]) return MOTION_REACTION[seg.mode];
+  if (seg.trigger === 'beat') return { 0.5: 'Half-beat flash', 1: 'Beat flash', 2: 'Every other beat', 4: 'Bar flash' }[seg.beats] || 'On the beat';
   if (seg.mode === 'shift') return 'Color drift';
   if (seg.attack >= 250) return 'Slow swell';
   if (seg.mode === 'spectrum') return 'Spectrum sparkle';
@@ -2238,7 +2332,7 @@ function presetRanges(preset) {
   return [...groups.values()];
 }
 
-const EFFECT_KEYS = ['start', 'end', 'freq_lo', 'freq_hi', 'trigger', 'threshold', 'ceiling', 'mode', 'direction', 'attack', 'release', 'speed', 'width'];
+const EFFECT_KEYS = ['start', 'end', 'freq_lo', 'freq_hi', 'trigger', 'beats', 'threshold', 'ceiling', 'mode', 'direction', 'attack', 'release', 'speed', 'width'];
 // Umbrella categories for the effects menu. Saved presets go to My presets;
 // built-ins are listed by id (genre:* from GENRE_PRESETS, fx:* from EFFECTS
 // and LEDFX_EFFECTS).
@@ -2247,9 +2341,9 @@ const CATEGORIES = [
   { id: 'ledfx', name: 'LedFx', blurb: 'Audio reactive effects ported from LedFx, in Deep Night colors.',
     items: LEDFX_EFFECTS.map(effectId) },
   { id: 'electronic', name: 'Electronic', blurb: 'EDM, house, techno, drum & bass and dubstep.',
-    items: ['genre:edm', 'genre:techno', 'genre:dnb', 'genre:dubstep', 'fx:alternating-flicker', 'fx:strobe-sparkle', 'fx:bass-burst', 'fx:collide'] },
+    items: ['genre:edm', 'genre:techno', 'genre:dnb', 'genre:dubstep', 'fx:beat-sync', 'fx:alternating-flicker', 'fx:strobe-sparkle', 'fx:bass-burst', 'fx:collide'] },
   { id: 'hiphop', name: 'Hip-hop & R&B', blurb: 'Trap, hip-hop, R&B and soul.',
-    items: ['genre:trap', 'genre:hiphop', 'genre:rnb'] },
+    items: ['genre:trap', 'genre:hiphop', 'genre:rnb', 'fx:half-time-pulse'] },
   { id: 'poprock', name: 'Pop & Rock', blurb: 'Pop, rock and metal.',
     items: ['genre:pop', 'genre:rock', 'genre:metal'] },
   { id: 'jazzclassical', name: 'Jazz & Classical', blurb: 'Jazz, acoustic and orchestral.',
@@ -2309,6 +2403,7 @@ function blockAnimation(seg) {
     wipe: ['wipe', 1.1], flow: ['drift', 4], fire: ['flicker', 0.9],
   }[seg.mode];
   if (motion) return motion;
+  if (seg.trigger === 'beat') return ['kick', 0.5 * seg.beats];
   if (seg.mode === 'shift') return ['drift', 6];
   if (seg.attack >= 250) return ['breathe', Math.max(2, (seg.attack + seg.release) / 1000)];
   if (seg.mode === 'spectrum') return ['sparkle', 0.5];
@@ -2790,6 +2885,7 @@ function renderSettings() {
   out.textContent = config.hyperion.enabled ? 'Output on' : 'Output off';
   syncAmbient();
   syncAudioInput();
+  syncMusic();
 }
 
 /* ---------- audio reactive and ambient light ---------- */
@@ -2918,7 +3014,10 @@ function updateAmbientStatus() {
     text = 'The studio is offline';
   } else if (amount >= 0.99) {
     state = 'ambient';
-    text = config.reactive === 'off' ? 'Showing the ambient light' : `Showing the ambient light, quiet for ${fmtSeconds(Math.floor(quiet))}`;
+    const paused = status.media && ['paused', 'stopped'].includes(status.media.state) && config.now_playing.pause_ambient;
+    if (config.reactive === 'off') text = 'Showing the ambient light';
+    else if (paused && quiet < config.ambient.idle_after) text = 'Showing the ambient light, the music is paused';
+    else text = `Showing the ambient light, quiet for ${fmtSeconds(Math.floor(quiet))}`;
   } else if (amount > 0.01) {
     state = 'fading';
     text = 'Fading…';
@@ -3080,6 +3179,7 @@ function updateStatus() {
   const status = live.status;
   updateAmbientStatus();
   updateAudioInput();
+  updateMusic();
   if (!online || !status) {
     setPill(audioEl, 'err', 'Studio offline', 'The studio server is not running');
     setPill(hypEl, '', 'Hyperion', '');
@@ -3281,6 +3381,197 @@ function updateAudioInput() {
   if (r.autoOut.textContent !== autoText) r.autoOut.textContent = autoText;
 }
 
+/* ---------- music: now playing and the beat ---------- */
+
+// The engine reads what plays from Windows' media sessions (status.media) and
+// tracks the beat (status.beat). config.now_playing: enabled, cover_colors
+// (the LEDs take the album art's colors instead of the palettes) and
+// pause_ambient (in Auto, the ambient light comes on as soon as the music is
+// paused). config.beat.offset: ms the beat triggers fire early (+) or late.
+const MEDIA_STATE = { playing: 'Playing', paused: 'Paused', stopped: 'Stopped' };
+const MEDIA_BUTTONS = [['previous', '⏮', 'Previous'], ['play_pause', '⏯', 'Play or pause'], ['next', '⏭', 'Next']];
+const BEAT_OFFSET_MAX = 200;
+let musicRefs = null;
+
+const hasTrack = (media) => !!media && ['playing', 'paused', 'stopped'].includes(media.state) && !!(media.title || media.artist);
+
+async function mediaAction(action) {
+  try {
+    const res = await api('/api/media', { action });
+    if (!res.ok) toast('The player did not take it');
+  } catch (err) {
+    toast(`Could not reach the player: ${err.message}`);
+  }
+}
+
+function setNowPlaying(key, value) {
+  config.now_playing[key] = value;
+  syncMusic();
+  commit();
+}
+
+function setBeatOffset(ms) {
+  config.beat.offset = clamp(Math.round(ms), -BEAT_OFFSET_MAX, BEAT_OFFSET_MAX);
+  syncMusic();
+  commit();
+}
+
+function musicSwitch(key, text, label) {
+  const input = h('input', { type: 'checkbox', role: 'switch', 'aria-label': label });
+  input.addEventListener('change', () => setNowPlaying(key, input.checked));
+  return [input, h('label', { class: 'switch' }, [input, h('span', { class: 'track' }), h('span', { class: 'switch-label' }, text)])];
+}
+
+function renderMusic() {
+  const cover = h('img', { class: 'mu-cover', alt: '', hidden: true });
+  const noCover = h('span', { class: 'mu-cover mu-none', 'aria-hidden': 'true' }, '♪');
+  cover.addEventListener('error', () => { cover.hidden = true; noCover.hidden = false; });
+  const title = h('strong', { class: 'mu-title' });
+  const artist = h('span', { class: 'mu-artist' });
+  const where = h('small', { class: 'mu-where' });
+  const buttons = MEDIA_BUTTONS.map(([action, icon, label]) => {
+    const button = h('button', { type: 'button', class: 'mu-btn', title: label, 'aria-label': label }, icon);
+    button.addEventListener('click', () => mediaAction(action));
+    return button;
+  });
+  const [colors, colorsRow] = musicSwitch('cover_colors', 'Use them on the LEDs', 'Use the album colors on the LEDs');
+  const swatches = h('div', { class: 'mu-swatches', 'aria-label': 'Album colors' });
+  const [pause, pauseRow] = musicSwitch('pause_ambient', 'Ambient light at once', 'Ambient light as soon as the music is paused');
+  const pauseNote = h('p', { class: 'note mu-indent' });
+  const [enabled, enabledRow] = musicSwitch('enabled', 'Read what’s playing', 'Read what is playing from Windows');
+
+  const dots = [0, 1, 2, 3].map((i) => h('i', { class: i === 0 ? 'first' : '' }));
+  const bpm = h('span', { class: 'mu-bpm mono' });
+  const beatText = h('span', { class: 'mu-beat-text' });
+  const offset = h('input', { type: 'range', min: -BEAT_OFFSET_MAX, max: BEAT_OFFSET_MAX, step: 5, 'aria-label': 'Beat timing', title: 'Double-click to reset' });
+  const offsetOut = h('output', { class: 'mono' });
+  offset.addEventListener('input', () => setBeatOffset(Number(offset.value)));
+  offset.addEventListener('dblclick', () => setBeatOffset(0));
+
+  $('#music-body').replaceChildren(
+    h('div', { class: 'mu-now' }, [cover, noCover, h('div', { class: 'mu-text' }, [title, artist, where]),
+      h('div', { class: 'mu-buttons', role: 'group', 'aria-label': 'Player controls' }, buttons)]),
+    h('div', { class: 'field' }, [h('label', null, 'Album colors'), h('div', { class: 'ctl mu-colors' }, [colorsRow, swatches])]),
+    h('div', { class: 'field' }, [h('label', null, 'On pause'), h('div', { class: 'ctl' }, pauseRow)]),
+    pauseNote,
+    h('div', { class: 'field' }, [h('label', null, 'Players'), h('div', { class: 'ctl' }, enabledRow)]),
+    h('div', { class: 'mu-beat' }, [h('div', { class: 'mu-dots', 'aria-hidden': 'true' }, dots), bpm, beatText]),
+    h('div', { class: 'field' }, [h('label', null, 'Beat timing'), h('div', { class: 'ctl' }, [offset, offsetOut])]),
+    h('p', { class: 'note' }, 'Segments with the Beat trigger flash in time with the music. If the lights trail the sound, move the timing earlier.'),
+  );
+  musicRefs = { cover, noCover, title, artist, where, buttons, colors, swatches, pause, pauseNote, enabled, dots, bpm, beatText, offset, offsetOut, lastMedia: '', lastBeat: '' };
+  $('#np-chip').addEventListener('click', () => {
+    const card = $('#music');
+    if (card.classList.contains('collapsed')) card.querySelector('.collapse-btn').click();
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  syncMusic();
+}
+
+function syncMusic() {
+  const r = musicRefs;
+  if (!r || !config.now_playing) return;
+  const np = config.now_playing;
+  r.colors.checked = np.cover_colors;
+  r.pause.checked = np.pause_ambient;
+  r.enabled.checked = np.enabled;
+  r.pauseNote.textContent = config.reactive === 'auto'
+    ? 'Pausing the player switches to the ambient light right away, instead of after the quiet delay.'
+    : 'Takes effect when Audio reactive is on Auto.';
+  if (document.activeElement !== r.offset) r.offset.value = config.beat.offset;
+  const ms = config.beat.offset;
+  r.offsetOut.textContent = ms ? `${Math.abs(ms)} ms ${ms > 0 ? 'early' : 'late'}` : 'on time';
+  r.lastMedia = '';
+  updateMusic();
+}
+
+// The live part, every frame: what's playing (rebuilt only when it changes),
+// the tempo pill and the beat dots (opacity only)
+function updateMusic() {
+  const r = musicRefs;
+  if (!r) return;
+  const status = online && live.status;
+  const media = status ? status.media : null;
+  const key = JSON.stringify(media || null);
+  if (key !== r.lastMedia) {
+    r.lastMedia = key;
+    showMedia(media);
+  }
+
+  const beat = status ? status.beat : null;
+  const locked = !!(beat && beat.locked);
+  const pill = $('#st-beat');
+  const bpmText = beat && beat.bpm && (locked || beat.confidence > 0.1) ? `${Math.round(beat.bpm)} BPM` : '– BPM';
+  let text = 'The studio is offline';
+  if (beat) {
+    if (locked) text = 'Following the beat';
+    else if (status.quiet >= 1) text = 'No music';
+    else if (beat.bpm) text = 'Listening for a steady beat…';
+    else text = 'Listening…';
+  }
+  const stateKey = `${locked}|${bpmText}|${text}`;
+  if (stateKey !== r.lastBeat) {
+    r.lastBeat = stateKey;
+    pill.lastChild.textContent = bpmText;
+    pill.classList.toggle('ok', locked);
+    pill.title = locked ? `Tempo ${bpmText}. The dot flashes on the beat, brighter on the first of the bar.` : text;
+    r.bpm.textContent = bpmText;
+    r.beatText.textContent = text;
+  }
+  const flash = locked ? 0.2 + 0.8 * Math.pow(1 - beat.phase, 2) : 0.2;
+  setOpacity(pill.firstElementChild, flash);
+  pill.firstElementChild.classList.toggle('first', locked && beat.bar_beat === 0);
+  r.dots.forEach((dot, i) => setOpacity(dot, locked && beat.bar_beat === i ? flash : 0.18));
+}
+
+function setOpacity(el, value) {
+  const text = value.toFixed(2);
+  if (el.dataset.o !== text) {
+    el.dataset.o = text;
+    el.style.opacity = text;
+  }
+}
+
+function showMedia(media) {
+  const r = musicRefs;
+  const track = hasTrack(media);
+  const chip = $('#np-chip');
+  chip.hidden = !track;
+  for (const button of r.buttons) button.disabled = !track;
+  let where = '';
+  if (!media) where = 'The studio is offline';
+  else if (media.state === 'off') where = 'Not reading players (switch it on below)';
+  else if (media.state === 'unavailable' || media.state === 'error') where = media.message || 'Windows media sessions are not available';
+  else if (!track) where = media.state === 'none' ? 'No player is open' : 'Nothing playing';
+  else where = `${MEDIA_STATE[media.state] || ''} in ${media.app}`;
+  r.title.textContent = track ? media.title || 'Unknown title' : 'Nothing playing';
+  r.artist.textContent = track ? [media.artist, media.album].filter(Boolean).join(' · ') : '';
+  r.where.textContent = where;
+  const art = track && media.art ? `/api/art?${media.art}` : '';
+  if (art) {
+    if (r.cover.getAttribute('src') !== art) r.cover.src = art;
+    r.cover.hidden = false;
+    r.noCover.hidden = true;
+  } else {
+    r.cover.hidden = true;
+    r.noCover.hidden = false;
+  }
+  const colors = media ? media.colors || [] : [];
+  r.swatches.replaceChildren(...(colors.length
+    ? colors.map((c) => h('i', { style: `background:${c}`, title: c }))
+    : [h('small', null, track && art ? 'No strong colors in this art' : 'No album art')]));
+
+  // Top bar chip
+  const chipCover = chip.querySelector('img');
+  chipCover.hidden = !art;
+  if (art && chipCover.getAttribute('src') !== art) chipCover.src = art;
+  chip.querySelector('.np-none').hidden = !!art;
+  chip.querySelector('b').textContent = track ? media.title || media.artist : '';
+  chip.querySelector('small').textContent = track ? media.artist || media.app : '';
+  chip.classList.toggle('paused', !!media && media.state !== 'playing');
+  chip.title = track ? `${MEDIA_STATE[media.state] || ''} in ${media.app}: ${[media.title, media.artist].filter(Boolean).join(' – ')}. Click for the Music card.` : '';
+}
+
 /* ---------- live data ---------- */
 
 // The config changed outside this page: another tab, the server following a
@@ -3309,8 +3600,12 @@ async function reloadFromServer() {
   }
 }
 
+// A hidden page draws nothing, so it closes the stream (30 messages a second
+// to parse) until it's shown again
+let stream = null;
+
 function connectStream() {
-  const stream = new EventSource('/api/stream');
+  stream = new EventSource('/api/stream');
   stream.onopen = () => { online = true; };
   stream.onmessage = (e) => {
     live = JSON.parse(e.data);
@@ -3324,6 +3619,15 @@ function connectStream() {
     online = false;
     invalidate();
   };
+}
+
+function followVisibility() {
+  if (document.hidden) {
+    if (stream) stream.close();
+    stream = null;
+  } else if (!stream) {
+    connectStream();
+  }
 }
 
 function frame() {
@@ -3354,6 +3658,7 @@ async function init() {
   setupControls();
   renderAmbient();
   renderAudioInput();
+  renderMusic();
   setupReactive();
   setupColorRanges();
   setupCollapsibles();
@@ -3366,7 +3671,8 @@ async function init() {
   }
   const resized = new ResizeObserver(invalidate);
   for (const canvas of [anCanvas, stripCanvas, trackCanvas]) resized.observe(canvas);
-  connectStream();
+  document.addEventListener('visibilitychange', followVisibility);
+  followVisibility();
   invalidate();
 }
 

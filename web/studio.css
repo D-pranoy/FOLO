@@ -107,6 +107,34 @@ h1, h2, h3, p { margin: 0; }
 .pill.warn i { background: var(--warn); }
 .pill.err i { background: var(--err); }
 .pill.ok, .pill.warn, .pill.err { color: var(--text); }
+/* Tempo: the dot flashes on the beat (opacity set per frame by updateMusic),
+   pink on the first beat of the bar */
+.beat-pill i { background: var(--accent); opacity: 0.2; }
+.pill.beat-pill.ok i { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.pill.beat-pill.ok i.first { background: var(--accent-2); box-shadow: 0 0 8px var(--accent-2); }
+/* What's playing, from Windows' media sessions; opens the Music card */
+.np-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 2px 11px 2px 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.np-chip:hover { border-color: var(--line-2); background: var(--hover); }
+.np-chip.paused { color: var(--muted); }
+.np-chip.paused img { opacity: 0.55; }
+.np-chip img, .np-none { width: 22px; height: 22px; flex: none; border-radius: 50%; object-fit: cover; }
+.np-none { display: grid; place-items: center; background: var(--panel-3); color: var(--muted); }
+.np-text { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; }
+.np-text b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.np-text small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
 
 .top-controls { display: flex; align-items: center; gap: 10px; }
 .top-controls label { color: var(--muted); font-size: 13px; }
@@ -488,6 +516,42 @@ option { background: #15111f; color: var(--text); }
 .amb-now { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px 104px; color: var(--muted); font-size: 12px; }
 .amb-now i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ok); }
 .amb-now.ambient i, .amb-now.fading i { background: var(--seg); box-shadow: 0 0 8px var(--seg); }
+
+/* Music card: now playing, album colors and the beat */
+.mu-now { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 8px; }
+.mu-cover { width: 56px; height: 56px; border: 1px solid var(--line-2); border-radius: 10px; object-fit: cover; }
+.mu-none { display: grid; place-items: center; background: var(--well); color: var(--faint); font-size: 22px; }
+.mu-text { display: flex; flex-direction: column; min-width: 0; }
+.mu-text > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mu-title { font-weight: 600; }
+.mu-artist { color: var(--muted); font-size: 12.5px; }
+.mu-where { color: var(--faint); font-size: 11.5px; }
+.mu-buttons { display: flex; gap: 4px; }
+.mu-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--panel-3);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mu-btn:hover { border-color: var(--line-hover); background: rgba(255, 255, 255, 0.13); }
+.mu-btn:disabled { opacity: 0.35; cursor: default; }
+.mu-colors { flex-wrap: wrap; }
+.mu-swatches { display: flex; align-items: center; gap: 4px; }
+.mu-swatches i { width: 16px; height: 16px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 4px; }
+.mu-swatches small { color: var(--faint); font-size: 11.5px; }
+.music .note.mu-indent { margin: -4px 0 6px 104px; }
+.mu-beat { display: flex; align-items: center; gap: 12px; margin: 12px 0 2px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mu-dots { display: flex; align-items: center; gap: 6px; }
+.mu-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); opacity: 0.18; }
+.mu-dots i.first { width: 14px; height: 14px; background: var(--accent-2); }
+.mu-bpm { font-size: 19px; font-weight: 650; }
+.mu-beat-text { color: var(--muted); font-size: 12px; }
+.music .ctl output { width: 6.4em; color: var(--muted); font-size: 12px; text-align: right; }
 
 /* Audio input card */
 .audio-in .ctl select { flex: 1; }
@@ -923,6 +987,8 @@ input[type=search] {
   .swatch { width: 26px; height: 26px; }
   .field { grid-template-columns: 80px minmax(0, 1fr); }
   .amb-now, .ai-status { margin-left: 88px; }
+  .music .note.mu-indent { margin-left: 88px; }
+  .np-chip { max-width: 200px; }
   .brightness { gap: 8px; padding: 9px 12px; }
   .cr-row { grid-template-columns: minmax(0, 1fr); }
   .pf-field { grid-template-columns: minmax(0, 1fr); }

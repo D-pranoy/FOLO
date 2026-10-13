@@ -17,8 +17,10 @@
     </div>
   </div>
   <div class="status">
+    <button type="button" class="np-chip" id="np-chip" hidden><img alt="" hidden><span class="np-none" aria-hidden="true">♪</span><span class="np-text"><b></b><small></small></span></button>
     <span class="pill" id="st-audio" title=""><i></i><span>Audio</span></span>
     <span class="pill" id="st-hyperion" title=""><i></i><span>Hyperion</span></span>
+    <span class="pill mono beat-pill" id="st-beat" title=""><i></i><span>– BPM</span></span>
     <span class="pill mono" id="st-fps">– fps</span>
   </div>
   <div class="top-controls">
@@ -142,6 +144,10 @@
       <div class="card-head"><h2>Ambient light</h2></div>
       <p class="note">What the strip shows when audio reactive is off, or in Auto once the music has been quiet for a while. It fades in and out.</p>
       <div id="ambient-body"></div>
+    </div>
+    <div class="card music" id="music" data-collapse="music">
+      <div class="card-head"><h2>Music</h2></div>
+      <div id="music-body"></div>
     </div>
     <div class="card audio-in" id="audio-input" data-collapse="audio-input">
       <div class="card-head"><h2>Audio input</h2><button type="button" class="btn small push" id="rescan">Rescan</button></div>
