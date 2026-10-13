@@ -11,6 +11,7 @@ The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specificatio
 - **Implementation work** follows the [run books](docs/runbooks/README.md).
 - **Real devices:** anything that touches them follows [docs/process/testing-policy.md](docs/process/testing-policy.md).
 - **Writing docs:** no time estimates and no personal details.
+- **Branches, commits and pull requests:** `<type>/<short-topic>` branches, Conventional Commits and the PR template's documentation impact section, summarised in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What this is
 
@@ -273,6 +274,8 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 - **Outside the repo:** say what you'll change before touching Hyperion settings, WLED state or anything else outside this folder. Hyperion's settings DB (`%USERPROFILE%\.hyperion\db\hyperion.db`) may only be edited while Hyperion is stopped, after a backup.
 - **Docs:** `docs/` is the source of truth (see the top of this file). This file is the single agent guide to the current code (CLAUDE.md imports it). Update it, the README's FOLO studio section and the affected documents in `docs/` whenever features change.
 - **Machine-specific notes:** a particular setup's hardware, network, live state and owner preferences go in `AGENTS.local.md` (git-ignored, imported for Claude Code by `CLAUDE.local.md`). Read it when it exists.
+- **Files:** UTF-8 with LF line endings, except CRLF for `.bat` and `.cmd` (`.gitattributes`, `.editorconfig`). Four-space indents, two for JS, CSS, HTML, JSON, YAML and Markdown.
+- **Ignored files:** `studio*.json` at the root, `data/`, build outputs and the local agent notes. Other JSON files are tracked, so keep personal copies of configs outside the repository.
 
 ## Troubleshooting
 

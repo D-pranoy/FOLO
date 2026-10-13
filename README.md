@@ -7,7 +7,7 @@ FOLO
 - Hue-style zones
 - a desktop app for Windows and Linux
 
-The vision, roadmap, decisions and specifications live in [docs/](docs/README.md) and are the source of truth. The sections below describe the current studio.
+The vision, roadmap, decisions and specifications live in [docs/](docs/README.md) and are the source of truth. The sections below describe the current studio. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md); report security problems privately as described in [SECURITY.md](SECURITY.md).
 
 **Primary contributors:** Pranoy Das, Sayak Brahmachari.
 

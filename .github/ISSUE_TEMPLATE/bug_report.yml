@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in FOLO doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through private reporting instead (see SECURITY.md).
+        Leave device addresses, keys, tokens and personal details out of logs and screenshots.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: A release version, or the commit hash you run
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (KDE Plasma)
+        - Linux (GNOME)
+        - Linux (other)
+        - Docker
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Audio input and analysis
+        - Beat tracking
+        - Now playing
+        - Effects and presets
+        - Ambient light
+        - User interface
+        - Hyperion
+        - WLED
+        - Philips Hue
+        - Screen capture
+        - Installation and updates
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output, with addresses and keys removed.
+      render: text

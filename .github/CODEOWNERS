@@ -1,0 +1,4 @@
+# Review requests: every pull request asks the lead maintainer to review it
+# (ADR-0027, docs/process/governance.md). This only sets who is asked to
+# review. It isn't the repository owner role, and it grants no rights.
+* @sayak-brm

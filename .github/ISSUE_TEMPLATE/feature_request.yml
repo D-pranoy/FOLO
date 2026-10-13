@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a new capability or a change in behaviour.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        FOLO's documents in docs/ are the source of truth, so a new feature starts with a change to them.
+        Check the roadmap (docs/roadmap.md) and scope (docs/scope.md) first: it may already be planned or ruled out.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you're trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How FOLO could solve it.
+    validations:
+      required: true
+  - type: textarea
+    id: documents
+    attributes:
+      label: Affected documents
+      description: Which decisions, specifications or run books would change, if you know. A changed decision needs a new ADR.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
