@@ -21,6 +21,14 @@ Status: Accepted
 | **Scene** | Layer stacks for a zone's surfaces, with macros. What the user picks to change the look. |
 | **Look** | One layer's full recipe: effect, parameters, reaction and palette. |
 | **Reaction** | How a layer responds to audio: band, trigger, thresholds, gain, curve, attack and release. |
+| **Trigger** | What drives a layer: **level** (band loudness), **hits** (sudden peaks above the band's 1 s average), or **beat** (the beats the source finds, every ½, 1, 2 or 4 beats, aligned to the bar). |
+| **Beat tracker** | The source component that finds tempo, beats and the bar from the audio, and publishes them as the beat signal. |
+| **Reactive mode** | A zone's choice between **On** (follow the audio), **Auto** (follow the audio, ambient light after silence or on pause) and **Off** (ambient light only). |
+| **Ambient light** | A zone's steady or breathing colour, shown when the reactive mode calls for it. |
+| **Now playing** | Track metadata, album art and player controls from the source machine's media sessions (Windows) or MPRIS (Linux). |
+| **Album colours** | A zone option that replaces layer palettes with colours picked from the current album art. |
+| **App capture** | An audio input that listens to only one app, or to everything except one app. |
+| **Auto level** | An automatic input gain that keeps quiet and loud music near the level the presets were tuned on. |
 | **Pack** | A versioned bundle of content (palettes, reactions, looks, scenes, zone templates) that can be installed, updated and removed. |
 | **Client** | Anything that manages a controller through its API: the desktop app, a browser, the future Android app, the Home Assistant integration. |
 | **Desktop app** | The Tauri application. It hosts the UI, keeps the list of controllers, shows the tray icon and manages the local node. |

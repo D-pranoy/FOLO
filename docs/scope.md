@@ -22,6 +22,12 @@ This document defines what version 1 delivers. Later work is listed in the [road
 - **Source effect engine** (Python): restructured from the current engine.
   - Inputs, effects, surfaces.
   - All existing effect modes with byte-exact parity ([ADR-0005](decisions/ADR-0005-pipeline-and-data-model.md)).
+- **Studio features carried over** ([ADR-0028](decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)):
+  - **Audio input:** output loopback, inputs, only one app / everything except one app (Windows), default-output following, stats and meters, gain and auto level.
+  - **Beat tracking** with the Beat trigger and beat-based content.
+  - **Now playing:** Windows media sessions and Linux MPRIS; album colours; player controls.
+  - **Audio-reactive modes and the ambient light** per zone.
+  - **Efficiency:** quiet-window skipping; providers sending only changed frames with keepalives.
 - **Display capture agent** (Rust): on-demand capture of one selected screen per source on Windows and on Linux Wayland (KDE and GNOME through the desktop portal).
   - Black-bar detection.
   - HDR desktops handled with a basic tone map ([ADR-0015](decisions/ADR-0015-display-capture.md)).
@@ -42,7 +48,7 @@ This document defines what version 1 delivers. Later work is listed in the [road
 - **OTA updates** from GitHub Releases: signed, approved, with rollback where the install type allows ([ADR-0020](decisions/ADR-0020-ota-updates.md)).
 
 ### UI and content
-- **UI:** a full rewrite with feature parity ([UI parity checklist](specs/ui-parity-checklist.md)).
+- **UI:** a full rewrite with feature parity ([UI parity checklist](specs/ui-parity-checklist.md)), in the glass visual language of the [visual design specification](specs/visual-design.md) ([ADR-0029](decisions/ADR-0029-visual-design-language.md)).
   - Hue-style zone setup.
   - First-run and task wizards.
   - Touch-first, responsive layouts.
@@ -67,6 +73,9 @@ This document defines what version 1 delivers. Later work is listed in the [road
 |---|---|
 | Projection mapping (display targets, warping, GPU projection) | Groundwork only ([ADR-0025](decisions/ADR-0025-projection-mapping-groundwork.md)) |
 | Several screens per source | Later; v1 captures one selected screen per source |
+| Per-app audio capture on Linux | Later (PipeWire stream targets); v1 Linux captures outputs and inputs |
+| Now playing while the node runs as a Windows service | Later (media integration in the user-session agent); v1 reports it as unavailable |
+| A light theme | Later; v1 is dark only ([ADR-0029](decisions/ADR-0029-visual-design-language.md)) |
 | X11 display capture | Later; Wayland first |
 | Home Assistant integration (HACS, HA app, core submission) | After v1, phased |
 | Recipe/expression effects, community pack index, code plugins | Later |

@@ -87,6 +87,7 @@ Recovery: `folo pair reset` or the local UI. You must be at the machine; it can'
 - The desktop app supervises a managed node, or a service manager (Windows service, systemd) supervises the node.
 - The node supervises `folo-source`: it checks a heartbeat, restarts it with backoff, and stops it when disabled. Source logs appear in the controller's log viewer.
 - `folo-capture` always runs in the signed-in user's session. The node starts it when the node itself runs in that session; otherwise the desktop app starts it at sign-in ([display capture](../integrations/display-capture.md#where-capture-runs)).
+- **Media sessions** (now playing) also belong to the user's session. In Windows service mode, the effect engine runs outside it, so now playing reports `unavailable` in v1 ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
 
 ## Status and health
 

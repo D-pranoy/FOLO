@@ -30,7 +30,9 @@ Status: Accepted · Implementation: Not started
 **Goal:** the node as a Windows service and an NSIS installer that asks about it.
 **Depends on:** RB-06, RB-19.
 
-1. **Verification step:** capture 5 s of loopback audio under LocalSystem and under a virtual service account, and check the level. Record the chosen account in [ADR-0017](../decisions/ADR-0017-desktop-app-tray-autostart-and-service.md) through a superseding ADR if it differs from the default.
+1. **Verification step:** capture 5 s of loopback audio under LocalSystem and under a virtual service account, and check the level.
+   - Also check whether **per-app capture** and **media sessions** work from the service. The expectation is that media sessions don't ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
+   - Record the chosen account in [ADR-0017](../decisions/ADR-0017-desktop-app-tray-autostart-and-service.md) through a superseding ADR if it differs from the default.
 2. **Service:**
    - `folo service install|uninstall|start|stop|status` through the `windows-service` crate
    - name `FOLO`, delayed automatic start, restart on failure (5 s, three times, reset daily)
@@ -103,7 +105,7 @@ Status: Accepted · Implementation: Not started
 
 1. **`build.yml`** (reusable and manual), on a matrix of `windows-latest` (x64), `ubuntu-22.04` (x64) and `ubuntu-22.04-arm` (arm64):
    1. Build the UI.
-   2. Freeze the effect engine (PyInstaller one-dir).
+   2. Freeze the effect engine (PyInstaller one-dir), including cffi, the `winrt` packages on Windows and `dbus-fast` on Linux.
    3. Build the node and the capture agent.
    4. Bundle them into the Tauri app.
    5. `tauri build` (Windows: NSIS; Linux: deb, rpm, AppImage) with updater artifacts.

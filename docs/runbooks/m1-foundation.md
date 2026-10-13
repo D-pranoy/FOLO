@@ -31,7 +31,12 @@ Status: Accepted · Implementation: Not started
 5. **Deterministic renderer:** let `Renderer` accept an injected random generator. Default behaviour must not change.
 6. **Golden frames:** `scripts/make_golden.py` drives the current `Analyzer` and `Renderer` with deterministic synthetic stereo signals in 480-frame packets, and stores frames under `tests/golden/`.
    - Signals: sweeps, kicks at 120 BPM, pink noise, silence, out-of-phase stereo.
-   - Configs: every mode × direction × trigger, with floor and peak variants, plus every built-in effect at three LED counts.
+   - Configs:
+     - every mode × direction × trigger (level, hits, beat with every `beats` value), with floor and peak variants
+     - gains up to +54 dB, auto level on and off
+     - reactive Auto/Off with solid and breathing ambient light
+     - every built-in effect at three LED counts
+   - **Beat-tracker fixtures:** synthetic songs with known beat times, plus beatless music.
 7. **Built-in export:** `scripts/export_builtins.mjs` evaluates the current UI's builder functions in Node (DOM stubs) for given LED counts. Its output feeds step 6 and RB-09.
 8. **Pinning tests:** `tests/test_golden_renderer.py` asserts byte equality. Hypothesis tests for `sanitize_config` check that it never raises, is idempotent and respects limits, and record an input/output corpus for later ports.
 9. **CI v0** (`ci.yml`):
@@ -39,7 +44,7 @@ Status: Accepted · Implementation: Not started
    - Rust fmt, clippy and tests
    - coverage artifact
 10. **Packaging tests:**
-    - A PyInstaller one-dir build of the current studio (`--collect-data soundcard`) on Windows and Linux, smoke-tested with `--help`.
+    - A PyInstaller one-dir build of the current studio on Windows and Linux, smoke-tested with `--help`. It must include cffi and the WASAPI module's C definitions; the `winrt` packages on Windows; and `--collect-data soundcard` while legacy code remains.
     - A `cargo build --release` of an empty `folo` binary on every target runner.
 
 **Done when:** CI is green on Windows and Linux, golden frames and the corpus are committed, and the frozen builds start.

@@ -69,8 +69,14 @@ Status: Accepted · Implementation: Not started
    - edge policy; mapping priority and blend
    - an abstract `Projector` trait with a CPU implementation
 3. **Compositor:**
-   - per-surface source priority lists, activity handling, a 300 ms crossfade, idle fallback, optional blend
+   - per-surface source priority lists, activity handling, a 300 ms crossfade, optional blend
    - newest frame wins; staleness timeout
+   - **reactive mode and ambient light per zone** ([pipeline](../architecture/pipeline.md#controller-stages)):
+     - on / auto / off
+     - solid or breathe (30–100% over 8 s)
+     - fade in 1.5 s eased, fade out 0.15 s
+     - silence from the sources' gain-free activity; the on-pause switch after 0.3 s from media state
+   - golden tests against the current engine's ambient frames (within ±1 per channel)
 4. **Adapter chain** per [capabilities](../architecture/capabilities.md):
    - resolution, colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, rate (streaming or state with a token bucket), latency delay line
    - **flash limiter** on by default, with a per-zone opt-out and warning
@@ -78,7 +84,7 @@ Status: Accepted · Implementation: Not started
 6. **Provider interface:**
    - discover, describe (targets with capabilities), connect, send, release, status, admin
    - `ElementOutput` now; `RasterOutput` reserved
-   - one sender task per provider instance, each at its own rate
+   - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
 7. **Tests:**
    - geometry unit tests
    - projection golden images (frames stacked into PNGs)
@@ -116,6 +122,7 @@ Status: Accepted · Implementation: Not started
 2. **Provider:**
    - JSON client with a reply-draining reader
    - `color` frames with priority, origin and `duration` 2000
+   - changed frames only, with a 0.5 s keepalive
    - clear on stop; reconnect with backoff
 3. **Describe:** line targets from `serverinfo` LED rectangles on the zone's TV plane; layout watching with proportional mapping scaling.
 4. **Administration:** instances, priorities with clear, component toggles, automatic source selection, brightness, token support ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)).

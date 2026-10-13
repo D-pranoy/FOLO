@@ -35,6 +35,10 @@ The controller's API for clients: the UI, the desktop app, the Android app later
 | `/providers/{id}/admin/...` | GET, POST | Basic device administration ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)) |
 | `/providers/{id}/hue/pair` | POST | The link-button pairing flow, with progress |
 | `/sources`, `/sources/{id}` | GET, PUT, DELETE | Sources, inputs, assignments, priorities |
+| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens. The UI refreshes it every 5 s while the input editor is open. |
+| `/sources/{id}/media` | GET | Now-playing state: off, unavailable, error, none, playing, paused or stopped; app, title, artist, album, art id, colours |
+| `/sources/{id}/media/art` | GET | The current album art image. Clients add the art id to bust caches. |
+| `/sources/{id}/media/control` | POST | `{"action": "play_pause" \| "next" \| "previous"}` on the source's shown media session |
 | `/sources/invites` | POST | Create an invite ([pairing and connect](pairing-and-connect.md)) |
 | `/sources/join-requests`, `/{id}/approve`, `/{id}/reject` | GET, POST | Join requests |
 | `/library/packs`, `/library/packs/{id}` | GET, POST (install), DELETE | Packs; export through `GET …/{id}/export` |
@@ -52,7 +56,14 @@ The controller's API for clients: the UI, the desktop app, the Android app later
 
 `GET /api/v1/live`, upgraded to a WebSocket. Authenticated by cookie or by a first `auth` message.
 
-- **Client → server:** `{"subscribe": ["status", "spectrum:<source>", "levels:<source>", "surface:<id>", "target:<id>"]}` and `unsubscribe`.
+- **Client → server:** `{"subscribe": [...]}` and `unsubscribe`. Topics:
+  - `status`
+  - `spectrum:<source>`, `levels:<source>`
+  - `beat:<source>` (BPM, confidence, locked, phase, bar beat)
+  - `media:<source>`
+  - `input:<source>` (meters, stats, current gain and auto gain)
+  - `zone:<id>` (reactive state: ambient fade 0–1, seconds of silence)
+  - `surface:<id>`, `target:<id>`
 - **Server → client:**
   - JSON messages: `status`, `levels`, `config_changed {document, revision}`, `event` (job progress, update states).
   - Binary frames for pixel data and the spectrum (the same header as the [source link frame](source-link.md#surface-frames)).

@@ -41,3 +41,5 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0025](ADR-0025-projection-mapping-groundwork.md) | Projection-mapping groundwork | Accepted |
 | [0026](ADR-0026-branding-and-identifiers.md) | Branding and identifiers | Accepted |
 | [0027](ADR-0027-governance-and-repository-settings.md) | Governance and repository settings | Accepted |
+| [0028](ADR-0028-studio-features-carried-into-the-rebuild.md) | Studio features carried into the rebuild | Accepted |
+| [0029](ADR-0029-visual-design-language.md) | Visual design language | Accepted |

@@ -24,10 +24,10 @@ Decided in [ADR-0016](../decisions/ADR-0016-user-interface.md). Clients and host
 
 | Section | Contents |
 |---|---|
-| **Home** | Zones with their active scene, master brightness, sync on/off, active source per zone |
-| **Zones** | Zone list and editor: placement, surfaces, Hue sync |
+| **Home** | The header: status, now-playing chip, tempo pill with beat dot, audio-reactive switch (On, Auto, Off), ambient indicator, master brightness, output on/off. Then zones with their active scene and source, and the **Music** panel (now playing, player controls, album colours, beats of the bar, beat timing). |
+| **Zones** | Zone list and editor: placement, surfaces, Hue sync, **reactive mode and ambient light** (colour, solid or breathe, brightness, "switch after", on pause) |
 | **Scenes** | Gallery, apply to a zone, macros, **Edit** (the advanced editor) |
-| **Sources** | Sources and their inputs, pairing, per-surface priority, external ingest tokens |
+| **Sources** | Sources and their **inputs**: the audio input (listen to output, input or app; meters, stats, gain, auto level), screens, media session. Pairing, per-surface priority, external ingest tokens. |
 | **Devices** | Providers: Hyperion, WLED, Hue. Discovery, pairing and basic administration. |
 | **System** | Client devices and keys, remote access, start at sign-in, service status, updates, logs, backup and restore |
 
@@ -78,7 +78,9 @@ The inspector is **generated from each effect's parameter schema**, so effects t
 | Over 1024 px | Three columns (navigation, editor, inspector) |
 
 - Touch targets are at least 48 dp. On coarse pointers, canvas hit tolerance grows from 6 px to 16 px and handles get bigger.
-- **No hover-only controls.** Every hover affordance has a visible or long-press alternative.
+- **No hover-only controls.** Every hover affordance has a visible or long-press alternative:
+  - Previews animate while pressed, or when the item is active.
+  - Double-click resets (gain, beat timing) become reset buttons.
 - Pinch and pan on the zone map and the track. Steppers next to sliders.
 - **Phones:** everything is editable, but the phone layout is optimised for control. The advanced editor defaults to lists and sliders, and nothing requires the canvases.
 
@@ -90,7 +92,24 @@ The inspector is **generated from each effect's parameter schema**, so effects t
 
 ## Visual design
 
-The current dark theme and the Deep Night palette are kept as the base design tokens, in the [current system](current-system.md#ui).
+The [visual design specification](../specs/visual-design.md) defines the look of every screen ([ADR-0029](../decisions/ADR-0029-visual-design-language.md)):
+- **Glass:** frosted, translucent panels over a fixed background of Deep Night glows.
+- **Depth:** a surface hierarchy of panels, rows, wells and raised controls.
+- **Single source:** design tokens defined once.
+- **Quiet at rest:** no motion unless data or the user moves something.
+- **Comfort settings:** a Reduce transparency setting, and dark only in v1.
+
+## Performance
+
+The UI's **performance rules** are normative ([visual design](../specs/visual-design.md#performance-rules)):
+- draw only on invalidation (stream data, input, resize, state change)
+- no CSS animation at rest
+- static canvas layers cached offscreen
+- live bars moved by `transform`
+- hidden pages close the live stream
+- no nested backdrop filters
+
+**Budget:** no measurable CPU use at rest. While streaming, the page must stay at or below the current studio's figure (about 0.6 browser cores at 1920×1080, 144 Hz).
 
 ## Clients and hosts
 

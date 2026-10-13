@@ -37,7 +37,7 @@ Every target declares what it can do. Providers discover this where possible; th
    - **xy (Hue over REST):** RGB to CIE xy, clamped to the lamp's gamut. The Hue entertainment stream takes RGB, and the bridge converts.
 3. **Calibration:** gamma, white balance, brightness minimum and maximum, colour order.
 4. **Rate.**
-   - Streaming targets receive every frame at the provider rate.
+   - Streaming targets receive frames at the provider rate, **only when they changed**, plus a keepalive inside the device's timeout ([pipeline](pipeline.md#controller-stages)).
    - State targets receive rate-limited updates (a token bucket per bridge or device), sent only on visible change, with a device-side transition equal to the update interval.
 5. **Latency offset:** a per-output delay line, so faster outputs can wait for slower ones (for example, WLED waiting for Hue).
 6. **Flash limiter:** see below.

@@ -34,6 +34,18 @@ Demo mode is used for end-to-end tests, documentation screenshots and UI develop
 5. Hue: stop Hue Sync (or any other streaming app) before a streaming test. Never take over another app's stream without the device owner's confirmation.
 6. Bridges and controllers can only be changed while their owner can observe the result.
 
+## Testing without sound or devices
+
+- **Beat tracker:**
+  - Synthesise songs with known beat times: kick, snare, hats, a bass line and a chord per bar; 60–180 BPM; four-on-the-floor, rock, swung hip-hop, tempo drift, breakdowns.
+  - Feed the analyzer and tracker the same 480-frame packets, and score fired beats against the true ones (±70 ms) plus bar starts.
+  - Music without a steady beat (pads, random piano notes, speech-like bursts) must **never lock**.
+- **App capture:** play an inaudible tone (18.5 kHz at −70 dBFS) from a process with a distinctive name. "Only" that app must show the tone, and "except" that app must show silence (−120 dB).
+- **In the UI:** replace the audio input with a fake that streams synthetic songs at real-time pace (no sound plays). Check the tempo pill, the Music panel and beat layers.
+- **Speed-ups must not change output:** run the old and new implementations on the same packets with seeded randomness, and compare frames, levels and spectra, including silence, gains up to +54 dB and every mode.
+- **CPU comparisons** need long or repeated runs (`time.process_time()` ticks in 15.6 ms steps on Windows).
+- **Player controls:** never press play/pause, next or previous on someone's real player during tests. Use a fake media session.
+
 ## Golden files
 
 - Regenerate goldens only when behaviour is meant to change, and say why in the PR.

@@ -21,7 +21,18 @@ Each document has `schema_version`, `revision` and `server_id`. Writes are atomi
 
 ## Entities (summary)
 
-**Zone:** `id`, `name`, `type` (`music | screen | desk | room | custom`), `bounds {x, y, z}` in metres, `reference {kind, position, orientation}`, `targets[]`, `surfaces[]`, `mappings[]`, `flash_limiter {enabled, exempt_reason?}`, `hue_sync {mode, configuration_id?}`.
+**Zone:** `id`, `name`, `type` (`music | screen | desk | room | custom`), `bounds {x, y, z}` in metres, `reference {kind, position, orientation}`, `targets[]`, `surfaces[]`, `mappings[]`, `flash_limiter {enabled, exempt_reason?}`, `hue_sync {mode, configuration_id?}`, plus:
+
+| Field | Range / values | Default |
+|---|---|---|
+| `reactive` | `on`, `auto`, `off` | `on` |
+| `ambient.color` | `#RRGGBB` | `#4B00FF` |
+| `ambient.style` | `solid`, `breathe` | `solid` |
+| `ambient.level` | 0–1 (linear output scale) | 0.35 |
+| `ambient.idle_after` | 1–600 s | 5 |
+| `ambient.on_pause` | boolean: in `auto`, switch after 0.3 s of silence when the player is paused | true |
+| `beat_offset_ms` | −200…200 (beats fire earlier when positive) | 0 |
+| `album_colors` | boolean: layers take colours from the active source's album art | false |
 
 **Target:**
 - `id`, `name`
@@ -48,9 +59,10 @@ Each document has `schema_version`, `revision` and `server_id`. Writes are atomi
 | Field | Range / values | Default |
 |---|---|---|
 | `freq_lo`, `freq_hi` | 10–24000 Hz; `freq_hi` ≥ `freq_lo` × 1.01 | 60, 250 |
-| `trigger` | `level`, `hits` | `level` |
-| `threshold` | level: −120…−1 dBFS; hits: 0…39 dB above the 1 s average | −60 / 3 |
-| `ceiling` | level: −119…0 dBFS; hits: 1…40 dB; at least `threshold` + 1 | −25 / 10 |
+| `trigger` | `level`, `hits`, `beat` | `level` |
+| `beats` | 0.5, 1, 2, 4 (the beat trigger flashes every this many beats, aligned to the bar) | 1 |
+| `threshold` | level and beat: −120…−1 dBFS; hits: 0…39 dB above the 1 s average | −60 / 3 |
+| `ceiling` | level and beat: −119…0 dBFS; hits: 1…40 dB; at least `threshold` + 1 | −25 / 10 |
 | `gain` | 0.1–8 | 1 |
 | `curve` | 0.2–5 | 1 |
 | `attack` | 0–2000 ms | 15 |
@@ -64,6 +76,18 @@ Each document has `schema_version`, `revision` and `server_id`. Writes are atomi
 | `palette` | 1–16 colours `#RRGGBB` | `["#FFFFFF"]` |
 
 **Limits carried over:** 64 layers per surface, 16 lanes, 2000 elements per strip surface, 60 saved presets, 16 tags of up to 24 characters.
+
+**Source inputs** (in `sources.json`, per source):
+
+| Field | Range / values | Default |
+|---|---|---|
+| `audio.device` | `default` (follows the default output), an output name (loopback), or `in:<input name>` | `default` |
+| `audio.app` | An app's executable name, lowercase; empty for none (Windows only in v1) | empty |
+| `audio.app_mode` | `only`, `except` | `only` |
+| `audio.gain` | −24…24 dB | 0 |
+| `audio.auto_level` | boolean | false |
+| `media.enabled` | boolean: read media sessions (Windows) or MPRIS (Linux) | true |
+| `screens[]` | Screen inputs with `enabled` and the selected screen id (one active in v1) | none |
 
 **Provider instance:**
 - `id`, `kind` (`hyperion | wled | hue`), `name`, `enabled`, `rate_hz`
@@ -82,7 +106,13 @@ Performed by the effect engine's migration tool (RB-05):
 | `led_count`, `segments[]` | Zone "Default", type `custom`; strip surface "Main strip" with resolution = `led_count`; each segment becomes an audio-visualizer layer with region = [start, end] |
 | `hyperion {host, port, priority, fps}` | Hyperion provider instance (`enabled` carried over), plus a line target with `led_count` elements and a manual 1:1 mapping, identity adapters |
 | `master`, `background` | Surface `master` and `background` |
-| `audio.device` | Local source input setting |
+| `audio.device`, `audio.app`, `audio.app_mode`, `audio.gain`, `audio.auto_level` | Local source audio input settings |
+| `reactive`, `ambient.{color, style, level, idle_after}` | Zone "Default" `reactive` and `ambient` |
+| `beat.offset` | Zone "Default" `beat_offset_ms` |
+| `now_playing.enabled` | Local source `media.enabled` |
+| `now_playing.cover_colors` | Zone "Default" `album_colors` |
+| `now_playing.pause_ambient` | Zone "Default" `ambient.on_pause` |
+| Segment `trigger` `beat`, `beats` | Layer parameters, unchanged |
 | `presets[]` | Scenes in the local "My presets" pack, keeping their `led_count` for scaling |
 | `default_preset` | Default scene id; built-in ids resolve through the alias table |
 

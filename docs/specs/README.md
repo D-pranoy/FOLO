@@ -26,6 +26,7 @@ Once a machine-readable form exists, it and this prose must agree. A change to e
 | [Pairing and connect](pairing-and-connect.md) | Not started |
 | [Pack format](pack-format.md) | Not started |
 | [UI parity checklist](ui-parity-checklist.md) | Not started |
+| [Visual design](visual-design.md) | Partial (the current studio implements the visual language) |
 
 ## Versioning
 

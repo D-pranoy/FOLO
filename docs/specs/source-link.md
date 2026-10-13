@@ -43,7 +43,9 @@ Each message starts with one byte for its type:
 |---|---|
 | `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. `publish` holds the requested resolution, rate and compression per surface. |
 | `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | Content distribution |
-| `inputs.list` | The inputs available on the source (audio devices, screens), with capabilities |
+| `inputs.list` | The inputs available on the source (outputs, inputs, apps playing audio, screens, media session), with capabilities |
+| `media.control {action}` | `play_pause`, `next` or `previous` on the shown media session |
+| `media.art {art_id}` | Returns the album art image (base64) for clients |
 | `pair.with {invite}`, `pair.remove {controller_id}` | Owner only |
 | `update.check`, `update.approve {version}`, `update.cancel` | Owner only |
 | `logs.tail {lines, follow}` | Diagnostics |
@@ -54,7 +56,9 @@ Each message starts with one byte for its type:
 | Notification | Purpose |
 |---|---|
 | `status {state, workers, inputs, errors}` | Health |
-| `activity {surface?, active: bool, level_db?}` | Activity for compositor switching |
+| `activity {surface?, active: bool, level_db?, quiet_s}` | Activity for compositor switching and the zone's ambient light (silence uses the level without gain) |
+| `media {state, app, title, artist, album, art_id, colors}` | Now playing, sent when it changes |
+| `input {format, packets_per_s, delay_ms, glitches, peaks, clip, gain_db, auto_gain_db, state}` | Audio input status, at most 10 Hz |
 | `metrics {render_ms, publish_fps, dropped}` | Performance |
 | `update.available / progress / result` | Updates |
 
@@ -83,7 +87,10 @@ All integers are little-endian:
 
 ## Signal frames
 
-`FOLG` magic, a version, a signal index, a count, a timestamp, then float32 values. Used for activity levels and, later, for exporting analysis signals.
+`FOLG` magic, a version, a signal index, a count, a timestamp, then float32 values. Used for:
+- **The beat signal:** `[bpm, confidence, locked, phase, bar_beat]`, sent with every analysed packet while the beat tracker runs. Clients show it.
+- **Activity levels.**
+- Later, exporting analysis signals.
 
 ## Local ingest
 

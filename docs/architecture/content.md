@@ -38,7 +38,12 @@ Each level refers to the levels below it by id. A scene can swap only its palett
 
 ## Built-in library
 
-- Today's built-ins are JavaScript code in the current UI: 12 effects, 18 LedFx-inspired effects, 14 genre presets, 20 reactive presets and 9 palettes.
+- Today's built-ins are JavaScript code in the current UI:
+  - 14 effects, including the beat-based Beat sync and Half-time pulse
+  - 18 LedFx-inspired effects (Bar and Multicolor bar use the beat trigger)
+  - 14 genre presets
+  - 25 reactive presets in 5 groups, including "On the beat"
+  - 9 palettes
 - They become data packs shipped with the node: `folo-core` (palettes, reactions), `folo-genres` and `folo-effects`.
 - Stable ids replace links by name. An alias table keeps existing `default_preset` values (`fx:*`, `genre:*`) working.
 - **Reset all** moves to the controller, so it works from any client and without a UI.

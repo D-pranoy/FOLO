@@ -14,9 +14,9 @@ M1 Foundation ──► M2 Engine ──► M3 Controller core ──► M4 Inte
 | Milestone | Run books | Outcome | Exit criteria |
 |---|---|---|---|
 | **M1 Foundation** | RB-00, RB-01, RB-02 | Documentation, governance, toolchains, contracts and a safety net around today's behaviour | Docs and ADRs merged; CI green on Windows and Linux; golden frames committed; contracts generate types for Python, Rust and TypeScript; frozen test builds run |
-| **M2 Engine** | RB-03, RB-04, RB-05 | The Python source worker: inputs, effects, surfaces, publishing; v1 config migration | Migrated configs render byte-identical to the golden frames |
-| **M3 Controller core** | RB-06, RB-07, RB-08, RB-09, RB-10 | The Rust node: settings, store, API, zones, projection, adapters, content library, Hyperion provider, local source supervision | A migrated setup drives a fake Hyperion byte-identically through the new controller; contract conformance tests pass |
-| **M4 Interface** | RB-11 | The new UI: feature parity, zone editor, wizards, touch-first layouts | Parity checklist complete; end-to-end tests green at phone, tablet and desktop sizes |
+| **M2 Engine** | RB-03, RB-04, RB-05 | The Python source worker: audio inputs (including app capture, gain, auto level), beat tracking, now playing, effects, surfaces, publishing; v1 config migration | Migrated configs render byte-identical to the golden frames; beat-tracker goldens pass |
+| **M3 Controller core** | RB-06, RB-07, RB-08, RB-09, RB-10 | The Rust node: settings, store, API, zones, projection, adapters, reactive modes and the ambient light, content library, Hyperion provider, local source supervision | A migrated setup drives a fake Hyperion byte-identically (ambient fades within ±1) through the new controller; contract conformance tests pass |
+| **M4 Interface** | RB-11 | The new UI: feature parity, glass visual design, zone editor, wizards, touch-first layouts | Parity checklist complete; end-to-end and visual regression tests green at phone, tablet and desktop sizes |
 | **M5 Devices** | RB-12, RB-13 | WLED and Hue providers, Hue zone sync and managed configurations, device administration | Fake-device suites green; live verification passed per the [testing policy](process/testing-policy.md) |
 | **M6 Screen** | RB-14 | Display capture agent and Screen effect on Windows and Linux Wayland | Replay and golden tests green; live verification passed on Windows, KDE and GNOME |
 | **M7 Network** | RB-15, RB-16, RB-17, RB-18 | Remote clients, source pairing and links, OTA updates, Home Assistant readiness | Multi-node integration test green; update dry-runs pass for every install type; client library published |
@@ -29,6 +29,8 @@ M1 Foundation ──► M2 Engine ──► M3 Controller core ──► M4 Inte
   - Home Assistant context as effect inputs
   - a Home Assistant app (formerly add-on) for hosting the controller
 - **More screens and capture:** several screens per source as separate inputs; X11 capture; HDMI capture-card input.
+- **Audio and media:** per-app audio capture on Linux (PipeWire); now playing in Windows service mode through the user-session agent.
+- **Appearance:** a light theme.
 - **More providers:** OpenRGB, LIFX, Nanoleaf, Govee LAN, Twinkly, Art-Net/sACN/DMX, an MQTT bridge, Hue lamps outside entertainment areas.
 - **Platforms:** MSI installer, Windows on ARM, signed Windows releases.
 
