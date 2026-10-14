@@ -1,6 +1,22 @@
+# Python
+__pycache__/
 *.pyc
-.venv
-*.json
-!config.json
+.venv/
+
+# Build outputs
+dist/
+build/
+target/
+node_modules/
+
+# Per-machine state: the studio's live config (and copies of it), the
+# node's data folder, local agent notes and local editor launch settings
+/studio*.json
+/data/
 AGENTS.local.md
 CLAUDE.local.md
+.claude/launch.json
+.claude/settings.local.json
+
+# Test outputs
+*.folopack

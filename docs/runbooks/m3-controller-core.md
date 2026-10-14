@@ -1,0 +1,132 @@
+# M3 Controller core
+
+Status: Accepted · Implementation: Not started
+
+## RB-06: Node core
+
+**Goal:** the Rust `folo` node: settings, store, identity, supervision, status.
+**Depends on:** RB-02, RB-05.
+
+1. **Workspace crates:**
+   - `folo-protocol` (generated)
+   - `folo-settings`, `folo-store`, `folo-identity`, `folo-supervisor`
+   - `folo-node` (binary `folo`)
+2. **Settings:** layering per [control plane](../architecture/control-plane.md#settings-layering):
+   - managed launches vs foreground launches
+   - deployment overrides reported with their source
+   - list settings add up
+   - `folo reload`
+3. **Paths:** user, service, portable and Docker folders ([ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md)).
+4. **Store:**
+   - versioned JSON documents with atomic, debounced writes; revision and server id
+   - clamping validation from the generated schemas
+   - `secrets.json` with owner-only permissions (POSIX mode 0600; Windows ACL)
+5. **Identity:** X25519 static key and node id; `folo status --json`.
+6. **Supervision:**
+   - starts `folo-source` with its settings and checks a heartbeat; restarts with backoff
+   - collects its logs into the node's log
+   - `local_source.enabled` and `role` handling
+7. **Lifecycle:** signals and service stop shut down cleanly (release outputs, stop workers, flush the store). Single instance.
+8. **CLI:** `folo run | status | reload | config import | token show|rotate | pair reset | join <code>`.
+9. **First run:** import a legacy `studio.json` if found (through RB-05).
+
+**Done when:** the node starts, supervises the engine, persists documents, and reports status. Unit and integration tests are green on Windows and Linux.
+
+## RB-07: Controller API
+
+**Goal:** the client API over one port, conforming to the contracts.
+**Depends on:** RB-06.
+
+1. **Server:** axum with tower middleware, on the configured port (default 8777).
+2. **Middleware:**
+   - Host allowlist
+   - client-IP policy: loopback always; private ranges only when remote access is on
+   - JSON-only mutating requests; a body limit
+   - a strict CSP for UI files; `no-store` for the API
+3. **Resources** per [client API](../specs/client-api.md):
+   - `info`, `health`, `state`, `zones`, `show`, `effects`, `providers`, `sources`, `library`, `clients`, `updates`, `system`, `auth`
+   - endpoints whose subsystems arrive later return `501` until their run book lands
+4. **Live WebSocket:** topic subscriptions; binary frames; 30 Hz per client by default; newest data wins under backpressure.
+5. **Static UI:** serve `ui/dist` (from RB-11), with hashed assets cacheable and `index.html` uncacheable.
+6. **Loopback source link endpoint** for the local source. Encryption for remote sources arrives in RB-16.
+7. **Conformance:** run the RB-02 harness (schemathesis and message fixtures) in CI.
+
+**Done when:** conformance tests pass and the live channel streams engine data.
+
+## RB-08: Zones, projection and adapters
+
+**Goal:** the spatial model and the controller half of the pipeline.
+**Depends on:** RB-07.
+
+1. **Geometry crate:**
+   - zones (bounds, reference object, type)
+   - target element positions (point, line, grid with wiring orders); `display` validated only
+   - surface placements (path, plane) and manual mappings
+2. **Projector:**
+   - sample coordinates per element
+   - nearest, bilinear and area-average kernels
+   - gather plans `(elements, taps)`, cached per configuration revision
+   - edge policy; mapping priority and blend
+   - an abstract `Projector` trait with a CPU implementation
+3. **Compositor:**
+   - per-surface source priority lists, activity handling, a 300 ms crossfade, optional blend
+   - newest frame wins; staleness timeout
+   - **reactive mode and ambient light per zone** ([pipeline](../architecture/pipeline.md#controller-stages)):
+     - on / auto / off
+     - solid or breathe (30–100% over 8 s)
+     - fade in 1.5 s eased, fade out 0.15 s
+     - silence from the sources' gain-free activity; the on-pause switch after 0.3 s from media state
+   - golden tests against the current engine's ambient frames (within ±1 per channel)
+4. **Adapter chain** per [capabilities](../architecture/capabilities.md):
+   - resolution, colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, rate (streaming or state with a token bucket), latency delay line
+   - **flash limiter** on by default, with a per-zone opt-out and warning
+5. **Zone activation:** exclusive targets, with conflicts reported for the UI to confirm. Default surfaces and roles per zone type.
+6. **Provider interface:**
+   - discover, describe (targets with capabilities), connect, send, release, status, admin
+   - `ElementOutput` now; `RasterOutput` reserved
+   - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
+7. **Tests:**
+   - geometry unit tests
+   - projection golden images (frames stacked into PNGs)
+   - adapter unit tests, flash limiter tests
+   - parity path: identity adapters reproduce the input bytes exactly
+
+**Done when:** golden images and adapter tests are green, and parity-path frames equal the engine's output.
+
+## RB-09: Content library
+
+**Goal:** packs, roles and the built-in library as data.
+**Depends on:** RB-02, RB-08.
+
+1. **Library service:**
+   - install, list, remove and export `.folopack` files ([pack format](../specs/pack-format.md))
+   - validation with clamping; size limits; provenance on applied items
+2. **Role binding:** automatic matching by capability, size and tags; remembered overrides; fallbacks (strip roles on `canvas.room` through `linear_x`).
+3. **Built-ins:**
+   - convert the RB-01 export into `folo-core`, `folo-genres` and `folo-effects`
+   - stable ids
+   - an alias table for `fx:*` and `genre:*`
+   - check equivalence against the JS builders at several LED counts
+4. **Reset all** runs on the controller with the default scene.
+5. **Distribution:** compute the packs each source needs; push them over the source link, checked by hash.
+6. **Clean-room rewrite gate:** record the LedFx-inspired items that must be rewritten before the first public binary release ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)). Write their behaviour specifications in `docs/specs/effects/` without reference to LedFx code, and reimplement them from those specifications. Golden tests then pin the new behaviour.
+
+**Done when:** the API serves every built-in from packs, equivalence tests pass, and the rewrite gate is tracked.
+
+## RB-10: Hyperion provider
+
+**Goal:** Hyperion on the provider interface, with parity and basic administration.
+**Depends on:** RB-08.
+
+1. **Fake first:** a Hyperion JSON server in tests that records frames and answers `serverinfo`, `clear`, `sourceselect` and `componentstate`.
+2. **Provider:**
+   - JSON client with a reply-draining reader
+   - `color` frames with priority, origin and `duration` 2000
+   - changed frames only, with a 0.5 s keepalive
+   - clear on stop; reconnect with backoff
+3. **Describe:** line targets from `serverinfo` LED rectangles on the zone's TV plane; layout watching with proportional mapping scaling.
+4. **Administration:** instances, priorities with clear, component toggles, automatic source selection, brightness, token support ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)).
+5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio.
+6. **Live verification** per the [testing policy](../process/testing-policy.md).
+
+**Done when:** the end-to-end parity test is green and live verification has passed.
