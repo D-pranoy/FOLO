@@ -13,7 +13,7 @@ The controller's API for clients: the UI, the desktop app, the Android app later
   - Loopback requests need no key.
   - Unauthenticated: `/api/v1/health`, static UI files and the pairing endpoints, which use their own proofs.
 - **Scopes:** `control` (everyday use) and `admin` (configuration, pairing, packs, updates).
-- **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header (RFC 9110).
+- **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header ([RFC 9110, section 15.5.6](https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed)).
 - **Concurrency:** documents carry `revision` and `server_id`. Writers may send `If-Match: <revision>`; without it, the last writer wins, as today.
 - **Body limit:** 1 MB by default.
 

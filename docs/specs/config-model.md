@@ -121,8 +121,8 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 
 | Kind | Settings | Defaults |
 |---|---|---|
-| Hyperion | `host` (up to 255 characters), `port` (1–65535), `priority` (1–253), `origin` (up to 20 characters: Hyperion rejects longer ones) | `localhost`, 19444, 100, `FOLO` |
-| WLED | `host`, `transport` (`ddp` or `dnrgb`), `timeout_s` (1–255, the realtime timeout) | empty, `ddp`, 2 |
+| Hyperion | `host` (up to 255 characters), `port` (1–65535), `priority` (1–253), `origin` (up to 20 characters, [Hyperion's limit](../integrations/hyperion.md)) | `localhost`, 19444, 100, `FOLO` |
+| WLED | `host`, `transport` (`ddp` or `dnrgb`), `timeout_s` (1–255, the [realtime timeout](../integrations/wled.md) in seconds) | empty, `ddp`, 2 |
 | Hue | `bridge_id` (up to 32 characters), `address`, `streaming_mode` (`managed` or `linked`) | empty, empty, `managed` |
 
 - `output`: the output interface, `element` (default); `raster` is reserved.
@@ -152,7 +152,7 @@ Python (the effect engine) and Rust (the node) clamp documents with the same alg
 - **Objects:** properties the schema doesn't define are dropped. A missing property, or one whose JSON type is wrong, takes its default; a missing object is built from its properties' defaults.
 - **Numbers** must be JSON numbers (booleans and strings are the wrong type). Integer fields round to the nearest integer, ties to even. Values outside the range are clamped to it.
 - **Strings** longer than `maxLength` are cut to it (counting code points). Colours must match `#RRGGBB` and are upper-cased; anything else takes the default.
-- **Enums and booleans:** a value outside the list, or anything but `true` or `false`, takes the default.
+- **Enums and booleans:** a value outside the list, or anything but `true` or `false`, takes the default. For example, `beats` other than 0.5, 1, 2 or 4 becomes 1, as `sanitize_segment()` does today.
 - **Arrays:** items are clamped one by one. Items of the wrong type are dropped. Items past `maxItems` are dropped. An array that ends up shorter than its `minItems` takes its default.
 - **Maps** (`layers_by_role`, `providers` in secrets): each value is clamped.
 - **Tagged unions** (`kind`): an unknown kind takes the default of the union; geometry and provider settings follow their owner's `kind`.
@@ -160,7 +160,6 @@ Python (the effect engine) and Rust (the node) clamp documents with the same alg
 - **Cross-field rules** (`x-folo-rules` in the schemas), as `sanitize_segment()` does today:
   - `band`: `freq_lo` and `freq_hi` are swapped when reversed; `freq_hi` is raised to `freq_lo` × 1.01 (at most 24000, with `freq_lo` then set to `freq_hi` / 1.01); both are rounded to 2 decimals.
   - `thresholds`: `threshold` and `ceiling` take the hits limits and defaults when `trigger` is `hits`, else the level limits; `ceiling` is raised to `threshold` + 1; both are rounded to 1 decimal.
-  - `beats`: a value other than 0.5, 1, 2 or 4 becomes 1.
   - `range`: `start` and `end` are swapped when reversed.
 - **Params:** a layer's `params` are clamped with its effect's parameter schema when the effect is known (`audio-visualizer`); otherwise they are kept for the effect to validate.
 
