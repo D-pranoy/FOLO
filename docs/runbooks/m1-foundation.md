@@ -9,7 +9,7 @@ Status: Accepted · Implementation: Partial (RB-00 done; RB-01 awaits its first 
 
 1. **Branch and tag** (maintainer) ([ADR-0030](../decisions/ADR-0030-rebuild-on-a-v1-branch.md), [ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)):
    - Tag `9c17033`, the last legacy commit before any documentation, as `v0.9.0-legacy` (annotated), and create `v1` from it.
-   - Push the branch and that single tag: `git push origin v1 v0.9.0-legacy`. Never `git push --tags`: local clones carry upstream tags such as `v1.1.0`.
+   - Push the branch and that single tag: `git push origin v1 v0.9.0-legacy`. Never `git push --tags`: clones with an upstream remote may carry upstream's tags.
    - From here on, rebuild work lands on `v1` and `main` is frozen.
 2. Merge `docs/` (this documentation set) into `v1`. Point `AGENTS.md` and `README.md` at it ([ADR-0001](../decisions/ADR-0001-documentation-is-the-source-of-truth.md)).
 3. Add `CONTRIBUTING.md` (a summary of the [workflow](../process/workflow.md) and [testing policy](../process/testing-policy.md)), `SECURITY.md` (reporting and threat-model summary), `CODEOWNERS`, and PR and issue templates. The PR template has a "documentation impact" section.
@@ -30,7 +30,7 @@ Status: Accepted · Implementation: Partial (RB-00 done; RB-01 awaits its first 
 
 1. **Python:**
    - `pyproject.toml` with hatchling and hatch-vcs; runtime: what the studio imports, which is numpy, and on Windows only (`sys_platform == "win32"`) cffi for the WASAPI capture and the `winrt` packages for now playing; dev group pytest, hypothesis, pytest-cov, ruff, pyright, pre-commit.
-   - **Version tags:** hatch-vcs uses only FOLO's release tags, through a `tag-pattern` (or `git_describe_command`) that matches `v<semver>` releases. It must exclude `v0.9.0-legacy`, which isn't a valid PEP 440 version, and upstream tags such as `v1.1.0` that local clones carry ([ADR-0019](../decisions/ADR-0019-ci-cd-versioning-and-releases.md)).
+   - **Version tags:** hatch-vcs uses only FOLO's release tags, through a `tag-pattern` (or `git_describe_command`) that matches `v<semver>` releases and excludes `v0.9.0-legacy`, which isn't a valid PEP 440 version. Upstream's old tags aren't excluded by name, which would also hide FOLO's own release of the same version: clones with an upstream remote don't fetch them ([ADR-0019](../decisions/ADR-0019-ci-cd-versioning-and-releases.md), [CONTRIBUTING](../../CONTRIBUTING.md#setting-up)).
    - Run `uv lock`.
    - Ruff rule sets E, F, I, UP, B, SIM, RUF, line length 100. Pyright basic across the repo, strict for new modules.
 2. **Rust:**

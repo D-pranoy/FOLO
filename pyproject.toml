@@ -39,12 +39,12 @@ packaging = ["pyinstaller>=6.22"]
 source = "vcs"
 
 [tool.hatch.version.raw-options]
-# Only FOLO's own release tags count: the legacy tag and the upstream
-# project's old tags (v0.1, v1.0, v1.1.0) are in the history too.
+# Only FOLO's own release tags (v<semver>) count. The pattern also matches
+# v0.9.0-legacy, which isn't a PEP 440 version. Upstream's old tags aren't
+# excluded by name: clones don't fetch them (ADR-0019, CONTRIBUTING.md).
 git_describe_command = [
   "git", "describe", "--dirty", "--tags", "--long",
-  "--match", "v[0-9]*.[0-9]*.[0-9]*",
-  "--exclude", "v1.1.0", "--exclude", "*-legacy",
+  "--match", "v[0-9]*.[0-9]*.[0-9]*", "--exclude", "*-legacy",
 ]
 fallback_version = "0.0.0"
 

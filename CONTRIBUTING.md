@@ -47,6 +47,13 @@ cargo clippy --all-targets -- -D warnings && cargo test
 uv run python studio.py          # the studio, on http://127.0.0.1:8777/
 ```
 
+If you added RanzQ's repository as `upstream`, run this once. Its old tags (`v0.1`, `v1.0`, `v1.1.0`) would otherwise clash with FOLO's releases and versions ([ADR-0019](docs/decisions/ADR-0019-ci-cd-versioning-and-releases.md)):
+
+```
+git config remote.upstream.tagOpt --no-tags   # fetching upstream never brings its tags
+git tag -d v0.1 v1.0 v1.1.0                    # remove the ones already fetched
+```
+
 [README.md](README.md) and [AGENTS.md](AGENTS.md) describe the commands, the architecture of the current code and how to test it. AI coding agents follow AGENTS.md.
 
 ## Testing
