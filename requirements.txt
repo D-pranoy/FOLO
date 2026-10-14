@@ -1,8 +1,4 @@
-commentjson
-webcolors
-protobuf
 numpy
-soundcard
 cffi
 # FOLO studio: now playing (Windows media sessions)
 winrt-runtime

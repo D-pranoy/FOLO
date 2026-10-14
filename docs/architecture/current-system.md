@@ -16,7 +16,7 @@ This is the baseline that the rebuild replaces. Its behaviour is preserved where
 | Now playing | `app/now_playing.py` | Windows media sessions through `winrt` ([below](#now-playing)) |
 | JSON client | `app/json_client.py` | Hyperion JSON `color` commands with `duration` |
 | UI | `web/studio.js` (3,679 lines), `index.html`, `studio.css` (1,003 lines) | Vanilla JS, no framework or build step; works offline; glass visual design |
-| Legacy effects | `main.py`, `effects/`, `lib/`, `app/gui.py`, `app/hyperion.py`, `matrix-config.js`, `toggle.sh`, `.asoundrc`, `config.json` | The upstream Python 2 effect runner, ported to Python 3. Not used by the studio; soundcard is used only here. |
+| Legacy effects | `main.py`, `effects/`, `lib/`, `app/gui.py`, `app/hyperion.py`, `matrix-config.js`, `toggle.sh`, `.asoundrc`, `config.json` | The upstream Python 2 effect runner, ported to Python 3. Not used by the studio; soundcard, commentjson, webcolors and protobuf are used only here. Removed from `v1` in RB-00 ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)); it stays on `main` and in the `v0.9.0-legacy` tag. |
 
 ## Studio server endpoints
 
