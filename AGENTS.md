@@ -16,7 +16,7 @@ The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specificatio
 
 ## What this is
 
-**FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The original effect scripts (`main.py` + `effects/`) still work, ported to Python 3.
+**FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The upstream effect runner (`main.py` + `effects/`), ported to Python 3, is gone from `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)); it stays on `main` and in the `v0.9.0-legacy` tag.
 
 No build step, no test suite, no installed linter (`.pylintrc` exists for style; pylint isn't in the venv).
 
@@ -32,9 +32,8 @@ py -3.13 -m venv .venv
 | Task | Command |
 |---|---|
 | Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json]` |
-| Run a legacy effect | `run.bat --effect color_spectrum` / `--effect vumeter` (type `x` + Enter to stop) |
-| List audio capture devices | `run.bat --list-devices` |
-| Syntax check Python | `.venv\Scripts\python.exe -m py_compile studio.py app\studio_config.py app\studio_engine.py app\audio_input.py app\wasapi.py app\beat_tracker.py app\now_playing.py app\json_client.py main.py` |
+| List audio sources (outputs, inputs, apps playing audio) | the studio's Audio input card, or `GET http://127.0.0.1:8777/api/sources` |
+| Syntax check Python | `.venv\Scripts\python.exe -m py_compile studio.py app\studio_config.py app\studio_engine.py app\audio_input.py app\wasapi.py app\beat_tracker.py app\now_playing.py app\json_client.py` |
 | Syntax check the UI | `node --check web\studio.js` |
 | Ask Hyperion for its LED layout | JSON API: send `{"command":"serverinfo","tan":1}\n` to `localhost:19444` (see `app.json_client.fetch_server_info`) |
 
@@ -116,7 +115,7 @@ Segment fields:
 The JS `enforce()` / `dbLimits()` must stay in sync with these limits.
 
 ### Engine (`app/studio_engine.py`)
-- **Audio input (`app/audio_input.py` on `app/wasapi.py`):** the studio's own WASAPI capture through cffi. soundcard is only used by the legacy effects.
+- **Audio input (`app/audio_input.py` on `app/wasapi.py`):** the studio's own WASAPI capture through cffi.
   - **Sources** (config `audio`):
     - an output's loopback (`device`: `default` or a name)
     - an input (`in:` + name)
@@ -244,15 +243,9 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 
 `config.default_preset` can be a saved id or a built-in id (`genre:*`, `fx:*`). Built-ins only exist in JS, so **Reset all with a default preset happens client-side**, and the server's `/api/reset` is only the fallback.
 
-### Legacy effects (`main.py`, `effects/`, `app/hyperion.py`, `app/gui.py`)
-- **`main.py`:** reads the LED layout from Hyperion (or a classic config file), fakes the Hyperion effect API in `app/hyperion.py`, runs `effects/<name>.py` through `runpy`, and streams over JSON or protobuf. A single-column strip layout is split in half into left and right.
-- **`effects/spectrum_dump.py`:** emulates GStreamer's `spectrum` and `level` elements with numpy over `soundcard`, keeping the original effect code unchanged.
-- **`effects/palette.py`:** the color-list support used by both effects.
-
 ## Changes from upstream (so far)
 
-- **Python 3 / Windows port:** GStreamer replaced by `soundcard` loopback plus numpy emulation. The layout is read from Hyperion.NG instead of `hyperion.config.json`, Hyperion.NG JSON is accepted (short origin, clear by priority), and there are `run.bat` and `--list-devices`.
-- **Legacy effects:** palette support and a Deep Night color set (deep blue, navy, UV, pink, magenta, purple, violet, indigo).
+- **The upstream effect runner** (`main.py`, `effects/`, `lib/`): ported to Python 3 and Windows (`soundcard` loopback with numpy instead of GStreamer, the layout from Hyperion.NG, palettes and a Deep Night color set), then removed on `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)). The port stays on `main` and in the `v0.9.0-legacy` tag.
 - **FOLO studio** (formerly Audio Studio): the `studio.py` server, engine, config store and web UI.
   - **Editing:** spectrum and strip editors, inspector, live meters and a perceptual brightness bar.
   - **Triggers:** Level, Hits and Beat.
@@ -291,7 +284,6 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 - The glitch counter: it was never seen above 0.
 - Studio shutdown with Ctrl+C.
 - Switching audio devices while the studio runs.
-- Legacy `main.py --gui` and protobuf/matrix mode.
 - The beat tracker on real music: it was only measured on synthetic songs. The timing offset that suits the real LEDs isn't known yet.
 - The player controls (previous, play/pause, next): never pressed, to leave the owner's player alone. Only refusing a bad action was tested.
 - Players other than Arc, and album art from a music app (Arc gave a video thumbnail).
