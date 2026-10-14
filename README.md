@@ -49,4 +49,4 @@ Segments and saved presets are saved to `studio.json`. Stop the studio with Ctrl
 
 ### Contribute
 
-Pull requests are welcome but try to follow the style in existing code and check yours using [pylint](https://www.pylint.org/) (`.pylintrc` included).
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
