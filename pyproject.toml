@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling>=1.32", "hatch-vcs>=0.5"]
+build-backend = "hatchling.build"
+
+[project]
+name = "folo-source"
+dynamic = ["version"]
+description = "FOLO's effect engine. Until RB-03 restructures it, this is the FOLO studio."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "FOLO contributors" }]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "numpy>=2.5",
+  # The studio's WASAPI capture (app/wasapi.py); elsewhere capture is unavailable
+  "cffi>=2.1; sys_platform == 'win32'",
+  # Now playing: Windows' media sessions (app/now_playing.py)
+  "winrt-runtime>=3.2; sys_platform == 'win32'",
+  "winrt-Windows.Foundation>=3.2; sys_platform == 'win32'",
+  "winrt-Windows.Foundation.Collections>=3.2; sys_platform == 'win32'",
+  "winrt-Windows.Media.Control>=3.2; sys_platform == 'win32'",
+  "winrt-Windows.Storage.Streams>=3.2; sys_platform == 'win32'",
+  "winrt-Windows.Graphics.Imaging>=3.2; sys_platform == 'win32'",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=9.1",
+  "hypothesis>=6.169",
+  "pytest-cov>=7.1",
+  "ruff>=0.17",
+  "pyright>=1.1.414",
+  "pre-commit>=4.7",
+]
+packaging = ["pyinstaller>=6.22"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# Only FOLO's own release tags count: the legacy tag and the upstream
+# project's old tags (v0.1, v1.0, v1.1.0) are in the history too.
+git_describe_command = [
+  "git", "describe", "--dirty", "--tags", "--long",
+  "--match", "v[0-9]*.[0-9]*.[0-9]*",
+  "--exclude", "v1.1.0", "--exclude", "*-legacy",
+]
+fallback_version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+force-exclude = true  # also when pre-commit passes the files
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"studio.py" = ["E402"]  # the app imports follow the sys.path setup
+"app/wasapi.py" = ["E501"]  # C declarations for cffi, one per line
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.pyright]
+pythonVersion = "3.13"
+# The studio runs on Windows: check it as Windows code on every CI runner
+pythonPlatform = "Windows"
+typeCheckingMode = "basic"
+include = ["studio.py", "app", "scripts", "tests"]
+exclude = ["**/__pycache__"]
+# New modules are checked strictly
+strict = ["scripts", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+
+[tool.codespell]
+skip = "./tests/golden,./tests/corpus,./target,./.venv,*.lock,*.png"
+# kno: WLED's docs domain (kno.wled.ge); emptyY: a variable in web/studio.js; datas: PyInstaller's API
+ignore-words-list = "kno,emptyy,datas"
+
+[tool.coverage.run]
+source = ["app", "studio"]

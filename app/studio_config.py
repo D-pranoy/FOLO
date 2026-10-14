@@ -10,6 +10,7 @@ import os
 import re
 import threading
 import uuid
+from typing import Any
 
 HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
 
@@ -25,21 +26,21 @@ DIRECTIONS = ('forward', 'reverse', 'center', 'edges')
 TRIGGERS = ('level', 'hits', 'beat')
 BEAT_DIVISIONS = (0.5, 1.0, 2.0, 4.0)
 HITS_MAX_DB = 40.0
-MAX_BEAT_OFFSET = 200.0     # ms the beats can be moved earlier (+) or later (-)
+MAX_BEAT_OFFSET = 200.0  # ms the beats can be moved earlier (+) or later (-)
 # Audio reactiveness. on: the segments follow the audio. off: the leds show
 # the ambient light. auto: reactive while sound plays, the ambient light after
 # `idle_after` seconds of silence (see studio_engine.Ambient).
 REACTIVE_MODES = ('on', 'auto', 'off')
 AMBIENT_STYLES = ('solid', 'breathe')
 MAX_IDLE_AFTER = 600.0
-MAX_GAIN = 24.0             # input gain trim, dB either way
+MAX_GAIN = 24.0  # input gain trim, dB either way
 
 MIN_HZ = 10.0
 MAX_HZ = 24000.0
 MIN_DB = -120.0
-MAX_SPEED = 2000.0          # leds per second of the moving modes
+MAX_SPEED = 2000.0  # leds per second of the moving modes
 MAX_SEGMENTS = 64
-MAX_LANES = 16              # rows of the web UI's LED track
+MAX_LANES = 16  # rows of the web UI's LED track
 MAX_LEDS = 2000
 MAX_PRESETS = 60
 MAX_TAGS = 16
@@ -48,10 +49,22 @@ MAX_TAG_LENGTH = 24
 SAVE_DELAY = 0.5
 
 
+def _section(cfg: dict[str, Any], key: str) -> dict[str, Any]:
+    """cfg[key] when it's a dict, else an empty one."""
+    value = cfg.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _list(cfg: dict[str, Any], key: str) -> list[Any]:
+    """cfg[key] when it's a list, else an empty one."""
+    value = cfg.get(key)
+    return value if isinstance(value, list) else []
+
+
 def _float(value, default, lo, hi):
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: an int too big for a float
         return default
     if not math.isfinite(number):
         return default
@@ -59,7 +72,7 @@ def _float(value, default, lo, hi):
 
 
 def _int(value, default, lo, hi):
-    return int(round(_float(value, default, lo, hi)))
+    return round(_float(value, default, lo, hi))
 
 
 def _color(value, default):
@@ -98,7 +111,10 @@ def sanitize_segment(seg, led_count):
     if ceiling < threshold + 1.0:
         ceiling = threshold + 1.0
 
-    palette = [_color(c, None) for c in (seg.get('palette') or [])]
+    palette = seg.get('palette') or []
+    if not isinstance(palette, (list, dict, str)):  # true or a number: nothing to read
+        palette = []
+    palette = [_color(c, None) for c in palette]
     palette = [c for c in palette if c][:16]
 
     mode = seg.get('mode')
@@ -136,7 +152,7 @@ def sanitize_segment(seg, led_count):
     }
 
 
-def sanitize_config(cfg, led_count=None):
+def sanitize_config(cfg: Any, led_count: Any = None) -> dict[str, Any]:
     """
     Returns a complete, valid config. led_count overrides the stored count.
     """
@@ -146,16 +162,16 @@ def sanitize_config(cfg, led_count=None):
         led_count = cfg.get('led_count')
     led_count = _int(led_count, 150, 1, MAX_LEDS)
 
-    audio = cfg.get('audio') if isinstance(cfg.get('audio'), dict) else {}
-    hyperion = cfg.get('hyperion') if isinstance(cfg.get('hyperion'), dict) else {}
-    ambient = cfg.get('ambient') if isinstance(cfg.get('ambient'), dict) else {}
-    beat = cfg.get('beat') if isinstance(cfg.get('beat'), dict) else {}
-    playing = cfg.get('now_playing') if isinstance(cfg.get('now_playing'), dict) else {}
-    segments = cfg.get('segments') if isinstance(cfg.get('segments'), list) else []
+    audio = _section(cfg, 'audio')
+    hyperion = _section(cfg, 'hyperion')
+    ambient = _section(cfg, 'ambient')
+    beat = _section(cfg, 'beat')
+    playing = _section(cfg, 'now_playing')
+    segments = _list(cfg, 'segments')
 
     clean = _sanitize_segments(segments, led_count)
 
-    presets = cfg.get('presets') if isinstance(cfg.get('presets'), list) else []
+    presets = _list(cfg, 'presets')
     presets = [sanitize_preset(p) for p in presets[:MAX_PRESETS] if isinstance(p, dict)]
     preset_ids = set()
     for preset in presets:
@@ -172,7 +188,7 @@ def sanitize_config(cfg, led_count=None):
             'device': str(audio.get('device') or 'default')[:300],
             # an app's exe file name: capture only that app, or everything
             # except it (app_mode), whatever output it plays on
-            'app': str(audio.get('app') or '').strip().lower()[:260],
+            'app': str(audio.get('app') or '').strip().lower()[:260].rstrip(),
             'app_mode': 'except' if audio.get('app_mode') == 'except' else 'only',
             # dB added to the analysis, by hand and (auto_level) to keep the
             # music near the level the presets were tuned on
@@ -240,7 +256,7 @@ def sanitize_tags(tags):
     for tag in tags if isinstance(tags, list) else []:
         if not isinstance(tag, str):
             continue
-        tag = ' '.join(tag.split())[:MAX_TAG_LENGTH]
+        tag = ' '.join(tag.split())[:MAX_TAG_LENGTH].rstrip()
         if tag and tag.lower() not in seen:
             seen.add(tag.lower())
             clean.append(tag)
@@ -255,7 +271,8 @@ def sanitize_preset(preset):
     segments = preset.get('segments') if isinstance(preset.get('segments'), list) else []
     return {
         'id': str(preset.get('id') or new_id())[:64],
-        'name': (str(preset.get('name') or '').strip() or 'My preset')[:40],
+        # Cut, then trimmed again: a cut before a space would change on the next save
+        'name': str(preset.get('name') or '').strip()[:40].rstrip() or 'My preset',
         'desc': str(preset.get('desc') or '')[:200],
         'tags': sanitize_tags(preset.get('tags')),
         'led_count': led_count,
@@ -263,7 +280,7 @@ def sanitize_preset(preset):
     }
 
 
-def scale_segments(cfg, led_count):
+def scale_segments(cfg: dict[str, Any], led_count: int) -> dict[str, Any]:
     """
     Stretches the segments of a sanitized config to a new led count, so they
     keep their share of the strip.
@@ -274,44 +291,73 @@ def scale_segments(cfg, led_count):
     ratio = led_count / float(old_count)
     segments = []
     for seg in cfg['segments']:
-        start = int(round(seg['start'] * ratio))
-        end = max(start, int(round((seg['end'] + 1) * ratio)) - 1)
+        start = round(seg['start'] * ratio)
+        end = max(start, round((seg['end'] + 1) * ratio) - 1)
         segments.append(dict(seg, start=start, end=end))
     return dict(cfg, segments=segments)
 
 
-def default_config(led_count):
+def default_config(led_count: int) -> dict[str, Any]:
     """
     Bass, mids and highs over thirds of the strip.
     """
     third = max(1, led_count // 3)
     segments = [
-        {'name': 'Bass', 'start': 0, 'end': third - 1,
-         'freq_lo': 25, 'freq_hi': 160, 'threshold': -50, 'ceiling': -15,
-         'mode': 'fill', 'direction': 'center', 'peak': True,
-         'attack': 10, 'release': 250,
-         'palette': ['#0033CC', '#000080', '#4B00FF']},
-        {'name': 'Mids', 'start': third, 'end': 2 * third - 1,
-         'freq_lo': 160, 'freq_hi': 2000, 'threshold': -55, 'ceiling': -25,
-         'mode': 'pulse', 'attack': 20, 'release': 300,
-         'palette': ['#FF3399', '#FF00FF', '#800080']},
-        {'name': 'Highs', 'start': 2 * third, 'end': led_count - 1,
-         'freq_lo': 2000, 'freq_hi': 16000, 'threshold': -72, 'ceiling': -40,
-         'mode': 'spectrum', 'attack': 5, 'release': 180,
-         'palette': ['#800080', '#8F00FF', '#4B0082']},
+        {
+            'name': 'Bass',
+            'start': 0,
+            'end': third - 1,
+            'freq_lo': 25,
+            'freq_hi': 160,
+            'threshold': -50,
+            'ceiling': -15,
+            'mode': 'fill',
+            'direction': 'center',
+            'peak': True,
+            'attack': 10,
+            'release': 250,
+            'palette': ['#0033CC', '#000080', '#4B00FF'],
+        },
+        {
+            'name': 'Mids',
+            'start': third,
+            'end': 2 * third - 1,
+            'freq_lo': 160,
+            'freq_hi': 2000,
+            'threshold': -55,
+            'ceiling': -25,
+            'mode': 'pulse',
+            'attack': 20,
+            'release': 300,
+            'palette': ['#FF3399', '#FF00FF', '#800080'],
+        },
+        {
+            'name': 'Highs',
+            'start': 2 * third,
+            'end': led_count - 1,
+            'freq_lo': 2000,
+            'freq_hi': 16000,
+            'threshold': -72,
+            'ceiling': -40,
+            'mode': 'spectrum',
+            'attack': 5,
+            'release': 180,
+            'palette': ['#800080', '#8F00FF', '#4B0082'],
+        },
     ]
     return sanitize_config({'segments': segments}, led_count)
 
 
-class ConfigStore(object):
+class ConfigStore:
     """
     Holds the current config and saves it to disk shortly after changes.
     The config dict is replaced as a whole on every change, so readers can
     use a reference to it without locking.
     """
+
     def __init__(self, path):
         self.path = path
-        self.config = None
+        self.config: dict[str, Any] = {}  # load() fills it
         # Pages compare these to notice changes made elsewhere
         self.server_id = new_id()
         self.revision = 0
@@ -336,7 +382,7 @@ class ConfigStore(object):
                 with open(self.path) as config_file:
                     data = json.load(config_file)
             except (OSError, ValueError) as exc:
-                print('Could not read {}: {}'.format(self.path, exc))
+                print(f'Could not read {self.path}: {exc}')
         stored = sanitize_config(data)
         led_count = lookup_led_count(stored['hyperion']) or stored['led_count']
         if data is None:
@@ -365,7 +411,16 @@ class ConfigStore(object):
         settings and the saved presets.
         """
         fresh = default_config(self.config['led_count'])
-        for key in ('audio', 'hyperion', 'reactive', 'ambient', 'beat', 'now_playing', 'presets', 'default_preset'):
+        for key in (
+            'audio',
+            'hyperion',
+            'reactive',
+            'ambient',
+            'beat',
+            'now_playing',
+            'presets',
+            'default_preset',
+        ):
             fresh[key] = self.config[key]
         return self.update(fresh)
 

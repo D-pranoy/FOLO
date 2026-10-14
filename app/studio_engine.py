@@ -7,19 +7,22 @@ import collections
 import math
 import threading
 import time
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from app import audio_input, beat_tracker, now_playing
 from app.json_client import JsonClient
 
 SAMPLERATE = 48000
-FFT_SIZE = 4096             # spectrum and level triggers: 11.7 Hz bins, 85 ms window
-FAST_FFT_SIZE = 2048        # hits triggers: half the window, so hits light 20-30 ms sooner
+FFT_SIZE = 4096  # spectrum and level triggers: 11.7 Hz bins, 85 ms window
+FAST_FFT_SIZE = 2048  # hits triggers: half the window, so hits light 20-30 ms sooner
 # Samples kept per channel. New audio is appended, and only when the buffer is
 # full do the latest FFT_SIZE samples move back to the front.
 HISTORY = 2 * FFT_SIZE
-MAX_DT = 0.1                # longest step the renderer takes after a gap in the audio
+MAX_DT = 0.1  # longest step the renderer takes after a gap in the audio
 SILENCE_DB = -120.0
 # A channel takes part in the analysis once it gets louder than this. The
 # unused channels of the 5.1 output aren't digital silence, they hiss at -190 dB.
@@ -39,9 +42,9 @@ DISPLAY_BANDS = 192
 DISPLAY_MIN_HZ = 20.0
 DISPLAY_MAX_HZ = 20000.0
 
-AVERAGE_MS = 1000           # "recent average" that hits are measured against
-PEAK_HOLD = 0.5             # seconds the peak marker of fill mode holds
-PEAK_FALL = 0.8             # peak marker fall speed in segment lengths/second
+AVERAGE_MS = 1000  # "recent average" that hits are measured against
+PEAK_HOLD = 0.5  # seconds the peak marker of fill mode holds
+PEAK_FALL = 0.8  # peak marker fall speed in segment lengths/second
 
 # Moving modes ported from LedFx effects. They draw colors per step
 # themselves; drops and wipe fire on hits (the level jumping past HIT_ON
@@ -49,40 +52,40 @@ PEAK_FALL = 0.8             # peak marker fall speed in segment lengths/second
 MOTION_MODES = ('scroll', 'drops', 'scan', 'wipe', 'flow', 'fire')
 HIT_ON = 0.5
 HIT_OFF = 0.25
-HIT_GAP = 0.06              # shortest time between two hits of a segment
+HIT_GAP = 0.06  # shortest time between two hits of a segment
 MAX_DROPS = 32
 
 # Beat trigger: a segment flashes on the beats of beat_tracker, as bright as
 # its band has been lately (its level, holding its peaks for about a beat)
-BEAT_PULSE = 0.04           # seconds a beat holds full brightness at least, so a frame sent shows it
-BEAT_HOLD_FALL = 12.0       # dB per second the held level falls
+BEAT_PULSE = 0.04  # seconds a beat holds full brightness at least, so a frame sent shows it
+BEAT_HOLD_FALL = 12.0  # dB per second the held level falls
 # The beat tracker runs while a segment uses it, and this many seconds after
 # a page last streamed (they show the tempo)
 BEAT_WATCH = 3.0
 
 # Ambient light (config 'reactive' and 'ambient'): what the leds show when
 # audio reactiveness is off, or in auto mode after a stretch of silence
-QUIET_DB = -70.0            # audio counts as silent while its loudest bin is below this
-AMBIENT_FADE_IN = 1.5       # seconds to fade into the ambient light
-AMBIENT_FADE_OUT = 0.15     # seconds back to the reactive look, so the first beat shows
-BREATHE_PERIOD = 8.0        # seconds per breath of the breathe style
-BREATHE_LOW = 0.3           # breathe style: dimmest point, as a share of the color
+QUIET_DB = -70.0  # audio counts as silent while its loudest bin is below this
+AMBIENT_FADE_IN = 1.5  # seconds to fade into the ambient light
+AMBIENT_FADE_OUT = 0.15  # seconds back to the reactive look, so the first beat shows
+BREATHE_PERIOD = 8.0  # seconds per breath of the breathe style
+BREATHE_LOW = 0.3  # breathe style: dimmest point, as a share of the color
 # With now_playing.pause_ambient, auto mode switches as soon as the player is
 # paused and the audio has been quiet this long
 PAUSE_QUIET = 0.3
 # Without audio packets (nothing playing on some devices, or no device) the
 # engine still renders, so the ambient light fades in and keeps going
-IDLE_AFTER = 0.1            # seconds without a packet before idle rendering starts
+IDLE_AFTER = 0.1  # seconds without a packet before idle rendering starts
 IDLE_FPS = 30
 
 # Auto level (config audio.auto_level): follows how loud the music's loud
 # moments are and adds gain so they sit where the presets were tuned (the hot
 # output of the original setup). Silence holds the gain where it was.
-AUTO_TARGET_DB = -15.0      # loudest bin of loud moments, after the gain
+AUTO_TARGET_DB = -15.0  # loudest bin of loud moments, after the gain
 AUTO_MIN_DB = -12.0
 AUTO_MAX_DB = 30.0
-AUTO_RISE_MS = 300          # how fast it follows louder music
-AUTO_FALL_MS = 8000         # and quieter music
+AUTO_RISE_MS = 300  # how fast it follows louder music
+AUTO_FALL_MS = 8000  # and quieter music
 
 # Hyperion drops our colors after this many ms without updates, so the leds
 # are released even if the studio is killed
@@ -123,13 +126,15 @@ def palette_colors(palette):
     return colors
 
 
-def shown_levels(levels):
+def shown_levels(levels: dict[str, tuple[float, float, float]]) -> dict[str, list[float]]:
     """
     Renderer.render's segment levels as the web UI gets them:
     {segment id: [level dB, value, recent average dB]}, rounded.
     """
-    return {seg_id: [round(level, 1), round(value, 3), round(average, 1)]
-            for seg_id, (level, value, average) in levels.items()}
+    return {
+        seg_id: [round(level, 1), round(value, 3), round(average, 1)]
+        for seg_id, (level, value, average) in levels.items()
+    }
 
 
 def smoothing(ms, dt):
@@ -141,7 +146,7 @@ def smoothing(ms, dt):
     return 1.0 - math.exp(-dt * 1000.0 / ms)
 
 
-class Spectrum(object):
+class Spectrum:
     """
     dB levels of the latest samples: `full` from the FFT_SIZE window (the
     spectrum the UI shows, level triggers), `fast` from the FAST_FFT_SIZE one
@@ -149,13 +154,14 @@ class Spectrum(object):
     arrays with one SILENCE_DB bin of padding at the top, which band_levels()
     needs.
     """
-    __slots__ = ('full', 'padded', '_fast', 'offset', '_loudest')
+
+    __slots__ = ('_fast', '_loudest', 'full', 'offset', 'padded')
 
     def __init__(self, full_padded, fast, offset=0.0):
         self.full = full_padded[:-1]
         self.padded = {False: full_padded}
-        self._fast = fast           # padded array, or a function returning it
-        self.offset = offset        # input gain included in the levels
+        self._fast = fast  # padded array, or a function returning it
+        self.offset = offset  # input gain included in the levels
         self._loudest = None
 
     @property
@@ -165,7 +171,7 @@ class Spectrum(object):
             self._loudest = float(self.full.max()) - self.offset
         return self._loudest
 
-    def padded_for(self, fast):
+    def padded_for(self, fast: bool) -> npt.NDArray[np.float64]:
         if fast and fast not in self.padded:
             self.padded[True] = self._fast() if callable(self._fast) else self._fast
         return self.padded[fast]
@@ -186,13 +192,14 @@ _SILENT_FULL.flags.writeable = False
 _SILENT_FAST.flags.writeable = False
 
 
-class Analyzer(object):
+class Analyzer:
     """
     Spectra of the latest samples in dB on the presets' scale (CALIBRATION_DB;
     a full scale sine on both stereo channels is -9.5 dB). The power of every
     channel that carries sound is averaged, so wide stereo and out of phase
     sounds count fully and silent surround channels don't dilute the rest.
     """
+
     def __init__(self):
         self.freqs = np.fft.rfftfreq(FFT_SIZE, 1.0 / SAMPLERATE)
         self.fast_freqs = np.fft.rfftfreq(FAST_FFT_SIZE, 1.0 / SAMPLERATE)
@@ -207,7 +214,7 @@ class Analyzer(object):
         self._recent = collections.deque()
         self._recent_frames = 0
         self._forget_recent()
-        self.offset = 0.0                           # input gain in dB, added to every level
+        self.offset = 0.0  # input gain in dB, added to every level
         self._windows = {}
         for size in (FFT_SIZE, FAST_FFT_SIZE):
             window = np.hanning(size)
@@ -217,7 +224,7 @@ class Analyzer(object):
     @property
     def samples(self):
         """The latest FFT_SIZE samples of every channel (a view)."""
-        return self.history[:, self.end - FFT_SIZE:self.end]
+        return self.history[:, self.end - FFT_SIZE : self.end]
 
     def clear(self):
         """
@@ -248,7 +255,9 @@ class Analyzer(object):
         limit = 10.0 ** ((QUIET_PEAK_DB - offset) / 20.0)
         return all(loudest <= limit for _, loudest in self._recent)
 
-    def push(self, frames, peaks=None):
+    def push(
+        self, frames: npt.ArrayLike, peaks: npt.NDArray[np.floating] | None = None
+    ) -> Spectrum:
         """
         Adds captured frames (samples x channels, or mono) and returns the new
         Spectrum. `peaks`: each channel's peak in the frames, if the caller
@@ -271,7 +280,7 @@ class Analyzer(object):
             if self.end + count > HISTORY:
                 self.history[:, :FFT_SIZE] = self.samples
                 self.end = FFT_SIZE
-            self.history[:, self.end:self.end + count] = frames.T
+            self.history[:, self.end : self.end + count] = frames.T
             self.end += count
         # A channel counts from the first time it carries sound
         if count:
@@ -290,16 +299,20 @@ class Analyzer(object):
         if self._quiet(offset):
             # What the FFTs would return: SILENCE_DB in every bin
             return Spectrum(_SILENT_FULL, _SILENT_FAST, offset)
-        playing = self.history[self._playing, self.end - FFT_SIZE:self.end]
-        return Spectrum(self._db(playing, FFT_SIZE, offset), lambda: self._db(playing, FAST_FFT_SIZE, offset), offset)
+        playing = self.history[self._playing, self.end - FFT_SIZE : self.end]
+        return Spectrum(
+            self._db(playing, FFT_SIZE, offset),
+            lambda: self._db(playing, FAST_FFT_SIZE, offset),
+            offset,
+        )
 
     def _db(self, playing, size, offset):
         window, norm = self._windows[size]
         bins = np.fft.rfft(playing[:, -size:] * window, axis=1)
         # The mean power of the channels, in place to spare temporaries. One
         # or two channels (the usual case) skip the reduction's overhead.
-        power = bins.real ** 2
-        power += bins.imag ** 2
+        power = bins.real**2
+        power += bins.imag**2
         if len(power) == 1:
             power = power[0]
         elif len(power) == 2:
@@ -370,36 +383,37 @@ class Analyzer(object):
         return float(self.band_levels(spectrum, (freq_lo, freq_hi), fast)[0])
 
 
-class SegmentState(object):
+class SegmentState:
     def __init__(self):
         self.value = 0.0
         self.peak = 0.0
         self.peak_age = 0.0
         self.bands = None
         self.average = None
-        self.shown_average = None   # hits: average of the level the UI's spectrum shows
+        self.shown_average = None  # hits: average of the level the UI's spectrum shows
         self.band_average = None
         # moving modes
         self.armed = True
         self.since_hit = 1.0
-        self.buffer = None          # scroll trail colors or fire heat, per step
-        self.carry = 0.0            # fraction of a step not moved yet
-        self.drops = []             # [center step, age s, rgb, strength]
-        self.pos = 0.0              # scan eye start, wipe progress or flow phase
+        self.buffer = None  # scroll trail colors or fire heat, per step
+        self.carry = 0.0  # fraction of a step not moved yet
+        self.drops = []  # [center step, age s, rgb, strength]
+        self.pos = 0.0  # scan eye start, wipe progress or flow phase
         self.heading = 1.0
         self.color_index = 0
         # beat trigger
-        self.held = None            # the band's level, holding its peaks
-        self.pulse = 0.0            # seconds the current beat still shows
+        self.held = None  # the band's level, holding its peaks
+        self.pulse = 0.0  # seconds the current beat still shows
 
 
-class AutoLevel(object):
+class AutoLevel:
     """
     Follows how loud the source's loud moments are (an envelope of the
     loudest bin without gain) and works out the gain that puts them at
     AUTO_TARGET_DB. It keeps tracking while switched off, so switching it on
     takes effect at once.
     """
+
     def __init__(self):
         self.envelope = None
         self.gain = 0.0
@@ -408,7 +422,7 @@ class AutoLevel(object):
         self.envelope = None
         self.gain = 0.0
 
-    def update(self, loudest, dt):
+    def update(self, loudest: float, dt: float) -> None:
         if loudest < QUIET_DB:
             return
         if self.envelope is None:
@@ -418,12 +432,13 @@ class AutoLevel(object):
         self.gain = min(AUTO_MAX_DB, max(AUTO_MIN_DB, AUTO_TARGET_DB - self.envelope))
 
 
-class Ambient(object):
+class Ambient:
     """
     Crossfades between the reactive frame and the ambient light. `amount` is
     0 for the reactive look and 1 for the ambient light; `quiet` counts the
     seconds the audio has been silent.
     """
+
     def __init__(self):
         self.amount = 0.0
         self.quiet = 0.0
@@ -469,49 +484,68 @@ class Ambient(object):
         self.update(config, spectrum, dt, paused)
         if self.amount <= 0.0:
             return out
-        a = self.amount * self.amount * (3.0 - 2.0 * self.amount)     # eased
+        a = self.amount * self.amount * (3.0 - 2.0 * self.amount)  # eased
         return out * (1.0 - a) + self.color(config) * a
 
 
-class _Part(object):
+class _Part:
     """
     What the renderer works out once per config for a segment.
     """
-    __slots__ = ('seg', 'id', 'index', 'hits', 'beats', 'fast_index', 'visible', 'start', 'stop',
-                 'pos', 'steps', 'colors', 'bands')
+
+    __slots__ = (
+        'bands',
+        'beats',
+        'colors',
+        'fast_index',
+        'hits',
+        'id',
+        'index',
+        'pos',
+        'seg',
+        'start',
+        'steps',
+        'stop',
+        'visible',
+    )
 
     def __init__(self, seg, index):
         self.seg = seg
         self.id = seg['id']
-        self.index = index          # in the full window's levels
+        self.index = index  # in the full window's levels
         self.hits = seg['trigger'] == 'hits'
-        self.beats = seg['beats'] if seg['trigger'] == 'beat' else 0.0     # beat trigger: every this many
-        self.fast_index = None      # in the short window's levels (hits)
-        self.visible = False
-        self.start = self.stop = 0  # leds start:stop
-        self.pos = None
-        self.steps = 0
-        self.colors = None          # static gradient of fill, pulse and spectrum
-        self.bands = None           # band plan of spectrum mode
+        # beat trigger: every this many beats
+        self.beats = seg['beats'] if seg['trigger'] == 'beat' else 0.0
+        self.fast_index: int | None = None  # in the short window's levels (hits)
+        self.visible: bool = False
+        self.start: int = 0  # leds start:stop
+        self.stop: int = 0
+        self.pos: npt.NDArray[np.int_] | None = None
+        self.steps: int = 0
+        # static gradient of fill, pulse and spectrum
+        self.colors: npt.NDArray[np.float64] | None = None
+        self.bands: Any = None  # band plan of spectrum mode
 
 
-class Renderer(object):
+class Renderer:
     """
     Turns the spectrum into led colors according to the segments, and blends
     in the ambient light.
     """
-    def __init__(self, analyzer):
+
+    def __init__(self, analyzer, rng=None):
         self.analyzer = analyzer
         self.ambient = Ambient()
         self.states = {}
-        self.rng = np.random.default_rng()
+        # Drops and fire are random; tests pass a seeded generator
+        self.rng = np.random.default_rng() if rng is None else rng
         self._layouts = {}
         self._gradients = {}
-        self._config = None
-        self._colors = ()
-        self._plan = None
+        self._config: dict[str, Any] | None = None
+        self._colors: tuple[str, ...] = ()
+        self._plan: Any = None
 
-    def _prepare(self, config, colors=()):
+    def _prepare(self, config: dict[str, Any], colors: tuple[str, ...] = ()) -> Any:
         """
         The parts of rendering that only change with the config: band plans,
         layouts and colors. The store replaces the config on every change and
@@ -538,10 +572,11 @@ class Renderer(object):
             if part.visible:
                 size = end - start + 1
                 part.start, part.stop = start, end + 1
-                part.pos, part.steps = self.layout(size, seg['direction'])
+                pos, steps = self.layout(size, seg['direction'])
+                part.pos, part.steps = pos, steps
                 mode = seg['mode']
                 if mode in ('fill', 'pulse', 'spectrum'):
-                    t = part.pos / float(max(1, part.steps - 1))
+                    t = pos / float(max(1, steps - 1))
                     part.colors = self.static_gradient(seg['palette'], size, seg['direction'], t)
                 if mode == 'spectrum':
                     edges = np.geomspace(seg['freq_lo'], seg['freq_hi'], part.steps + 1)
@@ -549,7 +584,11 @@ class Renderer(object):
             parts.append(part)
         background = np.array(hex_to_rgb(config['background']), dtype=np.float64)
         base = np.tile(background, (count, 1))
-        full = self.analyzer.bands_plan([(s['freq_lo'], s['freq_hi']) for s in segments]) if segments else None
+        full = (
+            self.analyzer.bands_plan([(s['freq_lo'], s['freq_hi']) for s in segments])
+            if segments
+            else None
+        )
         fast = self.analyzer.bands_plan(fast_bands, fast=True) if fast_bands else None
         self._config = config
         self._colors = colors
@@ -673,8 +712,9 @@ class Renderer(object):
         target = self.shape(levels, seg)
         if state.bands is None or len(state.bands) != steps:
             state.bands = np.zeros(steps)
-        rate = np.where(target > state.bands,
-                        smoothing(seg['attack'], dt), smoothing(seg['release'], dt))
+        rate = np.where(
+            target > state.bands, smoothing(seg['attack'], dt), smoothing(seg['release'], dt)
+        )
         state.bands += (target - state.bands) * rate
         return state.bands
 
@@ -720,7 +760,7 @@ class Renderer(object):
         if moved:
             trail[moved:] = trail[:-moved]
         length = max(1.0, steps * seg['width'] / 100.0)
-        fade = length / max(1.0, seg['speed']) / 3.0     # ~5% left at the end
+        fade = length / max(1.0, seg['speed']) / 3.0  # ~5% left at the end
         trail *= math.exp(-dt / fade)
         color = self.color_at(seg['palette'], state.value) * state.value
         if moved:
@@ -787,7 +827,7 @@ class Renderer(object):
             state.heading = -state.heading
             state.pos = 0.0
         state.pos = min(1.0, max(0.0, state.pos) + seg['speed'] * dt / steps)
-        front = (1.0 - (1.0 - state.pos) ** 2) * steps     # eases out like LedFx
+        front = (1.0 - (1.0 - state.pos) ** 2) * steps  # eases out like LedFx
         k = np.arange(steps) + 0.5
         s = k if state.heading > 0 else steps - k
         behind = np.clip(front - s + 0.5, 0.0, 1.0)
@@ -810,12 +850,14 @@ class Renderer(object):
         size = max(2.0, steps * seg['width'] / 100.0)
         k = np.arange(steps, dtype=np.float64)
         p = state.pos
-        wave = (np.sin(2 * np.pi * (k - p) / size)
-                + 0.8 * np.sin(2 * np.pi * (0.73 * k + 0.41 * p) / (1.37 * size) + 1.7)
-                + 0.5 * np.sin(2 * np.pi * (k + 0.3 * p) / (2.3 * size) + 4.1))
+        wave = (
+            np.sin(2 * np.pi * (k - p) / size)
+            + 0.8 * np.sin(2 * np.pi * (0.73 * k + 0.41 * p) / (1.37 * size) + 1.7)
+            + 0.5 * np.sin(2 * np.pi * (k + 0.3 * p) / (2.3 * size) + 4.1)
+        )
         blob = np.clip((wave / 2.3 + 1.0) / 2.0, 0.0, 1.0) ** 1.6
         hue = k / steps + p / (3.0 * steps) + 0.25 * blob
-        hue = 1.0 - np.abs(np.mod(hue, 2.0) - 1.0)      # back and forth, no seam
+        hue = 1.0 - np.abs(np.mod(hue, 2.0) - 1.0)  # back and forth, no seam
         level = seg['floor'] + (1.0 - seg['floor']) * state.value
         return self.gradient(seg['palette'], hue) * (blob * level)[:, None]
 
@@ -836,14 +878,15 @@ class Renderer(object):
             heat[1:-1] = heat[1:-1] * 0.5 + (heat[:-2] + heat[2:]) * 0.25
         # Cooling, uneven along the segment so the flames form tongues
         k = np.arange(steps) / float(steps)
-        swirl = (np.sin(2 * np.pi * (k / 0.23 - state.pos * 1.3))
-                 * np.sin(2 * np.pi * (k / 0.11 + state.pos * 0.7)))
+        swirl = np.sin(2 * np.pi * (k / 0.23 - state.pos * 1.3)) * np.sin(
+            2 * np.pi * (k / 0.11 + state.pos * 0.7)
+        )
         height = max(2.0, steps * (0.2 + 0.8 * level))
-        fade = height / max(1.0, seg['speed']) / 1.4       # ~25% left at the tip
+        fade = height / max(1.0, seg['speed']) / 1.4  # ~25% left at the tip
         heat *= np.exp(-dt / fade * (1.0 + 0.7 * swirl))
         # Bursts of sparks at the base, more and hotter when it's loud
         if self.rng.random() < 0.3 + 0.5 * level:
-            base = max(1, int(round(steps * 0.06)))
+            base = max(1, round(steps * 0.06))
             burst = self.rng.uniform(0.6, 1.0) * (0.55 + 0.45 * level)
             spread = burst * self.rng.uniform(0.85, 1.0, base)
             np.maximum(heat[:base], spread, out=heat[:base])
@@ -864,7 +907,15 @@ class Renderer(object):
             return self._flow(state, seg, steps, dt)
         return self._fire(state, seg, steps, dt)
 
-    def render(self, config, spectrum, dt, beat=None, colors=(), paused=False):
+    def render(
+        self,
+        config: dict[str, Any],
+        spectrum: Spectrum,
+        dt: float,
+        beat: Any = None,
+        colors: Sequence[str] = (),
+        paused: bool = False,
+    ) -> tuple[bytes, dict[str, tuple[float, float, float]]]:
         """
         Returns the led colors as bytes and
         {segment id: (level dB, value, recent average dB)}, unrounded (see
@@ -913,7 +964,7 @@ class Renderer(object):
 
             if not part.visible:
                 continue
-            leds = out[part.start:part.stop]
+            leds = out[part.start : part.stop]
             mode = seg['mode']
             if mode in MOTION_MODES:
                 rgb = self._motion(mode, state, seg, part.steps, dt, hit, target)[part.pos]
@@ -962,11 +1013,12 @@ def cover_palette(seg, colors):
     return [colors[(first + i) % len(colors)] for i in range(len(seg['palette']))]
 
 
-class HyperionSender(object):
+class HyperionSender:
     """
     Sends the latest frame to hyperion at the configured rate, when it has
     changed or KEEPALIVE seconds after it was last sent.
     """
+
     def __init__(self, engine):
         self.engine = engine
         self.status = 'starting'
@@ -1010,9 +1062,13 @@ class HyperionSender(object):
                 if time.time() < retry_at:
                     time.sleep(0.2)
                     continue
-                client = JsonClient(settings['host'], settings['port'], timeout=3,
-                                    priority=settings['priority'],
-                                    duration=HYPERION_DURATION)
+                client = JsonClient(
+                    settings['host'],
+                    settings['port'],
+                    timeout=3,
+                    priority=settings['priority'],
+                    duration=HYPERION_DURATION,
+                )
                 client.connect()
                 if not client.connected:
                     self.status = 'disconnected'
@@ -1037,12 +1093,13 @@ class HyperionSender(object):
         self._close()
 
 
-class StudioEngine(object):
+class StudioEngine:
     """
     Analyses the audio from the input thread (audio_input.AudioInput) and
     keeps the latest spectrum, led frame and segment levels for the web UI
     and the hyperion sender.
     """
+
     def __init__(self, store):
         self.store = store
         self.analyzer = Analyzer()
@@ -1050,21 +1107,21 @@ class StudioEngine(object):
         self.level = AutoLevel()
         self.beat = beat_tracker.BeatTracker(self.analyzer.freqs, SAMPLERATE)
         self._beat_configs = (None, False)  # (config, whether a segment uses the beat)
-        self._watched = 0.0         # when a page last streamed
+        self._watched = 0.0  # when a page last streamed
         self.media = now_playing.NowPlaying(store)
-        self._track = 0             # the song the beat tracker has been following
+        self._track = 0  # the song the beat tracker has been following
         self.input = audio_input.AudioInput(store, self._on_audio)
-        self._source = None         # the audio source auto level has been following
+        self._source = None  # the audio source auto level has been following
         self.sender = HyperionSender(self)
         self.lock = threading.Lock()
         # The capture thread and the idle thread both render
         self._render_lock = threading.Lock()
         self._last_render = time.perf_counter()
         self.spectrum = Spectrum.silent()
-        self.sequence = 0           # counts analysed packets
-        self._display = (-1, [], {})    # what the UI shows of one packet: (sequence, bands, levels)
+        self.sequence = 0  # counts analysed packets
+        self._display = (-1, [], {})  # what the UI shows of one packet: (sequence, bands, levels)
         self._display_plan = self.analyzer.band_plan(self.analyzer.display_edges)
-        self.frame = b''
+        self.frame: bytes = b''
         self.levels = {}
         self.fps = 0.0
         self.running = False
@@ -1128,9 +1185,13 @@ class StudioEngine(object):
         config = self.store.config
         media = self.media
         frame, levels = self.renderer.render(
-            config, spectrum, dt, beat=self.beat,
+            config,
+            spectrum,
+            dt,
+            beat=self.beat,
             colors=media.colors if config['now_playing']['cover_colors'] else (),
-            paused=media.paused)
+            paused=media.paused,
+        )
         now = self._last_render = time.perf_counter()
         with self.lock:
             self.spectrum = spectrum
@@ -1143,7 +1204,9 @@ class StudioEngine(object):
             self._frames = 0
             self._fps_time = now
 
-    def _on_audio(self, frames, peaks, fresh):
+    def _on_audio(
+        self, frames: npt.NDArray[np.float32], peaks: npt.NDArray[np.float32], fresh: bool
+    ) -> None:
         """
         New audio from the input thread. `fresh` after a gap: the analysis
         window starts empty instead of mixing in what played before it.
@@ -1169,13 +1232,22 @@ class StudioEngine(object):
         """
         self._watched = time.perf_counter()
         with self.lock:
-            spectrum, frame, levels, sequence = self.spectrum, self.frame, self.levels, self.sequence
+            spectrum, frame, levels, sequence = (
+                self.spectrum,
+                self.frame,
+                self.levels,
+                self.sequence,
+            )
         # Every open page streams the same display bands and levels: work them
         # out once per frame, and only for frames that are streamed
         display = self._display
         if display[0] != sequence:
             bands = self.analyzer.planned_levels(spectrum, self._display_plan)
-            display = self._display = (sequence, np.round(bands).astype(int).tolist(), shown_levels(levels))
+            display = self._display = (
+                sequence,
+                np.round(bands).astype(int).tolist(),
+                shown_levels(levels),
+            )
         return {
             'led_count': self.store.config['led_count'],
             'revision': self.store.revision,
@@ -1184,11 +1256,18 @@ class StudioEngine(object):
             'leds': frame.hex(),
             'levels': display[2],
             'status': {
-                'audio': {'ok': self.input.state == 'ok', 'device': self.input.label, 'message': self.input.message},
-                'input': dict(self.input.status(), gain=self.store.config['audio']['gain'],
-                              auto=round(self.level.gain, 1)),
+                'audio': {
+                    'ok': self.input.state == 'ok',
+                    'device': self.input.label,
+                    'message': self.input.message,
+                },
+                'input': dict(
+                    self.input.status(),
+                    gain=self.store.config['audio']['gain'],
+                    auto=round(self.level.gain, 1),
+                ),
                 'hyperion': self.sender.status,
-                'fps': int(round(self.fps)),
+                'fps': round(self.fps),
                 # 0 reactive ... 1 ambient light, and seconds of silence so far
                 'ambient': round(self.renderer.ambient.amount, 3),
                 'quiet': round(self.renderer.ambient.quiet, 1),

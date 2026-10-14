@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+repository = "https://github.com/D-pranoy/FOLO"
+authors = ["FOLO contributors"]
+
+# Every crate is new, so every crate gets clippy's pedantic lints (RB-01 step 2)
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

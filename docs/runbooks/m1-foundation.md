@@ -1,6 +1,6 @@
 # M1 Foundation
 
-Status: Accepted · Implementation: Partial (RB-00 done)
+Status: Accepted · Implementation: Partial (RB-00 done; RB-01 awaits its first CI run)
 
 ## RB-00: Governance and documentation
 
@@ -29,7 +29,7 @@ Status: Accepted · Implementation: Partial (RB-00 done)
 **Depends on:** RB-00.
 
 1. **Python:**
-   - `pyproject.toml` with hatchling and hatch-vcs; runtime numpy; dev group pytest, hypothesis, pytest-cov, ruff, pyright, pre-commit.
+   - `pyproject.toml` with hatchling and hatch-vcs; runtime: what the studio imports, which is numpy, and on Windows only (`sys_platform == "win32"`) cffi for the WASAPI capture and the `winrt` packages for now playing; dev group pytest, hypothesis, pytest-cov, ruff, pyright, pre-commit.
    - **Version tags:** hatch-vcs uses only FOLO's release tags, through a `tag-pattern` (or `git_describe_command`) that matches `v<semver>` releases. It must exclude `v0.9.0-legacy`, which isn't a valid PEP 440 version, and upstream tags such as `v1.1.0` that local clones carry ([ADR-0019](../decisions/ADR-0019-ci-cd-versioning-and-releases.md)).
    - Run `uv lock`.
    - Ruff rule sets E, F, I, UP, B, SIM, RUF, line length 100. Pyright basic across the repo, strict for new modules.
@@ -37,7 +37,10 @@ Status: Accepted · Implementation: Partial (RB-00 done)
    - A Cargo workspace (`crates/`) with `rustfmt.toml`, clippy pedantic for new crates, and `deny.toml`. Toolchain pinned in `rust-toolchain.toml`.
 3. **UI:** reserve `ui/` (scaffolded in RB-11) and `shell/` (scaffolded in RB-19).
 4. **pre-commit:** ruff, ruff-format, rustfmt, whitespace, JSON/YAML/TOML checks, codespell.
-5. **Deterministic renderer:** let `Renderer` accept an injected random generator. Default behaviour must not change.
+5. **Importable engine and deterministic renderer:**
+   - `audio_input` imports `wasapi` only on Windows, and elsewhere reports capture as unavailable, as `now_playing` does without `winrt`. The tests (step 8) and the frozen build's smoke test (step 10) import the engine on Linux. Check that `studio.py` starts on Linux with Hyperion output off and no audio source.
+   - Let `Renderer` accept an injected random generator.
+   - Windows behaviour and default behaviour must not change; the golden frames (step 6) prove it.
 6. **Golden frames:** `scripts/make_golden.py` drives the current `Analyzer` and `Renderer` with deterministic synthetic stereo signals in 480-frame packets, and stores frames under `tests/golden/`.
    - Signals: sweeps, kicks at 120 BPM, pink noise, silence, out-of-phase stereo.
    - Configs:
@@ -49,13 +52,13 @@ Status: Accepted · Implementation: Partial (RB-00 done)
 7. **Built-in export:** `scripts/export_builtins.mjs` evaluates the current UI's builder functions in Node (DOM stubs) for given LED counts. Its output feeds step 6 and RB-09.
 8. **Pinning tests:** `tests/test_golden_renderer.py` asserts byte equality. Hypothesis tests for `sanitize_config` check that it never raises, is idempotent and respects limits, and record an input/output corpus for later ports.
 9. **CI v0** (`ci.yml`), on pushes and pull requests for `v1` and `main`:
-   - Python lint, types and tests on Windows and Ubuntu 22.04 (install `libpulse0`)
+   - Python lint, types and tests on Windows and Ubuntu 22.04
    - Rust fmt, clippy and tests
    - coverage artifact
    - Once it has run, a maintainer adds its jobs as required checks in the `v1` ruleset ([governance](../process/governance.md#repository-settings-checklist)).
    - CodeQL is not a job here; it comes from GitHub's default setup ([allowed actions](../process/governance.md#allowed-actions)).
 10. **Packaging tests:**
-    - A PyInstaller one-dir build of the current studio on Windows and Linux, smoke-tested with `--help`. It must include cffi and the WASAPI module's C definitions, and the `winrt` packages on Windows.
+    - A PyInstaller one-dir build of the current studio on Windows and Linux, smoke-tested with `--help`. On Windows it must include cffi with the WASAPI module's C definitions, and the `winrt` packages.
     - A `cargo build --release` of an empty `folo` binary on every target runner.
 
 **Done when:** CI is green on Windows and Linux, golden frames and the corpus are committed, and the frozen builds start.

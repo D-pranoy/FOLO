@@ -36,12 +36,15 @@ For a bigger idea, open a feature request first, so it can be weighed against th
 
 ## Setting up
 
-The current studio needs Windows and Python 3.13:
+You need [uv](https://docs.astral.sh/uv/) for Python 3.13 and the locked dependencies, and [rustup](https://rustup.rs/) for Rust (the version is pinned in `rust-toolchain.toml`). The current studio runs on Windows; its tests also run on Linux.
 
 ```
-py -3.13 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe studio.py
+uv sync                          # Python 3.13 and the locked dependencies, in .venv
+uv run pre-commit install        # run the hooks on every commit
+uv run pytest                    # golden frames, beat fixtures, sanitize_config
+uv run ruff check . && uv run pyright
+cargo clippy --all-targets -- -D warnings && cargo test
+uv run python studio.py          # the studio, on http://127.0.0.1:8777/
 ```
 
 [README.md](README.md) and [AGENTS.md](AGENTS.md) describe the commands, the architecture of the current code and how to test it. AI coding agents follow AGENTS.md.
@@ -49,7 +52,7 @@ py -3.13 -m venv .venv
 ## Testing
 
 - **Layers:** unit, golden, contract and integration tests run on every pull request, and end-to-end UI tests once the new UI exists. Packaging tests run on release builds; live verification on real devices happens before milestones close and before releases. See [test layers](docs/process/testing-policy.md#test-layers).
-- **Golden files** pin behaviour. Regenerate them only when behaviour is meant to change, and say why in the pull request. Review image goldens visually.
+- **Golden files** pin behaviour: the studio's rendered frames (PNGs in `tests/golden/renderer/`, time down and LEDs across, so they can be looked at), the beat tracker on synthetic songs, and `sanitize_config`'s outputs. Regenerate them with `uv run python scripts/make_golden.py` only when behaviour is meant to change, and say why in the pull request. Review image goldens visually.
 - **No real audio or screens in the repository:** synthetic inputs and recorded fixtures are committed, recordings of real audio or screens never are.
 - **Without sound or devices:** synthetic songs for the beat tracker, an inaudible tone for app capture, fakes for every device and a fake media session for player controls. See [testing without sound or devices](docs/process/testing-policy.md#testing-without-sound-or-devices).
 - **Speed-ups must not change the output:** compare the old and new code on the same audio with seeded randomness, frame for frame.

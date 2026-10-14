@@ -128,7 +128,12 @@ There are also 25 reactive presets in 5 groups (including "On the beat"), 9 pale
 - `revision += 1` outside the lock in `studio_config.py`.
 - File I/O without an explicit encoding.
 - No SIGTERM handling; clean shutdown on Ctrl+C only.
-- The renderer's RNG has no seed.
+- The renderer's RNG has no seed in the studio (tests inject a seeded one since RB-01).
+
+**Beat tracker** (found by the RB-01 fixtures in `tests/beat_fixtures.py`; the quality tests expect them to fail until fixed)
+- On a rock pattern (kicks on 1 and 3) the bar position settles two beats off.
+- After a breakdown without drums, the bar position comes back one beat off.
+- Perfectly clean sustained tones without a beat (two steady sine tones, overlapping synthetic sine chords) lock it: its periodicity measure doesn't depend on level, so tiny regular fluctuations read as a beat. A noise floor 50 dB down, as any recording has, prevented it in tests.
 
 **UI**
 - An Undo button stays clickable after its toast disappears.

@@ -9,22 +9,27 @@ Usage: python studio.py [--port 8777] [--no-browser]
 Stop with Ctrl+C.
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import time
-import argparse
 import threading
+import time
 import webbrowser
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
 from app.json_client import fetch_server_info
 from app.studio_config import ConfigStore
-from app.studio_engine import (StudioEngine, audio_sources, DISPLAY_BANDS,
-                               DISPLAY_MIN_HZ, DISPLAY_MAX_HZ)
+from app.studio_engine import (
+    DISPLAY_BANDS,
+    DISPLAY_MAX_HZ,
+    DISPLAY_MIN_HZ,
+    StudioEngine,
+    audio_sources,
+)
 
 WEB_DIR = os.path.join(BASE_DIR, 'web')
 STATIC_FILES = {
@@ -48,7 +53,7 @@ def fetch_led_count(hyperion, quiet=False):
         return len(fetch_server_info(hyperion['host'], hyperion['port'], timeout=5)['leds'])
     except (OSError, ValueError, KeyError, RuntimeError) as exc:
         if not quiet:
-            print('Could not read the led layout from hyperion: {}'.format(exc))
+            print(f'Could not read the led layout from hyperion: {exc}')
         return None
 
 
@@ -59,15 +64,31 @@ def watch_layout(store, stopping):
     while not stopping.wait(LAYOUT_POLL):
         led_count = fetch_led_count(store.config['hyperion'], quiet=True)
         if led_count and led_count != store.config['led_count']:
-            print('Hyperion now has {} leds (was {}), scaling the segments to fit'.format(
-                led_count, store.config['led_count']))
+            print(
+                'Hyperion now has {} leds (was {}), scaling the segments to fit'.format(
+                    led_count, store.config['led_count']
+                )
+            )
             store.set_led_count(led_count)
+
+
+class StudioServer(ThreadingHTTPServer):
+    """The HTTP server, holding what the handlers use."""
+
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int], store: ConfigStore, engine: StudioEngine) -> None:
+        super().__init__(address, StudioHandler)
+        self.store = store
+        self.engine = engine
+        self.stopping = False
 
 
 class StudioHandler(BaseHTTPRequestHandler):
     server_version = 'HyperionAudioStudio/1.0'
+    server: StudioServer
 
-    def log_message(self, format, *args): # pylint: disable=redefined-builtin
+    def log_message(self, format, *args):  # pylint: disable=redefined-builtin
         pass
 
     def _local(self):
@@ -93,8 +114,8 @@ class StudioHandler(BaseHTTPRequestHandler):
     def _sources():
         try:
             return audio_sources()
-        except Exception as exc: # pylint: disable=broad-except
-            print('Could not list audio sources: {}'.format(exc))
+        except Exception as exc:  # pylint: disable=broad-except
+            print(f'Could not list audio sources: {exc}')
             return {'default': '', 'devices': [], 'apps': []}
 
     def _state(self):
@@ -111,7 +132,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             },
         }
 
-    def do_GET(self): # pylint: disable=invalid-name
+    def do_GET(self):  # pylint: disable=invalid-name
         if not self._local():
             return
         path = self.path.split('?', 1)[0]
@@ -136,7 +157,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         else:
             self._send_json({'error': 'not found'}, 404)
 
-    def do_POST(self): # pylint: disable=invalid-name
+    def do_POST(self):  # pylint: disable=invalid-name
         if not self._local():
             return
         if not self.headers.get('Content-Type', '').startswith('application/json'):
@@ -162,7 +183,9 @@ class StudioHandler(BaseHTTPRequestHandler):
             self._send_json(store.versioned())
         elif path == '/api/media':
             # play_pause, next or previous on the player shown as now playing
-            done = self.server.engine.media.control(data.get('action') if isinstance(data, dict) else None)
+            done = self.server.engine.media.control(
+                data.get('action') if isinstance(data, dict) else None
+            )
             self._send_json({'ok': done})
         elif path == '/api/layout':
             led_count = fetch_led_count(store.config['hyperion'])
@@ -185,7 +208,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         try:
             while not self.server.stopping:
                 payload = json.dumps(self.server.engine.snapshot(), separators=(',', ':'))
-                self.wfile.write('data: {}\n\n'.format(payload).encode('utf-8'))
+                self.wfile.write(f'data: {payload}\n\n'.encode())
                 self.wfile.flush()
                 time.sleep(1.0 / STREAM_FPS)
         except OSError:
@@ -193,19 +216,23 @@ class StudioHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='FOLO, fear of lights out: audio-reactive LEDs for Hyperion')
-    parser.add_argument('--port', type=int, default=8777,
-                        help='port of the web UI (default 8777)')
-    parser.add_argument('--config', default=os.path.join(BASE_DIR, 'studio.json'),
-                        help='segments file (default studio.json)')
-    parser.add_argument('--no-browser', action='store_true',
-                        help="don't open the UI in the browser")
+    parser = argparse.ArgumentParser(
+        description='FOLO, fear of lights out: audio-reactive LEDs for Hyperion'
+    )
+    parser.add_argument('--port', type=int, default=8777, help='port of the web UI (default 8777)')
+    parser.add_argument(
+        '--config',
+        default=os.path.join(BASE_DIR, 'studio.json'),
+        help='segments file (default studio.json)',
+    )
+    parser.add_argument(
+        '--no-browser', action='store_true', help="don't open the UI in the browser"
+    )
     args = parser.parse_args()
 
     store = ConfigStore(args.config)
     store.load(fetch_led_count)
-    print('Leds: {}, segments: {}'.format(store.config['led_count'],
-                                          len(store.config['segments'])))
+    print('Leds: {}, segments: {}'.format(store.config['led_count'], len(store.config['segments'])))
 
     engine = StudioEngine(store)
     engine.start()
@@ -215,14 +242,10 @@ def main():
     watcher.daemon = True
     watcher.start()
 
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), StudioHandler)
-    server.daemon_threads = True
-    server.store = store
-    server.engine = engine
-    server.stopping = False
+    server = StudioServer(('127.0.0.1', args.port), store, engine)
 
-    url = 'http://127.0.0.1:{}/'.format(args.port)
-    print('Audio studio running at {}'.format(url))
+    url = f'http://127.0.0.1:{args.port}/'
+    print(f'Audio studio running at {url}')
     print('Stop with Ctrl+C')
     if not args.no_browser:
         webbrowser.open(url)
