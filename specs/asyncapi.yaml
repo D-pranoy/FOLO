@@ -1,0 +1,419 @@
+asyncapi: 3.0.0
+info:
+  title: FOLO WebSocket channels
+  version: 1.0.0
+  description: |
+    Machine-readable form of the live channel (docs/specs/client-api.md#live-websocket),
+    the source link (docs/specs/source-link.md, contract version 1.0) and ingest,
+    which it must agree with. On the source link every message after the Noise IK
+    handshake travels inside a Noise transport message, prefixed by a type byte:
+    0x01 JSON-RPC 2.0, 0x02 surface frame, 0x03 signal frame. Binary frames are
+    little-endian; their header layouts are in specs/schema/source-link.json
+    (SurfaceFrameHeader, SignalFrameHeader).
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+defaultContentType: application/json
+servers:
+  controller:
+    host: '{host}:{port}'
+    protocol: ws
+    pathname: /api/v1
+    description: Only the controller listens. Default port 8777.
+    variables:
+      host:
+        default: localhost
+      port:
+        default: '8777'
+  sourceLoopback:
+    host: 127.0.0.1:{port}
+    protocol: ws
+    pathname: /api/v1
+    description: A source's local API, loopback only.
+    variables:
+      port:
+        default: '8777'
+channels:
+  live:
+    address: /live
+    servers: [{$ref: '#/servers/controller'}]
+    description: Live data for clients, about 30 Hz each; under backpressure the newest data wins. Authenticated by the session cookie or a first auth message.
+    messages:
+      subscribe: {$ref: '#/components/messages/subscribe'}
+      unsubscribe: {$ref: '#/components/messages/unsubscribe'}
+      auth: {$ref: '#/components/messages/auth'}
+      status: {$ref: '#/components/messages/status'}
+      levels: {$ref: '#/components/messages/levels'}
+      configChanged: {$ref: '#/components/messages/configChanged'}
+      event: {$ref: '#/components/messages/event'}
+      subscribed: {$ref: '#/components/messages/subscribed'}
+      surfaceFrame: {$ref: '#/components/messages/surfaceFrame'}
+      signalFrame: {$ref: '#/components/messages/signalFrame'}
+  sourceLink:
+    address: /source-link
+    servers: [{$ref: '#/servers/controller'}]
+    description: 'Source nodes dial in (subprotocol folo.source-link.v1). Noise_IK_25519_ChaChaPoly_BLAKE2s; the source is the initiator.'
+    messages:
+      hello: {$ref: '#/components/messages/hello'}
+      welcome: {$ref: '#/components/messages/welcome'}
+      config.apply: {$ref: '#/components/messages/config.apply'}
+      packs.install: {$ref: '#/components/messages/packs.install'}
+      packs.remove: {$ref: '#/components/messages/packs.remove'}
+      inputs.list: {$ref: '#/components/messages/inputs.list'}
+      media.control: {$ref: '#/components/messages/media.control'}
+      media.art: {$ref: '#/components/messages/media.art'}
+      pair.with: {$ref: '#/components/messages/pair.with'}
+      pair.remove: {$ref: '#/components/messages/pair.remove'}
+      update.check: {$ref: '#/components/messages/update.check'}
+      update.approve: {$ref: '#/components/messages/update.approve'}
+      update.cancel: {$ref: '#/components/messages/update.cancel'}
+      logs.tail: {$ref: '#/components/messages/logs.tail'}
+      restart: {$ref: '#/components/messages/restart'}
+      rpcResponse: {$ref: '#/components/messages/rpcResponse'}
+      notify.status: {$ref: '#/components/messages/notify.status'}
+      notify.activity: {$ref: '#/components/messages/notify.activity'}
+      notify.media: {$ref: '#/components/messages/notify.media'}
+      notify.input: {$ref: '#/components/messages/notify.input'}
+      notify.metrics: {$ref: '#/components/messages/notify.metrics'}
+      notify.update.available: {$ref: '#/components/messages/notify.update.available'}
+      notify.update.progress: {$ref: '#/components/messages/notify.update.progress'}
+      notify.update.result: {$ref: '#/components/messages/notify.update.result'}
+      surfaceFrame: {$ref: '#/components/messages/surfaceFrame'}
+      signalFrame: {$ref: '#/components/messages/signalFrame'}
+  ingest:
+    address: /ingest/surfaces
+    servers: [{$ref: '#/servers/controller'}]
+    description: Third parties stream surface frames with a scoped ingest token; they appear as a source in the compositor.
+    messages:
+      surfaceFrame: {$ref: '#/components/messages/surfaceFrame'}
+      signalFrame: {$ref: '#/components/messages/signalFrame'}
+  localIngest:
+    address: /ingest/local
+    servers: [{$ref: '#/servers/sourceLoopback'}]
+    description: Programs on a source machine push signals or frames to the local node over loopback, with a local token. Never on the LAN.
+    messages:
+      surfaceFrame: {$ref: '#/components/messages/surfaceFrame'}
+      signalFrame: {$ref: '#/components/messages/signalFrame'}
+operations:
+  liveClientMessages:
+    action: receive
+    channel: {$ref: '#/channels/live'}
+    summary: What clients send.
+    messages:
+      - {$ref: '#/channels/live/messages/subscribe'}
+      - {$ref: '#/channels/live/messages/unsubscribe'}
+      - {$ref: '#/channels/live/messages/auth'}
+  liveServerMessages:
+    action: send
+    channel: {$ref: '#/channels/live'}
+    summary: What the controller sends to subscribed clients.
+    messages:
+      - {$ref: '#/channels/live/messages/status'}
+      - {$ref: '#/channels/live/messages/levels'}
+      - {$ref: '#/channels/live/messages/configChanged'}
+      - {$ref: '#/channels/live/messages/event'}
+      - {$ref: '#/channels/live/messages/subscribed'}
+      - {$ref: '#/channels/live/messages/surfaceFrame'}
+      - {$ref: '#/channels/live/messages/signalFrame'}
+  sourceHandshake:
+    action: receive
+    channel: {$ref: '#/channels/sourceLink'}
+    summary: The source's Noise IK handshake payload, answered by the controller's.
+    messages:
+      - {$ref: '#/channels/sourceLink/messages/hello'}
+    reply:
+      channel: {$ref: '#/channels/sourceLink'}
+      messages:
+        - {$ref: '#/channels/sourceLink/messages/welcome'}
+  sourceCommands:
+    action: send
+    channel: {$ref: '#/channels/sourceLink'}
+    summary: JSON-RPC requests from the controller to the source.
+    messages:
+      - {$ref: '#/channels/sourceLink/messages/config.apply'}
+      - {$ref: '#/channels/sourceLink/messages/packs.install'}
+      - {$ref: '#/channels/sourceLink/messages/packs.remove'}
+      - {$ref: '#/channels/sourceLink/messages/inputs.list'}
+      - {$ref: '#/channels/sourceLink/messages/media.control'}
+      - {$ref: '#/channels/sourceLink/messages/media.art'}
+      - {$ref: '#/channels/sourceLink/messages/pair.with'}
+      - {$ref: '#/channels/sourceLink/messages/pair.remove'}
+      - {$ref: '#/channels/sourceLink/messages/update.check'}
+      - {$ref: '#/channels/sourceLink/messages/update.approve'}
+      - {$ref: '#/channels/sourceLink/messages/update.cancel'}
+      - {$ref: '#/channels/sourceLink/messages/logs.tail'}
+      - {$ref: '#/channels/sourceLink/messages/restart'}
+    reply:
+      channel: {$ref: '#/channels/sourceLink'}
+      messages:
+        - {$ref: '#/channels/sourceLink/messages/rpcResponse'}
+  sourceUpdates:
+    action: receive
+    channel: {$ref: '#/channels/sourceLink'}
+    summary: Notifications and frames from the source.
+    messages:
+      - {$ref: '#/channels/sourceLink/messages/notify.status'}
+      - {$ref: '#/channels/sourceLink/messages/notify.activity'}
+      - {$ref: '#/channels/sourceLink/messages/notify.media'}
+      - {$ref: '#/channels/sourceLink/messages/notify.input'}
+      - {$ref: '#/channels/sourceLink/messages/notify.metrics'}
+      - {$ref: '#/channels/sourceLink/messages/notify.update.available'}
+      - {$ref: '#/channels/sourceLink/messages/notify.update.progress'}
+      - {$ref: '#/channels/sourceLink/messages/notify.update.result'}
+      - {$ref: '#/channels/sourceLink/messages/surfaceFrame'}
+      - {$ref: '#/channels/sourceLink/messages/signalFrame'}
+  ingestFrames:
+    action: receive
+    channel: {$ref: '#/channels/ingest'}
+    messages:
+      - {$ref: '#/channels/ingest/messages/surfaceFrame'}
+      - {$ref: '#/channels/ingest/messages/signalFrame'}
+  localIngestFrames:
+    action: receive
+    channel: {$ref: '#/channels/localIngest'}
+    messages:
+      - {$ref: '#/channels/localIngest/messages/surfaceFrame'}
+      - {$ref: '#/channels/localIngest/messages/signalFrame'}
+components:
+  messages:
+    subscribe:
+      payload: {$ref: 'schema/live.json#/$defs/Subscribe'}
+    unsubscribe:
+      payload: {$ref: 'schema/live.json#/$defs/Unsubscribe'}
+    auth:
+      payload: {$ref: 'schema/live.json#/$defs/Auth'}
+    status:
+      payload: {$ref: 'schema/live.json#/$defs/LiveStatusMessage'}
+    levels:
+      payload: {$ref: 'schema/live.json#/$defs/LiveLevelsMessage'}
+    configChanged:
+      payload: {$ref: 'schema/live.json#/$defs/LiveConfigChangedMessage'}
+    event:
+      payload: {$ref: 'schema/live.json#/$defs/LiveEventMessage'}
+    subscribed:
+      payload: {$ref: 'schema/live.json#/$defs/LiveSubscribedMessage'}
+    surfaceFrame:
+      contentType: application/octet-stream
+      summary: 'FOLS surface frame: a 28-byte header (SurfaceFrameHeader), then width x height x channels x bytes per channel, row-major. Newest wins.'
+      payload: {type: string, format: binary}
+    signalFrame:
+      contentType: application/octet-stream
+      summary: 'FOLG signal frame: a 24-byte header (SignalFrameHeader), then count float32 values.'
+      payload: {type: string, format: binary}
+    hello:
+      summary: The source's handshake payload (CBOR or JSON).
+      payload: {$ref: 'schema/source-link.json#/$defs/Hello'}
+    welcome:
+      summary: The controller's handshake payload.
+      payload: {$ref: 'schema/source-link.json#/$defs/Welcome'}
+    rpcResponse:
+      payload: {$ref: 'schema/source-link.json#/$defs/RpcResponse'}
+    config.apply:
+      summary: The full source configuration.
+      payload: {$ref: '#/components/schemas/ConfigApply'}
+    packs.install:
+      payload: {$ref: '#/components/schemas/PacksInstall'}
+    packs.remove:
+      payload: {$ref: '#/components/schemas/PacksRemove'}
+    inputs.list:
+      payload: {$ref: '#/components/schemas/InputsList'}
+    media.control:
+      payload: {$ref: '#/components/schemas/MediaControl'}
+    media.art:
+      payload: {$ref: '#/components/schemas/MediaArt'}
+    pair.with:
+      summary: Owner only.
+      payload: {$ref: '#/components/schemas/PairWith'}
+    pair.remove:
+      summary: Owner only.
+      payload: {$ref: '#/components/schemas/PairRemove'}
+    update.check:
+      summary: Owner only.
+      payload: {$ref: '#/components/schemas/UpdateCheck'}
+    update.approve:
+      summary: Owner only.
+      payload: {$ref: '#/components/schemas/UpdateApprove'}
+    update.cancel:
+      summary: Owner only.
+      payload: {$ref: '#/components/schemas/UpdateCancel'}
+    logs.tail:
+      payload: {$ref: '#/components/schemas/LogsTail'}
+    restart:
+      payload: {$ref: '#/components/schemas/Restart'}
+    notify.status:
+      payload: {$ref: '#/components/schemas/NotifyStatus'}
+    notify.activity:
+      payload: {$ref: '#/components/schemas/NotifyActivity'}
+    notify.media:
+      payload: {$ref: '#/components/schemas/NotifyMedia'}
+    notify.input:
+      summary: At most 10 Hz.
+      payload: {$ref: '#/components/schemas/NotifyInput'}
+    notify.metrics:
+      payload: {$ref: '#/components/schemas/NotifyMetrics'}
+    notify.update.available:
+      payload: {$ref: '#/components/schemas/NotifyUpdateAvailable'}
+    notify.update.progress:
+      payload: {$ref: '#/components/schemas/NotifyUpdateProgress'}
+    notify.update.result:
+      payload: {$ref: '#/components/schemas/NotifyUpdateResult'}
+  schemas:
+    ConfigApply:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: config.apply}
+        params: {$ref: 'schema/source-link.json#/$defs/ConfigApplyParams'}
+      required: [jsonrpc, id, method, params]
+    PacksInstall:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: packs.install}
+        params: {$ref: 'schema/source-link.json#/$defs/PacksInstallParams'}
+      required: [jsonrpc, id, method, params]
+    PacksRemove:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: packs.remove}
+        params: {$ref: 'schema/source-link.json#/$defs/PacksRemoveParams'}
+      required: [jsonrpc, id, method, params]
+    InputsList:
+      description: Returns an InputList (schema/api.json).
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: inputs.list}
+      required: [jsonrpc, id, method]
+    MediaControl:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: media.control}
+        params: {$ref: 'schema/api.json#/$defs/MediaControl'}
+      required: [jsonrpc, id, method, params]
+    MediaArt:
+      description: Returns a MediaArt (schema/source-link.json).
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: media.art}
+        params: {$ref: 'schema/source-link.json#/$defs/MediaArtParams'}
+      required: [jsonrpc, id, method, params]
+    PairWith:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: pair.with}
+        params: {$ref: 'schema/source-link.json#/$defs/PairWithParams'}
+      required: [jsonrpc, id, method, params]
+    PairRemove:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: pair.remove}
+        params: {$ref: 'schema/source-link.json#/$defs/PairRemoveParams'}
+      required: [jsonrpc, id, method, params]
+    UpdateCheck:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: update.check}
+      required: [jsonrpc, id, method]
+    UpdateApprove:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: update.approve}
+        params: {$ref: 'schema/source-link.json#/$defs/UpdateApproveParams'}
+      required: [jsonrpc, id, method, params]
+    UpdateCancel:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: update.cancel}
+      required: [jsonrpc, id, method]
+    LogsTail:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: logs.tail}
+        params: {$ref: 'schema/source-link.json#/$defs/LogsTailParams'}
+      required: [jsonrpc, id, method, params]
+    Restart:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: restart}
+        params: {$ref: 'schema/source-link.json#/$defs/RestartParams'}
+      required: [jsonrpc, id, method, params]
+    NotifyStatus:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: status}
+        params: {$ref: 'schema/source-link.json#/$defs/StatusParams'}
+      required: [jsonrpc, method, params]
+    NotifyActivity:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: activity}
+        params: {$ref: 'schema/source-link.json#/$defs/ActivityParams'}
+      required: [jsonrpc, method, params]
+    NotifyMedia:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: media}
+        params: {$ref: 'schema/api.json#/$defs/MediaState'}
+      required: [jsonrpc, method, params]
+    NotifyInput:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: input}
+        params: {$ref: 'schema/live.json#/$defs/InputStatus'}
+      required: [jsonrpc, method, params]
+    NotifyMetrics:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: metrics}
+        params: {$ref: 'schema/source-link.json#/$defs/MetricsParams'}
+      required: [jsonrpc, method, params]
+    NotifyUpdateAvailable:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: update.available}
+        params: {$ref: 'schema/source-link.json#/$defs/UpdateParams'}
+      required: [jsonrpc, method, params]
+    NotifyUpdateProgress:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: update.progress}
+        params: {$ref: 'schema/source-link.json#/$defs/UpdateParams'}
+      required: [jsonrpc, method, params]
+    NotifyUpdateResult:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: update.result}
+        params: {$ref: 'schema/source-link.json#/$defs/UpdateParams'}
+      required: [jsonrpc, method, params]

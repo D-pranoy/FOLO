@@ -1,5 +1,7 @@
 # The runtime dependencies for pip. pyproject.toml (and uv.lock) is the source: keep this in step.
 numpy
+# The models generated from specs/schema (app/contracts)
+pydantic
 # FOLO studio: the WASAPI capture (app/wasapi.py)
 cffi; sys_platform == "win32"
 # FOLO studio: now playing (Windows media sessions)

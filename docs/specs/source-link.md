@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Not started · Contract version: 1.0
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) · Contract version: 1.0
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -41,7 +41,7 @@ Each message starts with one byte for its type:
 
 | Method | Purpose |
 |---|---|
-| `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. `publish` holds the requested resolution, rate and compression per surface. |
+| `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. `publish` holds the requested resolution, rate and compression per surface, and the signals to send with their signal index. |
 | `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | Content distribution |
 | `inputs.list` | The inputs available on the source (outputs, inputs, apps playing audio, screens, media session), with capabilities |
 | `media.control {action}` | `play_pause`, `next` or `previous` on the shown media session |
@@ -87,7 +87,21 @@ All integers are little-endian:
 
 ## Signal frames
 
-`FOLG` magic, a version, a signal index, a count, a timestamp, then float32 values. Used for:
+All integers are little-endian:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | Magic `FOLG` |
+| 4 | 1 | Frame format version (1) |
+| 5 | 1 | Reserved (0) |
+| 6 | 2 | Signal index (as assigned in `config.apply`, or by `subscribed` on the live channel) |
+| 8 | 2 | Count of values |
+| 10 | 2 | Reserved (0) |
+| 12 | 4 | Sequence number |
+| 16 | 8 | Timestamp in µs (source monotonic clock) |
+| 24 | 4 × count | Values, float32 |
+
+The same newest-wins delivery applies. Used for:
 - **The beat signal:** `[bpm, confidence, locked, phase, bar_beat]`, sent with every analysed packet while the beat tracker runs. Clients show it.
 - **Activity levels.**
 - Later, exporting analysis signals.

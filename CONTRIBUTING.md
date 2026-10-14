@@ -36,14 +36,16 @@ For a bigger idea, open a feature request first, so it can be weighed against th
 
 ## Setting up
 
-You need [uv](https://docs.astral.sh/uv/) for Python 3.13 and the locked dependencies, and [rustup](https://rustup.rs/) for Rust (the version is pinned in `rust-toolchain.toml`). The current studio runs on Windows; its tests also run on Linux.
+You need [uv](https://docs.astral.sh/uv/) for Python 3.13 and the locked dependencies, [rustup](https://rustup.rs/) for Rust (the version is pinned in `rust-toolchain.toml`), and [Node.js](https://nodejs.org/) 22 for the contract tools in `ui/`. The current studio runs on Windows; its tests also run on Linux.
 
 ```
 uv sync                          # Python 3.13 and the locked dependencies, in .venv
 uv run pre-commit install        # run the hooks on every commit
-uv run pytest                    # golden frames, beat fixtures, sanitize_config
+uv run pytest                    # golden frames, beat fixtures, sanitize_config, contracts
 uv run ruff check . && uv run pyright
 cargo clippy --all-targets -- -D warnings && cargo test
+(cd ui && npm ci)                # openapi-typescript, the AsyncAPI parser, TypeScript
+uv run python scripts/contracts.py check
 uv run python studio.py          # the studio, on http://127.0.0.1:8777/
 ```
 
@@ -63,6 +65,7 @@ git tag -d v0.1 v1.0 v1.1.0                    # remove the ones already fetched
 - **No real audio or screens in the repository:** synthetic inputs and recorded fixtures are committed, recordings of real audio or screens never are.
 - **Without sound or devices:** synthetic songs for the beat tracker, an inaudible tone for app capture, fakes for every device and a fake media session for player controls. See [testing without sound or devices](docs/process/testing-policy.md#testing-without-sound-or-devices).
 - **Speed-ups must not change the output:** compare the old and new code on the same audio with seeded randomness, frame for frame.
+- **Contracts:** the schemas, OpenAPI and AsyncAPI documents in `specs/` follow the prose in `docs/specs/`, and tests fail when the two disagree. After changing `specs/`, run `uv run python scripts/contracts.py generate` and commit the generated code with it. The Python and Rust clampers must agree on the shared corpus.
 
 ## Real devices
 

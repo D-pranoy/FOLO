@@ -20,11 +20,11 @@ Once a machine-readable form exists, it and this prose must agree. A change to e
 
 | Specification | Implementation |
 |---|---|
-| [Configuration model](config-model.md) | Not started |
-| [Client API](client-api.md) | Not started |
-| [Source link](source-link.md) | Not started |
+| [Configuration model](config-model.md) | Partial (JSON Schemas, generated types and clampers; nothing reads the documents yet) |
+| [Client API](client-api.md) | Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; no server yet) |
+| [Source link](source-link.md) | Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) |
 | [Pairing and connect](pairing-and-connect.md) | Not started |
-| [Pack format](pack-format.md) | Not started |
+| [Pack format](pack-format.md) | Partial (JSON Schemas for the manifest and the items; nothing reads packs yet) |
 | [UI parity checklist](ui-parity-checklist.md) | Not started |
 | [Visual design](visual-design.md) | Partial (the current studio implements the visual language) |
 

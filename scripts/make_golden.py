@@ -6,8 +6,9 @@ Writes the golden files that pin today's engine (RB-01 steps 6 to 8):
 - tests/golden/renderer/: rendered frames as PNGs plus manifest.json
 - tests/golden/beat/: what the beat tracker does on the fixtures
 - tests/corpus/sanitize_config.json: sanitize_config inputs and outputs
+- tests/corpus/clamp_v2.json: the v2 clamper's inputs and outputs (RB-02)
 
-    uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus]
+    uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp]
 
 Regenerate only when behaviour is meant to change, and say why in the pull
 request (docs/process/testing-policy.md#golden-files).
@@ -26,9 +27,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tests import beat_fixtures, golden_cases, sanitize_corpus  # noqa: E402
+from tests import beat_fixtures, clamp_corpus, golden_cases, sanitize_corpus  # noqa: E402
 
-PARTS = ('renderer', 'beat', 'corpus')
+PARTS = ('renderer', 'beat', 'corpus', 'clamp')
 
 
 def export_builtins() -> None:
@@ -96,6 +97,13 @@ def write_corpus() -> None:
     print(f'wrote {len(entries)} entries to {sanitize_corpus.CORPUS.relative_to(ROOT)}')
 
 
+def write_clamp_corpus() -> None:
+    entries = clamp_corpus.generate()
+    clamp_corpus.CORPUS.parent.mkdir(parents=True, exist_ok=True)
+    clamp_corpus.CORPUS.write_text(clamp_corpus.dumps(entries), encoding='utf-8')
+    print(f'wrote {len(entries)} entries to {clamp_corpus.CORPUS.relative_to(ROOT)}')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -123,6 +131,8 @@ def main() -> None:
         write_beat()
     if 'corpus' in parts:
         write_corpus()
+    if 'clamp' in parts:
+        write_clamp_corpus()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,15 @@
+{
+ "version": [
+  "1.0"
+ ],
+ "node": {
+  "id": "k3x92mfaq7tc0pzr",
+  "name": "Desk PC",
+  "version": "1.0.0",
+  "platform": "windows-x64"
+ },
+ "purpose": {
+  "kind": "invite",
+  "proof": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c"
+ }
+}

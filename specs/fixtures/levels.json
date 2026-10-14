@@ -1,0 +1,13 @@
+{
+ "type": "levels",
+ "data": {
+  "source": "local",
+  "layers": {
+   "l1": [
+    -30.5,
+    0.62,
+    -34.1
+   ]
+  }
+ }
+}

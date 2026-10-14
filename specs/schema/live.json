@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Live",
+  "description": "Messages of the live WebSocket, GET /api/v1/live (docs/specs/client-api.md#live-websocket, specs/asyncapi.yaml). Binary frames use the source link's formats (source-link.json).",
+  "$defs": {
+    "LiveClientMessage": {
+      "oneOf": [
+        {"$ref": "#/$defs/Subscribe"},
+        {"$ref": "#/$defs/Unsubscribe"},
+        {"$ref": "#/$defs/Auth"}
+      ]
+    },
+    "Subscribe": {
+      "type": "object",
+      "properties": {"subscribe": {"type": "array", "items": {"$ref": "#/$defs/Topic"}, "maxItems": 64}},
+      "required": ["subscribe"],
+      "additionalProperties": false
+    },
+    "Unsubscribe": {
+      "type": "object",
+      "properties": {"unsubscribe": {"type": "array", "items": {"$ref": "#/$defs/Topic"}, "maxItems": 64}},
+      "required": ["unsubscribe"],
+      "additionalProperties": false
+    },
+    "Auth": {
+      "description": "For clients without the session cookie: the first message.",
+      "type": "object",
+      "properties": {
+        "auth": {
+          "type": "object",
+          "properties": {"key": {"type": "string", "maxLength": 128}},
+          "required": ["key"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["auth"],
+      "additionalProperties": false
+    },
+    "Topic": {
+      "description": "status, or a topic about one source, zone, surface or target.",
+      "type": "string",
+      "pattern": "^(status|(spectrum|levels|beat|media|input):[^\\s:]{1,64}|zone:[^\\s:]{1,64}|surface:[^\\s:]{1,64}|target:[^\\s:]{1,64})$",
+      "x-folo-topics": ["status", "spectrum:<source>", "levels:<source>", "beat:<source>", "media:<source>", "input:<source>", "zone:<id>", "surface:<id>", "target:<id>"]
+    },
+    "LiveServerMessage": {
+      "description": "{type, data}. Binary topics (spectrum, surface, target) arrive as frames.",
+      "oneOf": [
+        {"$ref": "#/$defs/LiveStatusMessage"},
+        {"$ref": "#/$defs/LiveLevelsMessage"},
+        {"$ref": "#/$defs/LiveConfigChangedMessage"},
+        {"$ref": "#/$defs/LiveEventMessage"},
+        {"$ref": "#/$defs/LiveSubscribedMessage"}
+      ]
+    },
+    "LiveStatusMessage": {
+      "type": "object",
+      "properties": {"type": {"const": "status"}, "data": {"$ref": "#/$defs/LiveStatus"}},
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    "LiveLevelsMessage": {
+      "type": "object",
+      "properties": {"type": {"const": "levels"}, "data": {"$ref": "#/$defs/Levels"}},
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    "LiveConfigChangedMessage": {
+      "type": "object",
+      "properties": {"type": {"const": "config_changed"}, "data": {"$ref": "#/$defs/ConfigChanged"}},
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    "LiveEventMessage": {
+      "type": "object",
+      "properties": {"type": {"const": "event"}, "data": {"$ref": "#/$defs/Event"}},
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    "LiveSubscribedMessage": {
+      "type": "object",
+      "properties": {"type": {"const": "subscribed"}, "data": {"$ref": "#/$defs/Subscribed"}},
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    "LiveStatus": {
+      "type": "object",
+      "properties": {
+        "sources": {"type": "object", "additionalProperties": {"$ref": "#/$defs/SourceLive"}},
+        "zones": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ZoneLive"}},
+        "providers": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ProviderLive"}}
+      },
+      "required": ["sources", "zones", "providers"],
+      "additionalProperties": false
+    },
+    "SourceLive": {
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["connected", "connecting", "offline", "pending"]},
+        "input": {"$ref": "#/$defs/InputStatus"},
+        "beat": {"$ref": "#/$defs/BeatStatus"},
+        "media": {"$ref": "api.json#/$defs/MediaState"}
+      },
+      "required": ["state"],
+      "additionalProperties": false
+    },
+    "InputStatus": {
+      "description": "The audio input: format, packets/s, delay, glitches, meters, gain.",
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["ok", "waiting", "error", "starting"]},
+        "label": {"type": "string", "maxLength": 300},
+        "message": {"type": "string", "maxLength": 500},
+        "rate": {"type": "integer", "minimum": 0},
+        "channels": {"type": "integer", "minimum": 0},
+        "event_driven": {"type": "boolean"},
+        "packets_per_s": {"type": "number", "minimum": 0},
+        "delay_ms": {"type": "number", "minimum": 0},
+        "glitches": {"type": "integer", "minimum": 0},
+        "peaks_db": {"description": "Falling peak meters of the first two channels, dBFS.", "type": "array", "items": {"type": "number"}, "maxItems": 2},
+        "clip": {"type": "boolean"},
+        "gain_db": {"type": "number"},
+        "auto_gain_db": {"type": "number"}
+      },
+      "required": ["state", "label", "rate", "channels", "packets_per_s", "delay_ms", "glitches", "peaks_db", "clip", "gain_db", "auto_gain_db"],
+      "additionalProperties": false
+    },
+    "BeatStatus": {
+      "type": "object",
+      "properties": {
+        "bpm": {"description": "0 until a tempo is found.", "type": "number", "minimum": 0},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "locked": {"type": "boolean"},
+        "phase": {"description": "Share of the current beat gone by.", "type": "number", "minimum": 0, "maximum": 1},
+        "bar_beat": {"description": "Beat of the bar, 0 for the first.", "type": "integer", "minimum": 0, "maximum": 3}
+      },
+      "required": ["bpm", "confidence", "locked", "phase", "bar_beat"],
+      "additionalProperties": false
+    },
+    "ZoneLive": {
+      "type": "object",
+      "properties": {
+        "active": {"type": "boolean"},
+        "ambient": {"description": "0 reactive ... 1 ambient light.", "type": "number", "minimum": 0, "maximum": 1},
+        "quiet_s": {"description": "Seconds of silence so far.", "type": "number", "minimum": 0}
+      },
+      "required": ["active", "ambient", "quiet_s"],
+      "additionalProperties": false
+    },
+    "ProviderLive": {
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["connected", "disconnected", "off", "error"]},
+        "message": {"type": "string", "maxLength": 500}
+      },
+      "required": ["state"],
+      "additionalProperties": false
+    },
+    "Levels": {
+      "type": "object",
+      "properties": {
+        "source": {"type": "string", "maxLength": 64},
+        "layers": {
+          "description": "Layer id: [band level dB, value 0-1, recent average dB].",
+          "type": "object",
+          "additionalProperties": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
+        }
+      },
+      "required": ["source", "layers"],
+      "additionalProperties": false
+    },
+    "ConfigChanged": {
+      "type": "object",
+      "properties": {
+        "document": {"enum": ["zones", "show", "providers", "sources", "clients", "library", "system"]},
+        "revision": {"type": "integer", "minimum": 0}
+      },
+      "required": ["document", "revision"],
+      "additionalProperties": false
+    },
+    "Event": {
+      "description": "Job progress and update states.",
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string", "maxLength": 64},
+        "id": {"type": "string", "maxLength": 64},
+        "state": {"type": "string", "maxLength": 32},
+        "progress": {"type": "number", "minimum": 0, "maximum": 1},
+        "message": {"type": "string", "maxLength": 1000}
+      },
+      "required": ["kind", "id", "state"],
+      "additionalProperties": false
+    },
+    "Subscribed": {
+      "type": "object",
+      "properties": {
+        "topics": {
+          "description": "Topic: the frame index its binary frames carry (absent for JSON topics).",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {"index": {"type": "integer", "minimum": 0, "maximum": 65535}},
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["topics"],
+      "additionalProperties": false
+    }
+  }
+}

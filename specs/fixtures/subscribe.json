@@ -1,0 +1,8 @@
+{
+ "subscribe": [
+  "status",
+  "spectrum:local",
+  "beat:local",
+  "zone:living"
+ ]
+}

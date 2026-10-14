@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PackManifest",
+  "description": "folo-pack.json, the manifest of a .folopack, and the items packs contain (docs/specs/pack-format.md, docs/architecture/content.md). Items are clamped like documents; a pack that fails structural validation is rejected as a whole.",
+  "type": "object",
+  "properties": {
+    "id": {"description": "author/name.", "type": "string", "pattern": "^[a-z0-9-]{1,32}/[a-z0-9-]{1,32}$", "default": "local/my-presets"},
+    "version": {"description": "Semantic version.", "type": "string", "maxLength": 32, "default": "1.0.0"},
+    "folo": {"description": "Compatible FOLO versions, for example >=1.0 <2.", "type": "string", "maxLength": 64, "default": ">=1.0 <2"},
+    "name": {"$ref": "common.json#/$defs/Name", "default": "Pack"},
+    "description": {"type": "string", "maxLength": 500, "default": ""},
+    "license": {"description": "An SPDX identifier.", "type": "string", "maxLength": 64, "default": "MIT"},
+    "authors": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 16, "default": []},
+    "tags": {"$ref": "common.json#/$defs/Tags", "default": []},
+    "requires": {
+      "description": "author/pack: version range.",
+      "type": "object",
+      "additionalProperties": {"type": "string", "maxLength": 64},
+      "default": {}
+    },
+    "contents": {"$ref": "#/$defs/PackContents", "default": {}},
+    "files": {
+      "description": "path: sha256 (hex) of every file in the pack.",
+      "type": "object",
+      "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "default": {}
+    },
+    "previews": {
+      "description": "Item id: preview file.",
+      "type": "object",
+      "additionalProperties": {"type": "string", "maxLength": 255},
+      "default": {}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "PackContents": {
+      "type": "object",
+      "properties": {
+        "palettes": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 500, "default": []},
+        "reactions": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 500, "default": []},
+        "looks": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 500, "default": []},
+        "scenes": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 500, "default": []},
+        "zone_templates": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 500, "default": []}
+      },
+      "additionalProperties": false
+    },
+    "PaletteColor": {
+      "description": "#RRGGBB, or a white stop in kelvin such as 2700K.",
+      "type": "string",
+      "pattern": "^(#[0-9A-Fa-f]{6}|[0-9]{4,5}K)$",
+      "x-folo-color": true
+    },
+    "PaletteItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Palette"},
+        "colors": {"type": "array", "items": {"$ref": "#/$defs/PaletteColor"}, "minItems": 1, "maxItems": 16, "default": ["#FFFFFF"]}
+      },
+      "additionalProperties": false
+    },
+    "ReactionItem": {
+      "description": "How a layer responds to audio: the band, trigger and response fields of the audio-visualizer parameters.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Reaction"},
+        "params": {"description": "A subset of the audio-visualizer parameters, clamped when a look or layer uses it.", "type": "object", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "LookItem": {
+      "description": "One layer's full recipe: an effect, its parameters, and optional reaction and palette items (author/pack:item).",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Look"},
+        "effect": {"$ref": "show.json#/$defs/EffectRef", "default": {}},
+        "params": {"type": "object", "default": {}},
+        "reaction": {"type": "string", "maxLength": 160, "default": ""},
+        "palette": {"type": "string", "maxLength": 160, "default": ""}
+      },
+      "additionalProperties": false
+    },
+    "SceneItem": {
+      "description": "A scene in a pack. It never contains addresses or keys.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+        "scene": {"$ref": "show.json#/$defs/Scene", "default": {}},
+        "fallbacks": {
+          "description": "Role: the role to use when the zone has no surface for it.",
+          "type": "object",
+          "additionalProperties": {"type": "string", "maxLength": 64},
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "ZoneTemplateItem": {
+      "description": "A target layout without provider bindings, addresses or keys.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+        "zone": {"$ref": "zones.json#/$defs/Zone", "default": {}}
+      },
+      "additionalProperties": false
+    }
+  }
+}

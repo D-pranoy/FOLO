@@ -1,0 +1,9 @@
+{
+ "jsonrpc": "2.0",
+ "method": "metrics",
+ "params": {
+  "render_ms": 0.4,
+  "publish_fps": 100.0,
+  "dropped": 0
+ }
+}

@@ -1,0 +1,388 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Api",
+  "description": "Request and response bodies of the client API (docs/specs/client-api.md, specs/openapi.yaml). Documents in them are clamped as usual; these shapes aren't stored.",
+  "$defs": {
+    "Error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {"description": "A machine code, for example not_found.", "type": "string", "maxLength": 64},
+            "message": {"type": "string", "maxLength": 1000},
+            "details": {"type": "object"}
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["error"],
+      "additionalProperties": false
+    },
+    "Health": {
+      "description": "Liveness only: no configuration.",
+      "type": "object",
+      "properties": {"status": {"const": "ok"}},
+      "required": ["status"],
+      "additionalProperties": false
+    },
+    "ContractVersions": {
+      "type": "object",
+      "properties": {
+        "client_api": {"type": "string", "maxLength": 32},
+        "source_link": {"type": "string", "maxLength": 32},
+        "config": {"type": "integer", "minimum": 2}
+      },
+      "required": ["client_api", "source_link", "config"],
+      "additionalProperties": false
+    },
+    "Info": {
+      "type": "object",
+      "properties": {
+        "id": {"description": "The node id (docs/specs/pairing-and-connect.md#identity).", "type": "string", "maxLength": 64},
+        "name": {"type": "string", "maxLength": 64},
+        "version": {"type": "string", "maxLength": 32},
+        "role": {"enum": ["controller", "source"]},
+        "contracts": {"$ref": "#/$defs/ContractVersions"},
+        "capabilities": {"description": "Optional features, for example hue or screen.", "type": "array", "items": {"type": "string", "maxLength": 32}}
+      },
+      "required": ["id", "name", "version", "role", "contracts", "capabilities"],
+      "additionalProperties": false
+    },
+    "State": {
+      "description": "Everything a UI needs to start, in one call.",
+      "type": "object",
+      "properties": {
+        "info": {"$ref": "#/$defs/Info"},
+        "zones": {"$ref": "zones.json"},
+        "show": {"$ref": "show.json"},
+        "providers": {"$ref": "providers.json"},
+        "sources": {"$ref": "sources.json"},
+        "effects": {"type": "array", "items": {"$ref": "#/$defs/EffectInfo"}},
+        "system": {"$ref": "#/$defs/SystemSettings"}
+      },
+      "required": ["info", "zones", "show", "providers", "sources", "effects", "system"],
+      "additionalProperties": false
+    },
+    "EffectInfo": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "version": {"type": "string", "maxLength": 32},
+        "name": {"type": "string", "maxLength": 64},
+        "description": {"type": "string", "maxLength": 500},
+        "inputs": {"description": "Inputs it reads: audio, beat, media, screen, generator.", "type": "array", "items": {"type": "string", "maxLength": 32}},
+        "params_schema": {"description": "JSON Schema of its parameters; the UI's inspector is built from it.", "type": "object"},
+        "min_elements": {"type": "integer", "minimum": 1}
+      },
+      "required": ["id", "version", "name", "inputs", "params_schema", "min_elements"],
+      "additionalProperties": false
+    },
+    "ZoneActivation": {
+      "type": "object",
+      "properties": {
+        "zone": {"type": "string", "maxLength": 64},
+        "active": {"type": "boolean"},
+        "conflicts": {"description": "Active zones that share targets with it; activating asks before taking them over.", "type": "array", "items": {"type": "string", "maxLength": 64}}
+      },
+      "required": ["zone", "active", "conflicts"],
+      "additionalProperties": false
+    },
+    "ActivateRequest": {
+      "type": "object",
+      "properties": {
+        "take_over": {"description": "Take shared targets from the zones that drive them.", "type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    },
+    "TestRequest": {
+      "type": "object",
+      "properties": {
+        "pattern": {"enum": ["identify", "sweep", "position"], "default": "identify"},
+        "target": {"description": "A target id; empty for all of the zone's targets.", "type": "string", "maxLength": 64, "default": ""},
+        "seconds": {"type": "number", "minimum": 1, "maximum": 60, "default": 5}
+      },
+      "additionalProperties": false
+    },
+    "SceneApplyRequest": {
+      "type": "object",
+      "properties": {
+        "zone": {"type": "string", "maxLength": 64},
+        "roles": {"description": "Role: surface id, overriding the automatic match.", "type": "object", "additionalProperties": {"type": "string", "maxLength": 64}, "default": {}}
+      },
+      "required": ["zone"],
+      "additionalProperties": false
+    },
+    "DiscoverRequest": {
+      "type": "object",
+      "properties": {
+        "kinds": {"type": "array", "items": {"enum": ["hyperion", "wled", "hue"]}, "default": ["hyperion", "wled", "hue"]}
+      },
+      "additionalProperties": false
+    },
+    "DiscoveredDevice": {
+      "type": "object",
+      "properties": {
+        "kind": {"enum": ["hyperion", "wled", "hue"]},
+        "id": {"type": "string", "maxLength": 64},
+        "name": {"type": "string", "maxLength": 64},
+        "address": {"type": "string", "maxLength": 255}
+      },
+      "required": ["kind", "id", "name", "address"],
+      "additionalProperties": false
+    },
+    "HuePairing": {
+      "description": "Progress of the link-button pairing.",
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["waiting", "paired", "failed", "timeout"]},
+        "message": {"type": "string", "maxLength": 500}
+      },
+      "required": ["state", "message"],
+      "additionalProperties": false
+    },
+    "InputList": {
+      "description": "The inputs available on a source.",
+      "type": "object",
+      "properties": {
+        "default_output": {"type": "string", "maxLength": 300},
+        "outputs": {"type": "array", "items": {"$ref": "#/$defs/AudioDevice"}},
+        "inputs": {"type": "array", "items": {"$ref": "#/$defs/AudioDevice"}},
+        "apps": {"type": "array", "items": {"$ref": "#/$defs/AudioApp"}},
+        "screens": {"type": "array", "items": {"$ref": "#/$defs/Screen"}},
+        "media": {"description": "Whether now playing can be read on this source.", "type": "boolean"}
+      },
+      "required": ["default_output", "outputs", "inputs", "apps", "screens", "media"],
+      "additionalProperties": false
+    },
+    "AudioDevice": {
+      "type": "object",
+      "properties": {"name": {"type": "string", "maxLength": 300}},
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "AudioApp": {
+      "type": "object",
+      "properties": {
+        "exe": {"type": "string", "maxLength": 260},
+        "name": {"type": "string", "maxLength": 260},
+        "active": {"description": "Playing audio right now.", "type": "boolean"},
+        "peak": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "required": ["exe", "name", "active", "peak"],
+      "additionalProperties": false
+    },
+    "Screen": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 128},
+        "name": {"type": "string", "maxLength": 128},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "primary": {"type": "boolean"}
+      },
+      "required": ["id", "name", "width", "height", "primary"],
+      "additionalProperties": false
+    },
+    "MediaState": {
+      "description": "Now playing on a source.",
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["off", "unavailable", "error", "none", "playing", "paused", "stopped"]},
+        "app": {"type": "string", "maxLength": 260},
+        "title": {"type": "string", "maxLength": 500},
+        "artist": {"type": "string", "maxLength": 500},
+        "album": {"type": "string", "maxLength": 500},
+        "art": {"description": "Album art id, 0 without art. Clients add it to the art URL to bust caches.", "type": "integer", "minimum": 0},
+        "colors": {"description": "Up to five colours picked from the art.", "type": "array", "items": {"$ref": "common.json#/$defs/Color"}, "maxItems": 5}
+      },
+      "required": ["state", "app", "title", "artist", "album", "art", "colors"],
+      "additionalProperties": false
+    },
+    "MediaControl": {
+      "type": "object",
+      "properties": {"action": {"enum": ["play_pause", "next", "previous"]}},
+      "required": ["action"],
+      "additionalProperties": false
+    },
+    "InviteRequest": {
+      "type": "object",
+      "properties": {
+        "uses": {"description": "More than 1 only for handover invites.", "type": "integer", "minimum": 1, "maximum": 64, "default": 1},
+        "ttl_s": {"type": "integer", "minimum": 60, "maximum": 86400, "default": 600}
+      },
+      "additionalProperties": false
+    },
+    "Invite": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "code": {"description": "folo://join?... (docs/specs/pairing-and-connect.md#source-invite).", "type": "string", "maxLength": 2048},
+        "expires": {"description": "Unix seconds.", "type": "integer", "minimum": 0}
+      },
+      "required": ["id", "code", "expires"],
+      "additionalProperties": false
+    },
+    "NodeSummary": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "name": {"type": "string", "maxLength": 64},
+        "version": {"type": "string", "maxLength": 32},
+        "platform": {"type": "string", "maxLength": 64}
+      },
+      "required": ["id", "name", "version", "platform"],
+      "additionalProperties": false
+    },
+    "JoinRequest": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "node": {"$ref": "#/$defs/NodeSummary"},
+        "verification_code": {"description": "6 digits, also shown on the source.", "type": "string", "pattern": "^[0-9]{6}$"},
+        "expires": {"type": "integer", "minimum": 0}
+      },
+      "required": ["id", "node", "verification_code", "expires"],
+      "additionalProperties": false
+    },
+    "ClientRequest": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "maxLength": 64},
+        "scope": {"enum": ["control", "admin"], "default": "control"}
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "ClientInfo": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "name": {"type": "string", "maxLength": 64},
+        "scope": {"enum": ["control", "admin"]},
+        "created": {"type": "integer", "minimum": 0},
+        "last_used": {"type": "integer", "minimum": 0}
+      },
+      "required": ["id", "name", "scope", "created", "last_used"],
+      "additionalProperties": false
+    },
+    "IssuedClient": {
+      "description": "Shown once: the key isn't stored.",
+      "type": "object",
+      "properties": {
+        "client": {"$ref": "#/$defs/ClientInfo"},
+        "key": {"description": "folo_c_ + 32 random bytes, base64url.", "type": "string", "pattern": "^folo_c_[A-Za-z0-9_-]{43}$"},
+        "connect_code": {"description": "folo://connect?... (docs/specs/pairing-and-connect.md#client-connect-code).", "type": "string", "maxLength": 2048}
+      },
+      "required": ["client", "key", "connect_code"],
+      "additionalProperties": false
+    },
+    "PackInfo": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 65},
+        "version": {"type": "string", "maxLength": 32},
+        "name": {"type": "string", "maxLength": 64},
+        "description": {"type": "string", "maxLength": 500},
+        "builtin": {"description": "folo-core, folo-genres and folo-effects can't be removed.", "type": "boolean"},
+        "items": {"type": "integer", "minimum": 0, "maximum": 500}
+      },
+      "required": ["id", "version", "name", "description", "builtin", "items"],
+      "additionalProperties": false
+    },
+    "UpdateStatus": {
+      "type": "object",
+      "properties": {
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/NodeUpdate"}}
+      },
+      "required": ["nodes"],
+      "additionalProperties": false
+    },
+    "NodeUpdate": {
+      "type": "object",
+      "properties": {
+        "node": {"type": "string", "maxLength": 64},
+        "role": {"enum": ["controller", "source"]},
+        "current": {"type": "string", "maxLength": 32},
+        "available": {"description": "Empty when up to date.", "type": "string", "maxLength": 32},
+        "state": {"enum": ["idle", "available", "downloading", "ready", "installing", "failed"]},
+        "approved": {"type": "boolean"}
+      },
+      "required": ["node", "role", "current", "available", "state", "approved"],
+      "additionalProperties": false
+    },
+    "UpdatePolicy": {
+      "type": "object",
+      "properties": {
+        "channel": {"enum": ["stable", "beta"], "default": "stable"},
+        "mode": {"description": "What happens when an update is found.", "enum": ["notify", "approve", "automatic"], "default": "approve"}
+      },
+      "additionalProperties": false
+    },
+    "SystemSettings": {
+      "type": "object",
+      "properties": {
+        "remote_access": {"$ref": "node.json#/$defs/RemoteAccess"},
+        "start_at_sign_in": {"description": "Loopback only.", "type": "boolean"},
+        "service": {"$ref": "#/$defs/ServiceStatus"}
+      },
+      "required": ["remote_access", "start_at_sign_in", "service"],
+      "additionalProperties": false
+    },
+    "ServiceStatus": {
+      "description": "Loopback only.",
+      "type": "object",
+      "properties": {
+        "installed": {"type": "boolean"},
+        "running": {"type": "boolean"}
+      },
+      "required": ["installed", "running"],
+      "additionalProperties": false
+    },
+    "LogLines": {
+      "type": "object",
+      "properties": {
+        "lines": {"type": "array", "items": {"$ref": "#/$defs/LogLine"}}
+      },
+      "required": ["lines"],
+      "additionalProperties": false
+    },
+    "LogLine": {
+      "type": "object",
+      "properties": {
+        "time_ms": {"description": "Unix milliseconds.", "type": "integer", "minimum": 0},
+        "level": {"enum": ["error", "warn", "info", "debug", "trace"]},
+        "source": {"description": "node, or a source id or worker.", "type": "string", "maxLength": 64},
+        "message": {"type": "string", "maxLength": 10000}
+      },
+      "required": ["time_ms", "level", "source", "message"],
+      "additionalProperties": false
+    },
+    "LoginRequest": {
+      "type": "object",
+      "properties": {"key": {"type": "string", "maxLength": 128}},
+      "required": ["key"],
+      "additionalProperties": false
+    },
+    "AuthRequest": {
+      "description": "Approval-based client pairing (docs/specs/pairing-and-connect.md#approval-based-client-pairing).",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "maxLength": 64},
+        "request_id": {"description": "Random, shown to the client's user.", "type": "string", "maxLength": 64}
+      },
+      "required": ["name", "request_id"],
+      "additionalProperties": false
+    },
+    "AuthResult": {
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["pending", "approved", "rejected", "expired"]},
+        "key": {"description": "Only when approved.", "type": "string", "maxLength": 128}
+      },
+      "required": ["state"],
+      "additionalProperties": false
+    }
+  }
+}

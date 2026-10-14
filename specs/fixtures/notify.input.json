@@ -1,0 +1,22 @@
+{
+ "jsonrpc": "2.0",
+ "method": "input",
+ "params": {
+  "state": "ok",
+  "label": "Speakers",
+  "message": "",
+  "rate": 48000,
+  "channels": 2,
+  "event_driven": true,
+  "packets_per_s": 100.0,
+  "delay_ms": 2.1,
+  "glitches": 0,
+  "peaks_db": [
+   -12.5,
+   -13.0
+  ],
+  "clip": false,
+  "gain_db": 0.0,
+  "auto_gain_db": 0.0
+ }
+}

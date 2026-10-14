@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StudioV1",
+  "description": "Today's studio.json (version 1), as sanitize_config() in app/studio_config.py makes it. Version 1 keeps its own, looser rules (docs/specs/config-model.md#clamping-rules): this schema records its limits and defaults for the migration (RB-05), and the v1 module of folo-protocol ports the rules. threshold and ceiling show the widest range; the trigger picks the limits.",
+  "type": "object",
+  "properties": {
+    "version": {"type": "integer", "minimum": 1, "maximum": 1, "default": 1},
+    "led_count": {"type": "integer", "minimum": 1, "maximum": 2000, "default": 150},
+    "audio": {"$ref": "#/$defs/V1Audio", "default": {}},
+    "hyperion": {"$ref": "#/$defs/V1Hyperion", "default": {}},
+    "master": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+    "background": {"$ref": "common.json#/$defs/Color", "default": "#000000"},
+    "reactive": {"enum": ["on", "auto", "off"], "default": "on"},
+    "ambient": {"$ref": "#/$defs/V1Ambient", "default": {}},
+    "beat": {"$ref": "#/$defs/V1Beat", "default": {}},
+    "now_playing": {"$ref": "#/$defs/V1NowPlaying", "default": {}},
+    "segments": {"type": "array", "items": {"$ref": "#/$defs/V1Segment"}, "maxItems": 64, "default": []},
+    "presets": {"type": "array", "items": {"$ref": "#/$defs/V1Preset"}, "maxItems": 60, "default": []},
+    "default_preset": {"type": "string", "maxLength": 64, "default": ""}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "V1Audio": {
+      "type": "object",
+      "properties": {
+        "device": {"type": "string", "maxLength": 300, "default": "default"},
+        "app": {"type": "string", "maxLength": 260, "default": ""},
+        "app_mode": {"enum": ["only", "except"], "default": "only"},
+        "gain": {"type": "number", "minimum": -24, "maximum": 24, "default": 0},
+        "auto_level": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    },
+    "V1Hyperion": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean", "default": true},
+        "host": {"type": "string", "maxLength": 255, "default": "localhost"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 19444},
+        "priority": {"type": "integer", "minimum": 1, "maximum": 253, "default": 100},
+        "fps": {"type": "integer", "minimum": 5, "maximum": 60, "default": 40}
+      },
+      "additionalProperties": false
+    },
+    "V1Ambient": {
+      "type": "object",
+      "properties": {
+        "color": {"$ref": "common.json#/$defs/Color", "default": "#4B00FF"},
+        "style": {"enum": ["solid", "breathe"], "default": "solid"},
+        "level": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.35},
+        "idle_after": {"type": "number", "minimum": 1, "maximum": 600, "default": 5}
+      },
+      "additionalProperties": false
+    },
+    "V1Beat": {
+      "type": "object",
+      "properties": {
+        "offset": {"type": "integer", "minimum": -200, "maximum": 200, "default": 0}
+      },
+      "additionalProperties": false
+    },
+    "V1NowPlaying": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean", "default": true},
+        "cover_colors": {"type": "boolean", "default": false},
+        "pause_ambient": {"type": "boolean", "default": true}
+      },
+      "additionalProperties": false
+    },
+    "V1Segment": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 32, "default": ""},
+        "name": {"type": "string", "maxLength": 40, "default": "Segment"},
+        "enabled": {"type": "boolean", "default": true},
+        "solo": {"type": "boolean", "default": false},
+        "start": {"type": "integer", "minimum": 0, "maximum": 1999, "default": 0},
+        "end": {"type": "integer", "minimum": 0, "maximum": 1999, "default": 1999},
+        "freq_lo": {"type": "number", "minimum": 10, "maximum": 24000, "default": 60},
+        "freq_hi": {"type": "number", "minimum": 10, "maximum": 24000, "default": 250},
+        "trigger": {"enum": ["level", "hits", "beat"], "default": "level"},
+        "beats": {"enum": [0.5, 1, 2, 4], "default": 1},
+        "threshold": {"type": "number", "minimum": -120, "maximum": 39, "default": -60},
+        "ceiling": {"type": "number", "minimum": -119, "maximum": 40, "default": -25},
+        "gain": {"type": "number", "minimum": 0.1, "maximum": 8, "default": 1},
+        "curve": {"type": "number", "minimum": 0.2, "maximum": 5, "default": 1},
+        "attack": {"type": "number", "minimum": 0, "maximum": 2000, "default": 15},
+        "release": {"type": "number", "minimum": 0, "maximum": 5000, "default": 200},
+        "floor": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "mode": {"enum": ["fill", "pulse", "spectrum", "shift", "scroll", "drops", "scan", "wipe", "flow", "fire"], "default": "fill"},
+        "direction": {"enum": ["forward", "reverse", "center", "edges"], "default": "forward"},
+        "peak": {"type": "boolean", "default": false},
+        "speed": {"type": "number", "minimum": 0, "maximum": 2000, "default": 120},
+        "width": {"type": "number", "minimum": 1, "maximum": 100, "default": 20},
+        "palette": {"type": "array", "items": {"$ref": "common.json#/$defs/Color"}, "minItems": 1, "maxItems": 16, "default": ["#FFFFFF"]},
+        "lane": {"type": "integer", "minimum": -1, "maximum": 15, "default": -1}
+      },
+      "additionalProperties": false
+    },
+    "V1Preset": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64, "default": ""},
+        "name": {"type": "string", "maxLength": 40, "default": "My preset"},
+        "desc": {"type": "string", "maxLength": 200, "default": ""},
+        "tags": {"$ref": "common.json#/$defs/Tags", "default": []},
+        "led_count": {"type": "integer", "minimum": 1, "maximum": 2000, "default": 150},
+        "segments": {"type": "array", "items": {"$ref": "#/$defs/V1Segment"}, "maxItems": 64, "default": []}
+      },
+      "additionalProperties": false
+    }
+  }
+}

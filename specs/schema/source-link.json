@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourceLink",
+  "description": "Messages of the source link, contract version 1.0 (docs/specs/source-link.md, specs/asyncapi.yaml): the handshake payloads, JSON-RPC 2.0 messages, and the layout of surface and signal frames.",
+  "$defs": {
+    "Hello": {
+      "description": "The source's handshake payload.",
+      "type": "object",
+      "properties": {
+        "version": {"description": "Source-link versions it supports.", "type": "array", "items": {"type": "string", "maxLength": 16}, "minItems": 1},
+        "node": {"$ref": "api.json#/$defs/NodeSummary"},
+        "purpose": {"$ref": "#/$defs/Purpose"}
+      },
+      "required": ["version", "node", "purpose"],
+      "additionalProperties": false
+    },
+    "Purpose": {
+      "oneOf": [
+        {"type": "object", "properties": {"kind": {"const": "connect"}}, "required": ["kind"], "additionalProperties": false},
+        {"type": "object", "properties": {"kind": {"const": "invite"}, "proof": {"description": "HMAC-SHA256(invite secret, handshake hash), base64url.", "type": "string", "maxLength": 64}}, "required": ["kind", "proof"], "additionalProperties": false},
+        {"type": "object", "properties": {"kind": {"const": "join_request"}}, "required": ["kind"], "additionalProperties": false}
+      ]
+    },
+    "Welcome": {
+      "description": "The controller's handshake payload.",
+      "type": "object",
+      "properties": {
+        "version": {"description": "The version chosen.", "type": "string", "maxLength": 16},
+        "result": {"enum": ["ok", "pending", "rejected"]},
+        "verification_code": {"description": "For join requests: 6 digits shown on both sides.", "type": "string", "pattern": "^[0-9]{6}$"}
+      },
+      "required": ["version", "result"],
+      "additionalProperties": false
+    },
+    "RpcRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "id": {"type": ["integer", "string"]},
+        "method": {"$ref": "#/$defs/Method"},
+        "params": {"type": "object"}
+      },
+      "required": ["jsonrpc", "id", "method"],
+      "additionalProperties": false
+    },
+    "RpcNotification": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "method": {"$ref": "#/$defs/NotificationMethod"},
+        "params": {"type": "object"}
+      },
+      "required": ["jsonrpc", "method"],
+      "additionalProperties": false
+    },
+    "RpcResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "id": {"type": ["integer", "string"]},
+        "result": {},
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string"},
+            "data": {}
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["jsonrpc", "id"],
+      "additionalProperties": false
+    },
+    "Method": {
+      "description": "Controller -> source.",
+      "enum": ["config.apply", "packs.install", "packs.remove", "inputs.list", "media.control", "media.art", "pair.with", "pair.remove", "update.check", "update.approve", "update.cancel", "logs.tail", "restart"]
+    },
+    "NotificationMethod": {
+      "description": "Source -> controller.",
+      "enum": ["status", "activity", "media", "input", "metrics", "update.available", "update.progress", "update.result"]
+    },
+    "ConfigApplyParams": {
+      "type": "object",
+      "properties": {
+        "revision": {"type": "integer", "minimum": 0},
+        "inputs": {"$ref": "sources.json#/$defs/SourceInputs"},
+        "surfaces": {"type": "array", "items": {"$ref": "#/$defs/AssignedSurface"}, "maxItems": 64},
+        "scenes": {"type": "array", "items": {"$ref": "show.json#/$defs/Scene"}},
+        "publish": {"$ref": "#/$defs/Publish"}
+      },
+      "required": ["revision", "inputs", "surfaces", "scenes", "publish"],
+      "additionalProperties": false
+    },
+    "AssignedSurface": {
+      "type": "object",
+      "properties": {
+        "index": {"description": "The surface index in its frames.", "type": "integer", "minimum": 0, "maximum": 65535},
+        "surface": {"$ref": "zones.json#/$defs/Surface"},
+        "scene": {"description": "The scene id whose layers it renders.", "type": "string", "maxLength": 64},
+        "role": {"type": "string", "maxLength": 64}
+      },
+      "required": ["index", "surface", "scene", "role"],
+      "additionalProperties": false
+    },
+    "Publish": {
+      "type": "object",
+      "properties": {
+        "surfaces": {"type": "array", "items": {"$ref": "#/$defs/PublishSurface"}, "maxItems": 64},
+        "signals": {"type": "array", "items": {"$ref": "#/$defs/PublishSignal"}, "maxItems": 64}
+      },
+      "required": ["surfaces", "signals"],
+      "additionalProperties": false
+    },
+    "PublishSurface": {
+      "type": "object",
+      "properties": {
+        "index": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "width": {"type": "integer", "minimum": 1, "maximum": 2000},
+        "height": {"description": "Canvases are capped at 128 x 72 on the network.", "type": "integer", "minimum": 1, "maximum": 72},
+        "rate_hz": {"type": "number", "minimum": 1, "maximum": 200},
+        "pixel_format": {"enum": ["rgb8", "rgb16", "rgbf32"]},
+        "lz4": {"type": "boolean"}
+      },
+      "required": ["index", "width", "height", "rate_hz", "pixel_format", "lz4"],
+      "additionalProperties": false
+    },
+    "PublishSignal": {
+      "type": "object",
+      "properties": {
+        "name": {"description": "beat, activity, ...", "type": "string", "maxLength": 64},
+        "index": {"type": "integer", "minimum": 0, "maximum": 65535}
+      },
+      "required": ["name", "index"],
+      "additionalProperties": false
+    },
+    "PacksInstallParams": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 65},
+        "version": {"type": "string", "maxLength": 32},
+        "url": {"type": "string", "maxLength": 2048},
+        "inline": {"description": "The .folopack, base64.", "type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "required": ["id", "version", "sha256"],
+      "additionalProperties": false
+    },
+    "PacksRemoveParams": {
+      "type": "object",
+      "properties": {"id": {"type": "string", "maxLength": 65}},
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "MediaArtParams": {
+      "type": "object",
+      "properties": {"art_id": {"type": "integer", "minimum": 0}},
+      "required": ["art_id"],
+      "additionalProperties": false
+    },
+    "MediaArt": {
+      "type": "object",
+      "properties": {
+        "content_type": {"type": "string", "maxLength": 64},
+        "data": {"description": "base64.", "type": "string"}
+      },
+      "required": ["content_type", "data"],
+      "additionalProperties": false
+    },
+    "PairWithParams": {
+      "type": "object",
+      "properties": {"invite": {"description": "folo://join?...", "type": "string", "maxLength": 2048}},
+      "required": ["invite"],
+      "additionalProperties": false
+    },
+    "PairRemoveParams": {
+      "type": "object",
+      "properties": {"controller_id": {"type": "string", "maxLength": 64}},
+      "required": ["controller_id"],
+      "additionalProperties": false
+    },
+    "UpdateApproveParams": {
+      "type": "object",
+      "properties": {"version": {"type": "string", "maxLength": 32}},
+      "required": ["version"],
+      "additionalProperties": false
+    },
+    "LogsTailParams": {
+      "type": "object",
+      "properties": {
+        "lines": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "follow": {"type": "boolean"}
+      },
+      "required": ["lines", "follow"],
+      "additionalProperties": false
+    },
+    "RestartParams": {
+      "type": "object",
+      "properties": {"component": {"enum": ["engine", "capture", "node"]}},
+      "required": ["component"],
+      "additionalProperties": false
+    },
+    "StatusParams": {
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["starting", "running", "degraded", "stopping"]},
+        "workers": {"type": "object", "additionalProperties": {"enum": ["running", "starting", "stopped", "failed"]}},
+        "inputs": {"type": "object", "additionalProperties": {"enum": ["ok", "waiting", "error", "idle"]}},
+        "errors": {"type": "array", "items": {"type": "string", "maxLength": 1000}, "maxItems": 32}
+      },
+      "required": ["state", "workers", "inputs", "errors"],
+      "additionalProperties": false
+    },
+    "ActivityParams": {
+      "description": "Silence uses the level without gain.",
+      "type": "object",
+      "properties": {
+        "surface": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "active": {"type": "boolean"},
+        "level_db": {"type": "number"},
+        "quiet_s": {"type": "number", "minimum": 0}
+      },
+      "required": ["active", "quiet_s"],
+      "additionalProperties": false
+    },
+    "MetricsParams": {
+      "type": "object",
+      "properties": {
+        "render_ms": {"type": "number", "minimum": 0},
+        "publish_fps": {"type": "number", "minimum": 0},
+        "dropped": {"type": "integer", "minimum": 0}
+      },
+      "required": ["render_ms", "publish_fps", "dropped"],
+      "additionalProperties": false
+    },
+    "UpdateParams": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "string", "maxLength": 32},
+        "progress": {"type": "number", "minimum": 0, "maximum": 1},
+        "result": {"enum": ["installed", "failed", "rolled_back"]},
+        "message": {"type": "string", "maxLength": 1000}
+      },
+      "required": ["version"],
+      "additionalProperties": false
+    },
+    "SurfaceFrameHeader": {
+      "description": "Header of a surface frame (FOLS), little-endian; the payload follows: width x height x channels x bytes per channel, row-major.",
+      "type": "object",
+      "x-folo-layout": [
+        {"offset": 0, "size": 4, "field": "magic", "value": "FOLS"},
+        {"offset": 4, "size": 1, "field": "version", "value": 1},
+        {"offset": 5, "size": 1, "field": "pixel_format", "values": {"rgb8": 1, "rgb16": 2, "rgbf32": 3}},
+        {"offset": 6, "size": 1, "field": "flags", "bits": {"lz4": 0, "key_frame": 1}},
+        {"offset": 7, "size": 1, "field": "reserved", "value": 0},
+        {"offset": 8, "size": 2, "field": "surface_index"},
+        {"offset": 10, "size": 2, "field": "width"},
+        {"offset": 12, "size": 2, "field": "height"},
+        {"offset": 14, "size": 2, "field": "reserved", "value": 0},
+        {"offset": 16, "size": 4, "field": "sequence"},
+        {"offset": 20, "size": 8, "field": "timestamp_us"}
+      ],
+      "x-folo-header-size": 28
+    },
+    "SignalFrameHeader": {
+      "description": "Header of a signal frame (FOLG), little-endian; count float32 values follow.",
+      "type": "object",
+      "x-folo-layout": [
+        {"offset": 0, "size": 4, "field": "magic", "value": "FOLG"},
+        {"offset": 4, "size": 1, "field": "version", "value": 1},
+        {"offset": 5, "size": 1, "field": "reserved", "value": 0},
+        {"offset": 6, "size": 2, "field": "signal_index"},
+        {"offset": 8, "size": 2, "field": "count"},
+        {"offset": 10, "size": 2, "field": "reserved", "value": 0},
+        {"offset": 12, "size": 4, "field": "sequence"},
+        {"offset": 16, "size": 8, "field": "timestamp_us"}
+      ],
+      "x-folo-header-size": 24
+    }
+  }
+}

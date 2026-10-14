@@ -85,7 +85,7 @@ def new_id():
     return uuid.uuid4().hex[:8]
 
 
-def sanitize_segment(seg, led_count):
+def sanitize_segment(seg: Any, led_count: int) -> dict[str, Any]:
     last = max(0, led_count - 1)
     start = _int(seg.get('start'), 0, 0, last)
     end = _int(seg.get('end'), last, 0, last)

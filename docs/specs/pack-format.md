@@ -1,6 +1,6 @@
 # Pack format
 
-Status: Draft · Implementation: Not started
+Status: Draft · Implementation: Partial (JSON Schemas for the manifest and the items; nothing reads packs yet)
 
 Decided in [ADR-0021](../decisions/ADR-0021-content-packs.md). The model is in [content](../architecture/content.md).
 

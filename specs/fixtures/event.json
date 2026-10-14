@@ -1,0 +1,9 @@
+{
+ "type": "event",
+ "data": {
+  "kind": "update",
+  "id": "node1",
+  "state": "downloading",
+  "progress": 0.4
+ }
+}

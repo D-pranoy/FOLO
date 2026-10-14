@@ -1,0 +1,8 @@
+{
+ "jsonrpc": "2.0",
+ "id": 7,
+ "method": "pair.with",
+ "params": {
+  "invite": "folo://join?v=1&c=k3x92mfaq7tc0pzr&pk=AAAA&a=192.0.2.10:8777&s=BBBB&e=1900000000&n=Den"
+ }
+}

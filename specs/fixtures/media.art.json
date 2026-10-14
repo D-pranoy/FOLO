@@ -1,0 +1,8 @@
+{
+ "jsonrpc": "2.0",
+ "id": 6,
+ "method": "media.art",
+ "params": {
+  "art_id": 3
+ }
+}
