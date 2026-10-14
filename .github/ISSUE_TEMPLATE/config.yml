@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/D-pranoy/FOLO/security/advisories/new
     about: Report security problems privately, never in a public issue. See SECURITY.md.
   - name: Documentation
-    url: https://github.com/D-pranoy/FOLO/tree/main/docs
+    url: https://github.com/D-pranoy/FOLO/tree/HEAD/docs
     about: FOLO's decisions, specifications and run books, the source of truth for how it works.

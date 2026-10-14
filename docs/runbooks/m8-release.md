@@ -118,10 +118,12 @@ Status: Accepted · Implementation: Not started
    3. Upload artifacts, `SHA256SUMS`, `latest.json`, `folo-update.json` and signatures.
    4. Attest build provenance for every artifact.
    5. Publish after the `release` environment's approval.
-4. **`docker.yml`:** multi-arch push to `ghcr.io/d-pranoy/folo` with tags `X.Y.Z`, `X.Y`, `latest` (stable) and `edge` (main); provenance (max mode), SBOM, attestations.
+4. **`docker.yml`:** multi-arch push to `ghcr.io/d-pranoy/folo` with tags `X.Y.Z`, `X.Y`, `latest` (stable) and `edge` (the default branch, `v1` during the rebuild); provenance (max mode), SBOM, attestations.
 5. **`release-please.yml`:** the release PR and changelog; versions kept in sync across `package.json`, `Cargo.toml` and `tauri.conf.json`.
-6. **Nightly:** `build.yml` on pushes to `main`, unsigned, artifacts kept 14 days, never published.
-7. **Hardening:** minimal `permissions:` per job, actions pinned by SHA, concurrency groups, Dependabot (uv, npm, cargo, Actions, Docker), CodeQL, dependency review, cargo-deny and cargo-audit.
+   - Pull requests and tags made with the default `GITHUB_TOKEN` don't trigger workflows: release PRs would get no CI, and its tags wouldn't start `release.yml`.
+   - So the workflow uses a GitHub App installation token (for example through `actions/create-github-app-token`, pinned to a SHA). The repository owner creates a small FOLO release App and stores its app id and private key as secrets ([governance](../process/governance.md#key-custody)).
+6. **Nightly:** `build.yml` on pushes to the default branch (`v1` during the rebuild, [ADR-0030](../decisions/ADR-0030-rebuild-on-a-v1-branch.md)), unsigned, artifacts kept 14 days, never published.
+7. **Hardening:** minimal `permissions:` per job, actions pinned by full commit SHA and limited to GitHub-authored actions plus the [allowlist](../process/governance.md#allowed-actions) (every action this pipeline adds goes on that list in the same pull request), concurrency groups, Dependabot (uv, npm, cargo, Actions, Docker), dependency review, cargo-deny and cargo-audit. CodeQL comes from GitHub's default setup only; a CodeQL job in a workflow conflicts with it.
 8. **Code signing hook:** a reserved `signCommand`, plus signing of the node, engine and agent executables before bundling, for when SignPath signing is available.
 9. **Release checklist** (`docs/process/workflow.md`): the clean-room rewrite gate, AUR publishing, the client library publish, and documentation status updates.
 
@@ -139,6 +141,6 @@ Status: Accepted · Implementation: Not started
 3. **User guides:** troubleshooting (for example the Hue stream being in use, Wayland re-prompts, protected content, a dark strip with everything else working).
 4. **Operator run books:** releasing, rotating the update key and client keys, recovering a source, migrating from `studio.json`.
 5. **`THIRD_PARTY_NOTICES`:** dependencies, the source of the bundled Hue root certificates, any copied code with its notices.
-6. Optional: publish the docs as a site (mkdocs-material on GitHub Pages) from `main`.
+6. Optional: publish the docs as a site (mkdocs-material on GitHub Pages) from the default branch.
 
 **Done when:** a fresh install on every Tier 1 platform can be completed from the documentation alone.

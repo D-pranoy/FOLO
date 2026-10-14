@@ -12,7 +12,7 @@ node_modules/
 # Per-machine state: the studio's live config (and copies of it), the
 # node's data folder, local agent notes and local editor launch settings
 /studio*.json
-data/
+/data/
 AGENTS.local.md
 CLAUDE.local.md
 .claude/launch.json

@@ -28,4 +28,4 @@ Run book step: <!-- RB-NN step N, or "none" -->
 - [ ] Tests are added or updated; golden files are regenerated only with a stated reason.
 - [ ] Contracts and generated code are in sync.
 - [ ] No secrets, personal data or device addresses in code, tests or docs.
-- [ ] Device-facing changes followed the [testing policy](https://github.com/D-pranoy/FOLO/blob/main/docs/process/testing-policy.md): fakes first, live tests announced, at low brightness, devices released afterwards.
+- [ ] Device-facing changes followed the [testing policy](https://github.com/D-pranoy/FOLO/blob/HEAD/docs/process/testing-policy.md): fakes first, live tests announced, at low brightness, devices released afterwards.

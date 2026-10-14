@@ -11,7 +11,7 @@ Date: 2026-10-13
 
 ## Decision
 
-- **D1.** Tag the state before the rebuild as `v0.9.0-legacy`, then **remove the legacy effect runner from `main`**. History and the tag keep it available.
+- **D1.** Tag the state before the rebuild as `v0.9.0-legacy`, then **remove the legacy effect runner from `v1`**, where the rebuild lands ([ADR-0030](ADR-0030-rebuild-on-a-v1-branch.md)). `main` keeps it, frozen, until the switch-over. History and the tag keep it available.
 - **D2.** **FOLO stays MIT.**
 - **D3.** Before the first public binary release, the LedFx-inspired modes and effects are **rewritten clean-room**:
   - First, behaviour specifications are written from observation and documentation, without reading LedFx code.

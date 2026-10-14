@@ -11,7 +11,7 @@ The documents in [docs/](docs/README.md) are the **source of truth** for FOLO, a
 3. **Implement** to the document.
 4. **Update** the document's `Implementation:` status when a milestone lands.
 
-FOLO is being rebuilt step by step. The [roadmap](docs/roadmap.md) orders the milestones, and the [run books](docs/runbooks/README.md) break each one into steps. Until a milestone lands, `main` still holds the earlier studio, described in [docs/architecture/current-system.md](docs/architecture/current-system.md).
+FOLO is being rebuilt step by step. The [roadmap](docs/roadmap.md) orders the milestones, and the [run books](docs/runbooks/README.md) break each one into steps. The rebuild lands on the `v1` branch ([ADR-0030](docs/decisions/ADR-0030-rebuild-on-a-v1-branch.md)). `main` is the frozen earlier studio, described in [docs/architecture/current-system.md](docs/architecture/current-system.md).
 
 **Writing documents:**
 - Every document starts with a `Status:` line. Documents that describe something to build (specifications, architecture, integrations and run books) also carry `Implementation:` (Not started, Partial or Complete).
@@ -23,7 +23,7 @@ For a bigger idea, open a feature request first, so it can be weighed against th
 
 ## Branches, commits and pull requests
 
-- `main` takes pull requests only, with linear history. Pull requests are squash-merged.
+- Pull requests target `v1`, the default branch during the rebuild. `main` is frozen and takes no pull requests ([ADR-0030](docs/decisions/ADR-0030-rebuild-on-a-v1-branch.md)). Both branches are protected: pull requests only, with linear history. Pull requests are squash-merged.
 - Branch names: `<type>/<short-topic>`, for example `feat/wled-ddp` or `docs/adr-0030`.
 - Commits and PR titles follow **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:`; `!` for a breaking change). The PR title becomes the commit message, and release-please builds the changelog and version from it.
 - The pull request template asks for:

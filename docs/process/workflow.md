@@ -15,10 +15,23 @@ FOLO's documents are the source of truth ([ADR-0001](../decisions/ADR-0001-docum
 
 ## Branches and commits
 
-- `main` is protected: pull requests only, required checks, linear history ([governance](governance.md)).
+- **During the rebuild** ([ADR-0030](../decisions/ADR-0030-rebuild-on-a-v1-branch.md)):
+  - Pull requests target `v1`, the default branch.
+  - `main` is the frozen legacy studio: no merges and no fixes.
+  - Both branches are protected: pull requests only, required checks, linear history ([governance](governance.md)).
 - Branch names: `<type>/<short-topic>`, for example `feat/wled-ddp` or `docs/adr-0028`.
 - **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:`; `!` for breaking changes). release-please builds the changelog and version from them.
-- Squash-merge pull requests; the PR title becomes the commit message.
+- Squash-merge pull requests; the PR title becomes the commit message (the message body stays blank).
+
+## Switch-over
+
+When the roadmap says the rebuild replaces the studio ([roadmap](../roadmap.md#ordering-rules)), a maintainer:
+
+1. Confirms the exit criteria of that milestone and that CI is green on `v1`.
+2. Fast-forwards `main` to `v1`. This is possible because `main` took no commits ([ADR-0030](../decisions/ADR-0030-rebuild-on-a-v1-branch.md)). The ruleset has no bypass, and a pull request can't fast-forward under squash merging, so the repository owner switches the `main` ruleset off for the push and back on straight after.
+3. Makes `main` the default branch again (repository owner) and keeps both rulesets matching.
+4. Retargets open pull requests to `main`, then deletes `v1` or keeps it, as the maintainers decide.
+5. Updates the branch references in the contributor guides and this document.
 
 ## Pull request checklist
 
@@ -36,7 +49,8 @@ FOLO's documents are the source of truth ([ADR-0001](../decisions/ADR-0001-docum
 - UI: lint, type check, vitest, build
 - End-to-end Playwright suite (once RB-11 lands)
 - Contract validation and drift checks
-- CodeQL and dependency review
+- Dependency review
+- CodeQL, from GitHub's default setup (never a workflow job, which conflicts with it); it can still be a required check
 
 ## Release checklist
 

@@ -1,6 +1,6 @@
 # The current system (before the rebuild)
 
-Status: Accepted (describes the code on `main` at the start of the rebuild, including the audio input, beat tracking, now playing, ambient light and glass UI additions)
+Status: Accepted (describes the code on `main`, the frozen legacy studio, at the start of the rebuild, including the audio input, beat tracking, now playing, ambient light and glass UI additions)
 
 This is the baseline that the rebuild replaces. Its behaviour is preserved where the [UI parity checklist](../specs/ui-parity-checklist.md), the [parity mode](pipeline.md#parity-mode) and [ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md) require it. `AGENTS.md` remains the detailed guide to running it until it is replaced.
 

@@ -15,7 +15,7 @@ Maintainers confirm the report, prepare the fix in a private security advisory, 
 
 ## Supported versions
 
-FOLO is being rebuilt (see the [roadmap](docs/roadmap.md)). Security fixes are made on `main` and ship in the next release; only the latest release is supported. The pre-rebuild state (`v0.9.0-legacy` and earlier) gets no fixes.
+FOLO is being rebuilt (see the [roadmap](docs/roadmap.md)). During the rebuild, security fixes are made on `v1` and ship in the next release; only the latest release is supported. The legacy studio on `main` (`v0.9.0-legacy` and earlier) gets no fixes ([ADR-0030](docs/decisions/ADR-0030-rebuild-on-a-v1-branch.md)).
 
 ## Threat model in brief
 

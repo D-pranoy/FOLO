@@ -45,5 +45,6 @@ M1 Foundation ──► M2 Engine ──► M3 Controller core ──► M4 Inte
 ## Ordering rules
 
 - No milestone starts its device-facing work before its fake-device tests exist.
-- The legacy studio stays usable on `main` until M4 replaces its UI and M3 replaces its server.
+- The legacy studio stays usable on `main`, and `main` is frozen: it takes no merges and no fixes. The rebuild lands on the `v1` branch ([ADR-0030](decisions/ADR-0030-rebuild-on-a-v1-branch.md)).
+- **Switch-over:** when M4 meets its exit criteria (M3's server and M4's UI have replaced the studio), a maintainer fast-forwards `main` to `v1` and makes `main` the default branch again ([workflow](process/workflow.md#switch-over)).
 - Breaking changes to contracts require an ADR and a version bump of the affected contract.
