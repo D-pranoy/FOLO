@@ -1,12 +1,15 @@
 """
-The effect interface (RB-04 step 4): what an effect declares (EffectInfo, as
-the client API lists effects) and how a surface hands it its layers. An
-effect instance renders all its layers of one surface, so it can work out
-what they share once (the audio visualizer reads every band in one go).
+The effect interface (RB-04 steps 4 and 6): what an effect declares
+(EffectInfo, as the client API lists effects) and how a surface hands it its
+layers. An effect instance handles all its layers of one surface, so it can
+work out what they share once (the audio visualizer reads every band in one
+go). Most effects draw a line per layer; post-processing effects change what
+is below them in the stack instead (PostEffect).
 """
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -18,6 +21,8 @@ from folo_source.inputs.audio.analyzer import Analyzer, Spectrum
 
 # A layer's colours along its line: cells x RGB, on the 0-255 scale
 Line = npt.NDArray[np.float64]
+# Cells of a surface: cells x RGB (strip) or rows x columns x RGB (canvas)
+Values = npt.NDArray[np.float64]
 # {layer id: (level dB, value 0-1, recent average dB)}
 Levels = dict[str, tuple[float, float, float]]
 
@@ -54,6 +59,7 @@ class LayerSpec:
     params: Mapping[str, Any]
     length: int  # cells in its line: its region on a strip, its axis on a canvas
     visible: bool  # enabled, not hidden by a solo layer, and its region isn't empty
+    axis: str = 'linear_x'  # on a canvas: linear_x, linear_y, radial or angular
 
 
 class Effect(Protocol):
@@ -80,7 +86,30 @@ class Effect(Protocol):
         ...
 
 
-EffectFactory = Callable[[Analyzer, np.random.Generator], Effect]
+class PostEffect(ABC):
+    """
+    A post-processing effect instance: it changes what is below its layers
+    in the stack, inside their regions, instead of drawing a line.
+    """
+
+    @property
+    @abstractmethod
+    def info(self) -> EffectInfo: ...
+
+    @abstractmethod
+    def prepare(self, layers: Sequence[LayerSpec], colors: tuple[str, ...] = ()) -> None:
+        """Takes its layers, in stack order, when the configuration changes."""
+
+    @abstractmethod
+    def apply(self, position: int, block: Values, dt: float) -> None:
+        """
+        Changes, in place, the cells below its layer at `position` (as
+        prepare() got them): cells x RGB on a strip, rows x columns x RGB on
+        a canvas, on the 0-255 scale. `dt`: seconds since the last frame.
+        """
+
+
+EffectFactory = Callable[[Analyzer, np.random.Generator], Effect | PostEffect]
 _registry: dict[str, EffectFactory] = {}
 
 
@@ -89,7 +118,9 @@ def register(effect_id: str, factory: EffectFactory) -> None:
     _registry[effect_id] = factory
 
 
-def create(effect_id: str, analyzer: Analyzer, rng: np.random.Generator) -> Effect | None:
+def create(
+    effect_id: str, analyzer: Analyzer, rng: np.random.Generator
+) -> Effect | PostEffect | None:
     """An instance of the effect `effect_id`, or None if there is no such effect."""
     factory = _registry.get(effect_id)
     return factory(analyzer, rng) if factory is not None else None
