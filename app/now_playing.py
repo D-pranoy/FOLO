@@ -13,38 +13,63 @@ import time
 
 import numpy as np
 
+# Optional, and only on Windows: the type checker may not find them either
 try:
-    from winrt.windows.graphics.imaging import (
-        BitmapAlphaMode, BitmapDecoder, BitmapInterpolationMode, BitmapPixelFormat,
-        BitmapTransform, ColorManagementMode, ExifOrientationMode)
-    from winrt.windows.media.control import (
+    from winrt.windows.graphics.imaging import (  # pyright: ignore[reportMissingImports]
+        BitmapAlphaMode,
+        BitmapDecoder,
+        BitmapInterpolationMode,
+        BitmapPixelFormat,
+        BitmapTransform,
+        ColorManagementMode,
+        ExifOrientationMode,
+    )
+    from winrt.windows.media.control import (  # pyright: ignore[reportMissingImports]
         GlobalSystemMediaTransportControlsSessionManager as SessionManager,
-        GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus)
-    from winrt.windows.storage.streams import Buffer, InputStreamOptions
-except ImportError:            # pragma: no cover - the studio runs without it
+    )
+    from winrt.windows.media.control import (  # pyright: ignore[reportMissingImports]
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
+    )
+    from winrt.windows.storage.streams import (  # pyright: ignore[reportMissingImports]
+        Buffer,
+        InputStreamOptions,
+    )
+except ImportError:  # pragma: no cover - the studio runs without it
     SessionManager = None
 
-CHECK_EVERY = 1.0           # seconds between checks, besides the sessions' change events
-PROPERTIES_EVERY = 5.0      # seconds between reading the title anyway (missed events)
-ART_RETRY = 2.0             # players often set the art a moment after the title
+CHECK_EVERY = 1.0  # seconds between checks, besides the sessions' change events
+PROPERTIES_EVERY = 5.0  # seconds between reading the title anyway (missed events)
+ART_RETRY = 2.0  # players often set the art a moment after the title
 MAX_ART_BYTES = 4 * 1024 * 1024
-ART_PIXELS = 48             # the art is scaled to this square to pick its colors
+ART_PIXELS = 48  # the art is scaled to this square to pick its colors
 MAX_COLORS = 5
 HUE_BINS = 36
-MIN_SEPARATION = 3          # bins (30 degrees) between the hues picked
-MIN_SHARE = 0.08            # a hue needs this share of the strongest one's weight
-MIN_COLORFUL = 0.04         # share of colorful pixels below which art counts as grey
+MIN_SEPARATION = 3  # bins (30 degrees) between the hues picked
+MIN_SHARE = 0.08  # a hue needs this share of the strongest one's weight
+MIN_COLORFUL = 0.04  # share of colorful pixels below which art counts as grey
 # Short names for players whose app id says little
 APP_NAMES = {
-    'zunemusic': 'Media Player', 'msedge': 'Edge', 'chrome': 'Chrome', 'firefox': 'Firefox',
-    'spotify': 'Spotify', 'spotifymusic': 'Spotify', 'arc': 'Arc', 'vlc': 'VLC',
-    'applemusic': 'Apple Music', 'opera': 'Opera', 'brave': 'Brave', 'tidal': 'TIDAL',
+    'zunemusic': 'Media Player',
+    'msedge': 'Edge',
+    'chrome': 'Chrome',
+    'firefox': 'Firefox',
+    'spotify': 'Spotify',
+    'spotifymusic': 'Spotify',
+    'arc': 'Arc',
+    'vlc': 'VLC',
+    'applemusic': 'Apple Music',
+    'opera': 'Opera',
+    'brave': 'Brave',
+    'tidal': 'TIDAL',
 }
 ACTIONS = ('play_pause', 'next', 'previous')
 
 
 def app_label(app_id):
-    """A readable name for a media session's app id ('Arc.exe', 'SpotifyAB.SpotifyMusic_x!Spotify')."""
+    """
+    A readable name for a media session's app id ('Arc.exe',
+    'SpotifyAB.SpotifyMusic_x!Spotify').
+    """
     name = app_id.split('!')[-1]
     if name.lower().endswith('.exe'):
         name = name[:-4]
@@ -66,10 +91,16 @@ def cover_colors(pixels):
         return ()
     rgb, top, chroma = rgb[keep], top[keep], chroma[keep]
     r, g, b = rgb.T
-    hue = np.where(top == r, ((g - b) / chroma) % 6.0,
-                   np.where(top == g, (b - r) / chroma + 2.0, (r - g) / chroma + 4.0)) / 6.0
+    hue = (
+        np.where(
+            top == r,
+            ((g - b) / chroma) % 6.0,
+            np.where(top == g, (b - r) / chroma + 2.0, (r - g) / chroma + 4.0),
+        )
+        / 6.0
+    )
     bins = (hue * HUE_BINS).astype(int) % HUE_BINS
-    weight = chroma ** 2
+    weight = chroma**2
     hist = np.bincount(bins, weights=weight, minlength=HUE_BINS)
     hist = 0.5 * hist + 0.25 * (np.roll(hist, 1) + np.roll(hist, -1))
     # Each pixel at full brightness: only its hue and saturation are left
@@ -86,32 +117,33 @@ def cover_colors(pixels):
         low = color.min()
         boosted = 1.0 - (1.0 - color) * min(1.0, (1.0 - low) * 1.3) / max(1e-6, 1.0 - low)
         boosted /= boosted.max()
-        colors.append('#{:02X}{:02X}{:02X}'.format(*[int(round(c * 255)) for c in boosted]))
+        colors.append('#{:02X}{:02X}{:02X}'.format(*[round(c * 255) for c in boosted]))
         for k in range(-MIN_SEPARATION + 1, MIN_SEPARATION):
             hist[(peak + k) % HUE_BINS] = 0.0
     return tuple(colors)
 
 
-class NowPlaying(object):
+class NowPlaying:
     """
     Runs a thread that follows Windows' media sessions. Prefers a session
     that is playing, and among those the app the studio listens to (config
     audio.app). `track` counts the songs seen, so others can tell when a
     new one starts.
     """
+
     def __init__(self, store):
         self.store = store
         self.running = False
         self.thread = None
         self._wake = threading.Event()
-        self.state = 'starting'         # off, unavailable, none, playing, paused, stopped, error
+        self.state = 'starting'  # off, unavailable, none, playing, paused, stopped, error
         self.message = ''
         self.app = ''
         self.title = ''
         self.artist = ''
         self.album = ''
         self.track = 0
-        self.art = None                 # (bytes, content type)
+        self.art = None  # (bytes, content type)
         self.art_id = 0
         self.colors = ()
         self._manager = None
@@ -156,9 +188,11 @@ class NowPlaying(object):
         session = self._session
         if session is None or action not in ACTIONS:
             return False
-        call = {'play_pause': session.try_toggle_play_pause_async,
-                'next': session.try_skip_next_async,
-                'previous': session.try_skip_previous_async}[action]
+        call = {
+            'play_pause': session.try_toggle_play_pause_async,
+            'next': session.try_skip_next_async,
+            'previous': session.try_skip_previous_async,
+        }[action]
         try:
             done = bool(call().get())
         except Exception:  # pylint: disable=broad-except
@@ -221,19 +255,28 @@ class NowPlaying(object):
 
     def _pick(self):
         """The session to show: playing ones first, the captured app first among them."""
-        sessions = list(self._manager.get_sessions())
+        manager = self._manager
+        assert manager is not None, 'called with a session manager'
+        sessions = list(manager.get_sessions())
         if not sessions:
             return None
-        current = self._manager.get_current_session()
+        current = manager.get_current_session()
         audio = self.store.config['audio']
         wanted = audio['app'][:-4] if audio['app'].endswith('.exe') else audio['app']
 
         def rank(session):
             playing = session.get_playback_info().playback_status == PlaybackStatus.PLAYING
-            app = bool(wanted) and audio['app_mode'] == 'only' \
+            app = (
+                bool(wanted)
+                and audio['app_mode'] == 'only'
                 and wanted in session.source_app_user_model_id.lower()
-            is_current = current is not None and session.source_app_user_model_id == current.source_app_user_model_id
+            )
+            is_current = (
+                current is not None
+                and session.source_app_user_model_id == current.source_app_user_model_id
+            )
             return (not (playing and app), not playing, not app, not is_current)
+
         return min(sessions, key=rank)
 
     def _watch(self, session):
@@ -263,14 +306,21 @@ class NowPlaying(object):
         if session.source_app_user_model_id != self._session_id:
             self._watch(session)
         status = session.get_playback_info().playback_status
-        self.state = {PlaybackStatus.PLAYING: 'playing', PlaybackStatus.PAUSED: 'paused',
-                      PlaybackStatus.STOPPED: 'stopped', PlaybackStatus.CLOSED: 'stopped'}.get(status, 'paused')
+        self.state = {
+            PlaybackStatus.PLAYING: 'playing',
+            PlaybackStatus.PAUSED: 'paused',
+            PlaybackStatus.STOPPED: 'stopped',
+            PlaybackStatus.CLOSED: 'stopped',
+        }.get(status, 'paused')
         self.message = ''
         self.app = app_label(session.source_app_user_model_id)
 
         now = time.monotonic()
-        if not (self._properties_dirty or now >= self._properties_due
-                or (self._art_due is not None and now >= self._art_due)):
+        if not (
+            self._properties_dirty
+            or now >= self._properties_due
+            or (self._art_due is not None and now >= self._art_due)
+        ):
             return
         changed = self._properties_dirty
         self._properties_dirty = False
@@ -311,9 +361,12 @@ class NowPlaying(object):
             transform.scaled_height = ART_PIXELS
             transform.interpolation_mode = BitmapInterpolationMode.FANT
             pixels = decoder.get_pixel_data_transformed_async(
-                BitmapPixelFormat.RGBA8, BitmapAlphaMode.IGNORE, transform,
+                BitmapPixelFormat.RGBA8,
+                BitmapAlphaMode.IGNORE,
+                transform,
                 ExifOrientationMode.RESPECT_EXIF_ORIENTATION,
-                ColorManagementMode.DO_NOT_COLOR_MANAGE).get()
+                ColorManagementMode.DO_NOT_COLOR_MANAGE,
+            ).get()
             rgba = np.frombuffer(bytes(pixels.detach_pixel_data()), dtype=np.uint8)
         except Exception:  # pylint: disable=broad-except
             return

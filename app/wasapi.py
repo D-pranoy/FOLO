@@ -1,6 +1,5 @@
 """
-Windows audio capture for the FOLO studio, straight on WASAPI through cffi
-(which soundcard already depends on).
+Windows audio capture for the FOLO studio, straight on WASAPI through cffi.
 
 - Endpoint capture: the loopback of an output ("what plays on it") or an
   input. Event driven, and every read drains all queued packets, so the
@@ -12,6 +11,10 @@ Windows audio capture for the FOLO studio, straight on WASAPI through cffi
   their current peak level.
 - MMCSS: the "Pro Audio" scheduling class for the capture thread.
 """
+
+# cffi's C objects have no type information: their fields and functions are
+# looked up at run time
+# pyright: reportAttributeAccessIssue=false
 
 import threading
 import time
@@ -31,7 +34,8 @@ typedef struct {
 } GUID;
 """)
 # mmreg.h packs the wave formats (WAVEFORMATEX is 18 bytes, EXTENSIBLE 40)
-ffi.cdef(r"""
+ffi.cdef(
+    r"""
 typedef struct {
     WORD  wFormatTag;
     WORD  nChannels;
@@ -47,7 +51,9 @@ typedef struct {
     DWORD dwChannelMask;
     GUID  SubFormat;
 } WAVEFORMATEXTENSIBLE;
-""", packed=True)
+""",
+    packed=True,
+)
 ffi.cdef(r"""
 typedef struct {
     unsigned short vt;
@@ -327,7 +333,7 @@ VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK = 'VAD\\Process_Loopback'
 WAVE_FORMAT_IEEE_FLOAT = 3
 WAVE_FORMAT_EXTENSIBLE = 0xFFFE
 WAIT_OBJECT_0 = 0
-BUFFER_DURATION = 1000000       # 100 ms in 100 ns units: room for hiccups, read as soon as it lands
+BUFFER_DURATION = 1000000  # 100 ms in 100 ns units: room for hiccups, read as soon as it lands
 S_OK, E_NOINTERFACE = 0, 0x80004002
 
 _ERRORS = {
@@ -348,7 +354,9 @@ class WasapiError(RuntimeError):
     def __init__(self, what, hr):
         self.hr = hr & 0xFFFFFFFF
         detail = _ERRORS.get(self.hr)
-        RuntimeError.__init__(self, '{} failed (0x{:08X}{})'.format(what, self.hr, ', ' + detail if detail else ''))
+        RuntimeError.__init__(
+            self, '{} failed (0x{:08X}{})'.format(what, self.hr, ', ' + detail if detail else '')
+        )
 
     @property
     def device_lost(self):
@@ -399,13 +407,21 @@ def unboost(handle):
 
 # ---------------------------------------------------------------- endpoints
 
-class _Enumerator(object):
+
+class _Enumerator:
     def __enter__(self):
         init_com()
         pp = ffi.new('IMMDeviceEnumerator **')
-        _check(_ole32.CoCreateInstance(CLSID_MMDeviceEnumerator, ffi.NULL, CLSCTX_ALL,
-                                       IID_IMMDeviceEnumerator, ffi.cast('void **', pp)),
-               'Creating the device enumerator')
+        _check(
+            _ole32.CoCreateInstance(
+                CLSID_MMDeviceEnumerator,
+                ffi.NULL,
+                CLSCTX_ALL,
+                IID_IMMDeviceEnumerator,
+                ffi.cast('void **', pp),
+            ),
+            'Creating the device enumerator',
+        )
         self.ptr = pp[0]
         return self
 
@@ -424,7 +440,10 @@ class _Enumerator(object):
 
     def devices(self, flow):
         pp = ffi.new('IMMDeviceCollection **')
-        _check(self.ptr.lpVtbl.EnumAudioEndpoints(self.ptr, flow, DEVICE_STATE_ACTIVE, pp), 'Listing devices')
+        _check(
+            self.ptr.lpVtbl.EnumAudioEndpoints(self.ptr, flow, DEVICE_STATE_ACTIVE, pp),
+            'Listing devices',
+        )
         collection = pp[0]
         try:
             count = ffi.new('UINT *')
@@ -452,7 +471,10 @@ def _device_name(device):
         return ''
     value = ffi.new('PROPVARIANT *')
     try:
-        if store[0].lpVtbl.GetValue(store[0], PKEY_Device_FriendlyName, value) >= 0 and value.vt == VT_LPWSTR:
+        if (
+            store[0].lpVtbl.GetValue(store[0], PKEY_Device_FriendlyName, value) >= 0
+            and value.vt == VT_LPWSTR
+        ):
             return ffi.string(value.pwszVal)
         return ''
     finally:
@@ -475,7 +497,13 @@ def endpoints():
         for flow in (E_RENDER, E_CAPTURE):
             for device in enum.devices(flow):
                 try:
-                    found.append({'id': _device_id(device), 'name': _device_name(device), 'output': flow == E_RENDER})
+                    found.append(
+                        {
+                            'id': _device_id(device),
+                            'name': _device_name(device),
+                            'output': flow == E_RENDER,
+                        }
+                    )
                 finally:
                     _release(device)
     return found, default_id
@@ -493,12 +521,13 @@ def default_output_id():
             _release(device)
 
 
-class _DeviceWatcher(object):
+class _DeviceWatcher:
     """
     Windows calls this back (IMMNotificationClient) when the default output
     changes or a device is added, removed, enabled or disabled; each of
     those bumps `serial`. Lives as long as the process.
     """
+
     def __init__(self):
         self.serial = 0
         self.vtbl = ffi.new('IMMNotificationClientVtbl *')
@@ -510,14 +539,14 @@ class _DeviceWatcher(object):
                 ppv[0] = this
                 return S_OK
             ppv[0] = ffi.NULL
-            return E_NOINTERFACE - 2 ** 32
+            return E_NOINTERFACE - 2**32
 
         def bump(*args):
             self.serial += 1
             return S_OK
 
         def default_changed(this, flow, role, device_id):
-            if flow == E_RENDER and role == 0:      # the console role: what "default" means
+            if flow == E_RENDER and role == 0:  # the console role: what "default" means
                 self.serial += 1
             return S_OK
 
@@ -532,12 +561,22 @@ class _DeviceWatcher(object):
             ffi.callback(ffi.typeof(vt.OnDefaultDeviceChanged), default_changed),
             ffi.callback(ffi.typeof(vt.OnPropertyValueChanged), lambda this, device_id, key: S_OK),
         ]
-        (vt.QueryInterface, vt.AddRef, vt.Release, vt.OnDeviceStateChanged, vt.OnDeviceAdded,
-         vt.OnDeviceRemoved, vt.OnDefaultDeviceChanged, vt.OnPropertyValueChanged) = self._callbacks
+        (
+            vt.QueryInterface,
+            vt.AddRef,
+            vt.Release,
+            vt.OnDeviceStateChanged,
+            vt.OnDeviceAdded,
+            vt.OnDeviceRemoved,
+            vt.OnDefaultDeviceChanged,
+            vt.OnPropertyValueChanged,
+        ) = self._callbacks
         self.obj.lpVtbl = vt
         self.enum = _Enumerator().__enter__()
-        _check(self.enum.ptr.lpVtbl.RegisterEndpointNotificationCallback(self.enum.ptr, self.obj),
-               'Watching for device changes')
+        _check(
+            self.enum.ptr.lpVtbl.RegisterEndpointNotificationCallback(self.enum.ptr, self.obj),
+            'Watching for device changes',
+        )
 
 
 _watcher = None
@@ -555,16 +594,17 @@ def device_changes():
         if _watcher is None:
             try:
                 _watcher = _DeviceWatcher()
-            except Exception: # pylint: disable=broad-except
+            except Exception:  # pylint: disable=broad-except
                 _watcher = False
     return _watcher.serial if _watcher else None
 
 
 # ---------------------------------------------------------------- processes
 
+
 def processes():
     """{pid: (exe file name, parent pid)} of all running processes."""
-    snapshot = _kernel32.CreateToolhelp32Snapshot(2, 0)        # TH32CS_SNAPPROCESS
+    snapshot = _kernel32.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
     if snapshot == ffi.cast('HANDLE', -1):
         return {}
     found = {}
@@ -612,7 +652,7 @@ def app_name(pid, exe):
     if key in _app_names:
         return _app_names[key]
     name = exe[:-4] if exe.lower().endswith('.exe') else exe
-    process = _kernel32.OpenProcess(0x1000, False, pid)         # PROCESS_QUERY_LIMITED_INFORMATION
+    process = _kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
     if process != ffi.NULL:
         try:
             path = ffi.new('wchar_t[1024]')
@@ -638,16 +678,25 @@ def _file_description(path):
     value = ffi.new('void **')
     length = ffi.new('UINT *')
     languages = ['040904b0', '040904e4', '000004b0']
-    if _version.VerQueryValueW(data, '\\VarFileInfo\\Translation', value, length) and length[0] >= 4:
+    if (
+        _version.VerQueryValueW(data, '\\VarFileInfo\\Translation', value, length)
+        and length[0] >= 4
+    ):
         words = ffi.cast('unsigned short *', value[0])
-        languages.insert(0, '{:04x}{:04x}'.format(words[0], words[1]))
+        languages.insert(0, f'{words[0]:04x}{words[1]:04x}')
     for language in languages:
-        if _version.VerQueryValueW(data, '\\StringFileInfo\\{}\\FileDescription'.format(language), value, length) and length[0] > 1:
+        if (
+            _version.VerQueryValueW(
+                data, f'\\StringFileInfo\\{language}\\FileDescription', value, length
+            )
+            and length[0] > 1
+        ):
             return ffi.string(ffi.cast('wchar_t *', value[0])).strip()
     return ''
 
 
 # ---------------------------------------------------------------- sessions
+
 
 def sessions():
     """
@@ -668,8 +717,12 @@ def sessions():
 
 def _device_sessions(device, found):
     manager = ffi.new('IAudioSessionManager2 **')
-    _check(device.lpVtbl.Activate(device, IID_IAudioSessionManager2, CLSCTX_ALL, ffi.NULL,
-                                  ffi.cast('void **', manager)), 'Opening the session manager')
+    _check(
+        device.lpVtbl.Activate(
+            device, IID_IAudioSessionManager2, CLSCTX_ALL, ffi.NULL, ffi.cast('void **', manager)
+        ),
+        'Opening the session manager',
+    )
     listing = ffi.new('IAudioSessionEnumerator **')
     try:
         _check(manager[0].lpVtbl.GetSessionEnumerator(manager[0], listing), 'Listing sessions')
@@ -682,7 +735,12 @@ def _device_sessions(device, found):
             control = ffi.new('IAudioSessionControl2 **')
             meter = ffi.new('IAudioMeterInformation **')
             try:
-                if session[0].lpVtbl.QueryInterface(session[0], IID_IAudioSessionControl2, ffi.cast('void **', control)) < 0:
+                if (
+                    session[0].lpVtbl.QueryInterface(
+                        session[0], IID_IAudioSessionControl2, ffi.cast('void **', control)
+                    )
+                    < 0
+                ):
                     continue
                 if control[0].lpVtbl.IsSystemSoundsSession(control[0]) == S_OK:
                     continue
@@ -690,10 +748,15 @@ def _device_sessions(device, found):
                 state = ffi.new('int *')
                 control[0].lpVtbl.GetProcessId(control[0], pid)
                 control[0].lpVtbl.GetState(control[0], state)
-                if not pid[0] or state[0] == 2:                 # no single process, or expired
+                if not pid[0] or state[0] == 2:  # no single process, or expired
                     continue
                 peak = ffi.new('float *')
-                if session[0].lpVtbl.QueryInterface(session[0], IID_IAudioMeterInformation, ffi.cast('void **', meter)) >= 0:
+                if (
+                    session[0].lpVtbl.QueryInterface(
+                        session[0], IID_IAudioMeterInformation, ffi.cast('void **', meter)
+                    )
+                    >= 0
+                ):
                     meter[0].lpVtbl.GetPeakValue(meter[0], peak)
                 entry = found.setdefault(pid[0], {'active': False, 'peak': 0.0})
                 entry['active'] = entry['active'] or state[0] == 1
@@ -712,11 +775,13 @@ def _device_sessions(device, found):
 
 # ---------------------------------------------------------------- capture
 
-class CaptureStream(object):
+
+class CaptureStream:
     """
     A running WASAPI capture stream. wait() until audio may be there, then
     read() everything that has arrived.
     """
+
     def __init__(self, client, channels, rate, event, name):
         self.client = client
         self.channels = channels
@@ -725,13 +790,18 @@ class CaptureStream(object):
         self.name = name
         period_default = ffi.new('long long *')
         period_min = ffi.new('long long *')
-        if client.lpVtbl.GetDevicePeriod(client, period_default, period_min) >= 0 and period_default[0] > 0:
+        if (
+            client.lpVtbl.GetDevicePeriod(client, period_default, period_min) >= 0
+            and period_default[0] > 0
+        ):
             self.period = period_default[0] / 1e7
         else:
             self.period = 0.01
         capture = ffi.new('IAudioCaptureClient **')
-        _check(client.lpVtbl.GetService(client, IID_IAudioCaptureClient, ffi.cast('void **', capture)),
-               'Opening the capture client')
+        _check(
+            client.lpVtbl.GetService(client, IID_IAudioCaptureClient, ffi.cast('void **', capture)),
+            'Opening the capture client',
+        )
         self.capture = capture[0]
         self._data = ffi.new('BYTE **')
         self._frames = ffi.new('UINT32 *')
@@ -759,7 +829,9 @@ class CaptureStream(object):
         capture = self.capture
         while True:
             # GetBuffer says when the queue is empty, so no packet size calls are needed
-            hr = capture.lpVtbl.GetBuffer(capture, self._data, self._frames, self._flags, ffi.NULL, self._qpc)
+            hr = capture.lpVtbl.GetBuffer(
+                capture, self._data, self._frames, self._flags, ffi.NULL, self._qpc
+            )
             if hr == AUDCLNT_S_BUFFER_EMPTY:
                 return packets
             _check(hr, 'Reading audio')
@@ -767,8 +839,13 @@ class CaptureStream(object):
             if flags & AUDCLNT_BUFFERFLAGS_SILENT or self._data[0] == ffi.NULL:
                 block = np.zeros((frames, self.channels), dtype=np.float32)
             else:
-                block = np.frombuffer(ffi.buffer(self._data[0], frames * 4 * self.channels),
-                                      dtype=np.float32).reshape(frames, self.channels).copy()
+                block = (
+                    np.frombuffer(
+                        ffi.buffer(self._data[0], frames * 4 * self.channels), dtype=np.float32
+                    )
+                    .reshape(frames, self.channels)
+                    .copy()
+                )
             capture.lpVtbl.ReleaseBuffer(capture, frames)
             packets.append((block, self._qpc[0], flags))
 
@@ -803,8 +880,18 @@ def _start(client, stream_flags, fmt, channels, rate, name, use_event=True):
     if use_event:
         stream_flags |= AUDCLNT_STREAMFLAGS_EVENTCALLBACK
     try:
-        _check(client.lpVtbl.Initialize(client, AUDCLNT_SHAREMODE_SHARED, stream_flags, BUFFER_DURATION, 0,
-                                        ffi.cast('WAVEFORMATEX *', fmt), ffi.NULL), 'Opening the stream')
+        _check(
+            client.lpVtbl.Initialize(
+                client,
+                AUDCLNT_SHAREMODE_SHARED,
+                stream_flags,
+                BUFFER_DURATION,
+                0,
+                ffi.cast('WAVEFORMATEX *', fmt),
+                ffi.NULL,
+            ),
+            'Opening the stream',
+        )
         event = None
         if use_event:
             event = _kernel32.CreateEventW(ffi.NULL, False, False, ffi.NULL)
@@ -826,8 +913,12 @@ def open_endpoint(device_id, loopback, rate=48000):
             try:
                 name = _device_name(device)
                 pp = ffi.new('IAudioClient **')
-                _check(device.lpVtbl.Activate(device, IID_IAudioClient, CLSCTX_ALL, ffi.NULL,
-                                              ffi.cast('void **', pp)), 'Opening the device')
+                _check(
+                    device.lpVtbl.Activate(
+                        device, IID_IAudioClient, CLSCTX_ALL, ffi.NULL, ffi.cast('void **', pp)
+                    ),
+                    'Opening the device',
+                )
             finally:
                 _release(device)
         client = pp[0]
@@ -838,10 +929,16 @@ def open_endpoint(device_id, loopback, rate=48000):
         if mix[0].wFormatTag == WAVE_FORMAT_EXTENSIBLE:
             mask = ffi.cast('WAVEFORMATEXTENSIBLE *', mix[0]).dwChannelMask
         _ole32.CoTaskMemFree(mix[0])
-        flags = (AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
-                 | AUDCLNT_STREAMFLAGS_NOPERSIST | (AUDCLNT_STREAMFLAGS_LOOPBACK if loopback else 0))
+        flags = (
+            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+            | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+            | AUDCLNT_STREAMFLAGS_NOPERSIST
+            | (AUDCLNT_STREAMFLAGS_LOOPBACK if loopback else 0)
+        )
         try:
-            return _start(client, flags, _float_format(channels, rate, mask), channels, rate, name, use_event)
+            return _start(
+                client, flags, _float_format(channels, rate, mask), channels, rate, name, use_event
+            )
         except WasapiError as exc:
             # Older systems refuse event driven loopback: poll instead
             if not use_event or exc.device_lost:
@@ -849,11 +946,12 @@ def open_endpoint(device_id, loopback, rate=48000):
     raise RuntimeError('unreachable')
 
 
-class _ActivationHandler(object):
+class _ActivationHandler:
     """
     The COM object ActivateAudioInterfaceAsync calls back when the process
     loopback client is ready. Agile, as the API requires.
     """
+
     def __init__(self):
         self.done = threading.Event()
         self.vtbl = ffi.new('IActivateAudioInterfaceCompletionHandlerVtbl *')
@@ -864,18 +962,24 @@ class _ActivationHandler(object):
             ffi.callback(ffi.typeof(self.vtbl.Release), lambda this: 1),
             ffi.callback(ffi.typeof(self.vtbl.ActivateCompleted), self._completed),
         ]
-        (self.vtbl.QueryInterface, self.vtbl.AddRef, self.vtbl.Release,
-         self.vtbl.ActivateCompleted) = self._callbacks
+        (
+            self.vtbl.QueryInterface,
+            self.vtbl.AddRef,
+            self.vtbl.Release,
+            self.vtbl.ActivateCompleted,
+        ) = self._callbacks
         self.obj.lpVtbl = self.vtbl
-        self._known = {_guid_bytes(g) for g in (IID_IUnknown, IID_IAgileObject,
-                                                 IID_IActivateAudioInterfaceCompletionHandler)}
+        self._known = {
+            _guid_bytes(g)
+            for g in (IID_IUnknown, IID_IAgileObject, IID_IActivateAudioInterfaceCompletionHandler)
+        }
 
     def _query_interface(self, this, riid, ppv):
         if _guid_bytes(riid) in self._known:
             ppv[0] = this
             return S_OK
         ppv[0] = ffi.NULL
-        return E_NOINTERFACE - 2 ** 32
+        return E_NOINTERFACE - 2**32
 
     def _completed(self, this, operation):
         self.done.set()
@@ -892,29 +996,43 @@ def open_app(pid, include=True, rate=48000, channels=2):
     params = ffi.new('AUDIOCLIENT_ACTIVATION_PARAMS *')
     params.ActivationType = AUDCLNT_ACTIVATION_TYPE_PROCESS_LOOPBACK
     params.TargetProcessId = pid
-    params.ProcessLoopbackMode = (PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE if include
-                                  else PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE)
+    params.ProcessLoopbackMode = (
+        PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+        if include
+        else PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+    )
     variant = ffi.new('PROPVARIANT *')
     variant.vt = VT_BLOB
     variant.blob.cbSize = ffi.sizeof('AUDIOCLIENT_ACTIVATION_PARAMS')
     variant.blob.pBlobData = ffi.cast('BYTE *', params)
     handler = _ActivationHandler()
     operation = ffi.new('IActivateAudioInterfaceAsyncOperation **')
-    _check(_mmdevapi.ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, IID_IAudioClient,
-                                                 variant, handler.obj, operation), 'Starting app capture')
+    _check(
+        _mmdevapi.ActivateAudioInterfaceAsync(
+            VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, IID_IAudioClient, variant, handler.obj, operation
+        ),
+        'Starting app capture',
+    )
     try:
         if not handler.done.wait(5):
             raise RuntimeError('App capture did not start')
         result = ffi.new('HRESULT *')
         activated = ffi.new('IUnknown **')
-        _check(operation[0].lpVtbl.GetActivateResult(operation[0], result, activated), 'Starting app capture')
+        _check(
+            operation[0].lpVtbl.GetActivateResult(operation[0], result, activated),
+            'Starting app capture',
+        )
         _check(result[0], 'Starting app capture')
     finally:
         _release(operation[0])
     pp = ffi.new('IAudioClient **')
     try:
-        _check(activated[0].lpVtbl.QueryInterface(activated[0], IID_IAudioClient, ffi.cast('void **', pp)),
-               'Opening app capture')
+        _check(
+            activated[0].lpVtbl.QueryInterface(
+                activated[0], IID_IAudioClient, ffi.cast('void **', pp)
+            ),
+            'Opening app capture',
+        )
     finally:
         _release(activated[0])
     fmt = ffi.new('WAVEFORMATEX *')
@@ -926,6 +1044,13 @@ def open_app(pid, include=True, rate=48000, channels=2):
     fmt.wBitsPerSample = 32
     fmt.cbSize = 0
     # Process loopback takes only these flags (as in Microsoft's sample)
-    stream = _start(pp[0], AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, fmt, channels, rate, '')
-    stream._handler = handler           # the callbacks must outlive the activation
+    stream = _start(
+        pp[0],
+        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+        fmt,
+        channels,
+        rate,
+        '',
+    )
+    stream._handler = handler  # the callbacks must outlive the activation
     return stream

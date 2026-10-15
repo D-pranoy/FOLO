@@ -7,28 +7,36 @@ of new audio to the engine. Also keeps the input meter and capture stats.
 
 import math
 import os
+import sys
 import threading
 import time
 
 import numpy as np
+import numpy.typing as npt
 
-from app import wasapi
+# Capture needs Windows. Elsewhere the module still imports (tests, the
+# frozen build's smoke test), lists no sources and reports an error.
+if sys.platform == 'win32':
+    from app import wasapi
+else:
+    wasapi = None
+UNSUPPORTED = 'Audio capture needs Windows'
 
 RATE = 48000
-OPEN_RETRY = 2.0            # seconds before retrying a source that failed to open
-LOST_RETRY = 0.5            # ... one that was unplugged
-WAIT_RETRY = 1.5            # ... an app that isn't running yet
-CHECK_EVERY = 1.0           # seconds between checks of the default output and the app's process
-POLL_EVERY = 10             # checks between asking Windows for the default output anyway
-GAP = 0.1                   # no audio for this long: the next batch starts fresh (outputs send nothing in silence)
-METER_FALL = 24.0           # dB per second the input meter falls
+OPEN_RETRY = 2.0  # seconds before retrying a source that failed to open
+LOST_RETRY = 0.5  # ... one that was unplugged
+WAIT_RETRY = 1.5  # ... an app that isn't running yet
+CHECK_EVERY = 1.0  # seconds between checks of the default output and the app's process
+POLL_EVERY = 10  # checks between asking Windows for the default output anyway
+GAP = 0.1  # no audio for this long: the next batch starts fresh (outputs send nothing in silence)
+METER_FALL = 24.0  # dB per second the input meter falls
 METER_FLOOR = -90.0
-CLIP_HOLD = 2.0             # seconds the clip light stays on
+CLIP_HOLD = 2.0  # seconds the clip light stays on
 # Never offered as apps: the audio engine itself and the studio
 HIDDEN_APPS = {'audiodg.exe'}
 
 
-def channel_peaks(frames):
+def channel_peaks(frames: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
     """
     Each channel's peak in frames x channels. Transposed first: numpy is three
     times slower reducing over the short channel axis.
@@ -42,6 +50,8 @@ def sources():
     'devices': [{'name', 'output'}], 'apps': [{'exe', 'name', 'active', 'peak'}]}.
     Apps are those with audio on any output right now, playing ones first.
     """
+    if wasapi is None:
+        return {'default': '', 'devices': [], 'apps': []}
     wasapi.init_com()
     found, default_id = wasapi.endpoints()
     default = next((d['name'] for d in found if d['id'] == default_id), '')
@@ -55,8 +65,10 @@ def sources():
         exe = procs[pid][0]
         if exe.lower() in HIDDEN_APPS:
             continue
-        entry = apps.setdefault(exe.lower(), {'exe': exe.lower(), 'name': wasapi.app_name(pid, exe),
-                                              'active': False, 'peak': 0.0})
+        entry = apps.setdefault(
+            exe.lower(),
+            {'exe': exe.lower(), 'name': wasapi.app_name(pid, exe), 'active': False, 'peak': 0.0},
+        )
         entry['active'] = entry['active'] or (info['active'] and info['peak'] > 0.001)
         entry['peak'] = round(max(entry['peak'], info['peak']), 3)
     ordered = sorted(apps.values(), key=lambda a: (not a['active'], a['name'].lower()))
@@ -67,26 +79,27 @@ class Waiting(Exception):
     """The source can't be opened yet (its app isn't running)."""
 
 
-class AudioInput(object):
+class AudioInput:
     """
     Runs the capture thread. `on_audio(frames, peaks, fresh)` gets every
     batch of new audio (frames x channels float32 at RATE) with each
     channel's peak; `fresh` is True after a gap, when older samples no longer
     belong to what's playing.
     """
+
     def __init__(self, store, on_audio):
         self.store = store
         self.on_audio = on_audio
         self.running = False
         self.thread = None
-        self.state = 'starting'         # ok, waiting, error, starting
-        self.label = ''                 # what is being captured, for the UI
-        self.kind = ''                  # output, input, only, except
+        self.state = 'starting'  # ok, waiting, error, starting
+        self.label = ''  # what is being captured, for the UI
+        self.kind = ''  # output, input, only, except
         self.message = ''
-        self.format = (0, 0, False)     # rate, channels, event driven
-        self.packets = 0.0              # packets per second
-        self.delay = 0.0                # ms from WASAPI's capture time to the engine (median)
-        self.glitches = 0               # lost audio (data discontinuities) since the source opened
+        self.format = (0, 0, False)  # rate, channels, event driven
+        self.packets = 0.0  # packets per second
+        self.delay = 0.0  # ms from WASAPI's capture time to the engine (median)
+        self.glitches = 0  # lost audio (data discontinuities) since the source opened
         self._meter = [(METER_FLOOR, 0.0), (METER_FLOOR, 0.0)]
         self._clip_until = 0.0
 
@@ -140,12 +153,12 @@ class AudioInput(object):
             name = wasapi.app_name(pid, procs[pid][0]) if pid else wasapi.known_app_name(app)
             only = mode != 'except'
             self.kind = 'only' if only else 'except'
-            self.label = name if only else 'Everything except {}'.format(name)
+            self.label = name if only else f'Everything except {name}'
             if pid is None:
                 if only:
-                    raise Waiting('Waiting for {} to start'.format(name))
+                    raise Waiting(f'Waiting for {name} to start')
                 # Nothing to leave out: listen to everything until it starts
-                self.label = 'Everything ({} is not running)'.format(name)
+                self.label = f'Everything ({name} is not running)'
                 _, default_id = wasapi.endpoints()
                 stream = wasapi.open_endpoint(default_id, loopback=True, rate=RATE)
                 return stream, lambda: wasapi.app_root(app) is None
@@ -163,7 +176,9 @@ class AudioInput(object):
             return stream, _default_unchanged(default_id)
         match = _find_device(found, device)
         if match is None:
-            raise Waiting('{} is not connected'.format(device[3:] if device.startswith('in:') else device))
+            raise Waiting(
+                '{} is not connected'.format(device[3:] if device.startswith('in:') else device)
+            )
         self.kind = 'output' if match['output'] else 'input'
         self.label = match['name']
         stream = wasapi.open_endpoint(match['id'], loopback=match['output'], rate=RATE)
@@ -172,6 +187,9 @@ class AudioInput(object):
     # -------------------------------------------------------------- thread
 
     def _loop(self):
+        if wasapi is None:
+            self._set_state('error', UNSUPPORTED)
+            return
         wasapi.init_com()
         boost = wasapi.boost_thread()
         try:
@@ -183,16 +201,18 @@ class AudioInput(object):
                     self._set_state('waiting', str(exc))
                     self._sleep(WAIT_RETRY, wanted)
                     continue
-                except Exception as exc: # pylint: disable=broad-except
+                except Exception as exc:  # pylint: disable=broad-except
                     self._set_state('error', str(exc))
                     self._sleep(OPEN_RETRY, wanted)
                     continue
                 try:
                     self._run(stream, wanted, check)
                 except wasapi.WasapiError as exc:
-                    self._set_state('error', 'The device was disconnected' if exc.device_lost else str(exc))
+                    self._set_state(
+                        'error', 'The device was disconnected' if exc.device_lost else str(exc)
+                    )
                     self._sleep(LOST_RETRY if exc.device_lost else OPEN_RETRY, wanted)
-                except Exception as exc: # pylint: disable=broad-except
+                except Exception as exc:  # pylint: disable=broad-except
                     self._set_state('error', str(exc))
                     self._sleep(OPEN_RETRY, wanted)
                 finally:
@@ -225,14 +245,20 @@ class AudioInput(object):
             packets = stream.read()
             now = time.perf_counter()
             if packets:
-                frames = packets[0][0] if len(packets) == 1 else np.concatenate([p[0] for p in packets])
+                frames = (
+                    packets[0][0] if len(packets) == 1 else np.concatenate([p[0] for p in packets])
+                )
                 for _, _, flags in packets:
                     if flags & wasapi.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY and not first:
                         self.glitches += 1
                     first = False
                 delays.append((wasapi.qpc_now() - packets[-1][1]) / 1e4)
                 count += len(packets)
-                peaks = channel_peaks(frames) if len(frames) else np.zeros(frames.shape[1], dtype=np.float32)
+                peaks = (
+                    channel_peaks(frames)
+                    if len(frames)
+                    else np.zeros(frames.shape[1], dtype=np.float32)
+                )
                 self._update_meter(peaks, now)
                 self.on_audio(frames, peaks, now - last_audio > GAP)
                 last_audio = now
@@ -277,6 +303,7 @@ def _default_unchanged(default_id):
             return True
         state['serial'] = serial
         return wasapi.default_output_id() == default_id
+
     return check
 
 
@@ -287,8 +314,11 @@ def _find_device(found, wanted):
     """
     inputs_only = wanted.startswith('in:')
     name = wanted[3:] if inputs_only else wanted
-    candidates = [d for d in found if not d['output']] if inputs_only else \
-        sorted(found, key=lambda d: not d['output'])
+    candidates = (
+        [d for d in found if not d['output']]
+        if inputs_only
+        else sorted(found, key=lambda d: not d['output'])
+    )
     for d in candidates:
         if d['name'] == name:
             return d

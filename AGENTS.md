@@ -18,11 +18,11 @@ The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specificatio
 
 **FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The upstream effect runner (`main.py` + `effects/`), ported to Python 3, is gone from `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)); it stays on `main` and in the `v0.9.0-legacy` tag.
 
-No build step, no test suite, no installed linter (`.pylintrc` exists for style; pylint isn't in the venv).
+No build step. Tests, lint and type checks run through uv, and CI runs them on Windows and Ubuntu (`.github/workflows/ci.yml`).
 
 ## Commands
 
-Everything runs from the project's venv (Python 3.13). Recreate it with:
+Everything runs from the project's venv (Python 3.13). `uv sync` creates or updates it with the locked runtime and dev dependencies (`pyproject.toml`, `uv.lock`). It manages `.venv`, the venv `studio.bat` uses, so a running studio needs a restart afterwards. Without uv, the runtime alone:
 
 ```
 py -3.13 -m venv .venv
@@ -33,7 +33,12 @@ py -3.13 -m venv .venv
 |---|---|
 | Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json]` |
 | List audio sources (outputs, inputs, apps playing audio) | the studio's Audio input card, or `GET http://127.0.0.1:8777/api/sources` |
-| Syntax check Python | `.venv\Scripts\python.exe -m py_compile studio.py app\studio_config.py app\studio_engine.py app\audio_input.py app\wasapi.py app\beat_tracker.py app\now_playing.py app\json_client.py` |
+| Tests (goldens, beat fixtures, `sanitize_config`, the studio starting; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
+| Lint, format, types | `uv run ruff check .`, `uv run ruff format .`, `uv run pyright` |
+| Every pre-commit hook | `uv run pre-commit run --all-files` (`uv run pre-commit install` once to run them on commit) |
+| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus]` |
+| Rust | `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (toolchain pinned in `rust-toolchain.toml`) |
+| Frozen studio (PyInstaller one-dir) | `uv sync --group packaging`, then `uv run pyinstaller --noconfirm packaging/folo-studio.spec`; `dist\folo-studio\folo-studio.exe --help` |
 | Syntax check the UI | `node --check web\studio.js` |
 | Ask Hyperion for its LED layout | JSON API: send `{"command":"serverinfo","tan":1}\n` to `localhost:19444` (see `app.json_client.fetch_server_info`) |
 
@@ -46,7 +51,7 @@ py -3.13 -m venv .venv
 .venv\Scripts\python.exe studio.py --port 8778 --no-browser --config <copy>.json
 ```
 
-Engine logic can be tested offline by importing `app.studio_engine.Analyzer` / `Renderer` and feeding numpy blocks, frames × channels or mono (see how `Renderer.render(config, spectrum, dt)` is called from `StudioEngine._on_audio`). For A/B work on real audio, record the capture device to a `.npy` (`device.recorder(samplerate=48000).record(numframes=...)`) and feed both engines the same 480-frame packets so their frames line up. Stacking the frames of one segment into an image (time down, LEDs across) is a quick way to see whether a moving mode looks right. A speed-up should leave the output byte for byte the same: load the committed `studio_engine.py` (`git show HEAD:app/studio_engine.py`) with `importlib`, run both on the same packets with the renderers' `rng` seeded alike, and compare frames, levels and spectra, including silence, gains up to +54 dB and every mode. Browsers throttle timers in hidden tabs to about 1 s, so in-page JS checks need multi-second waits.
+Engine logic can be tested offline by importing `app.studio_engine.Analyzer` / `Renderer` and feeding numpy blocks, frames × channels or mono (see how `Renderer.render(config, spectrum, dt)` is called from `StudioEngine._on_audio`). `tests/golden_cases.py` does exactly that for the golden frames, with synthetic signals from `tests/synth.py` and `Renderer(analyzer, rng=np.random.default_rng(seed))`. For A/B work on real audio, record the capture device to a `.npy` (`device.recorder(samplerate=48000).record(numframes=...)`) and feed both engines the same 480-frame packets so their frames line up. Stacking the frames of one segment into an image (time down, LEDs across) is a quick way to see whether a moving mode looks right. A speed-up should leave the output byte for byte the same, which `tests/test_golden_renderer.py` checks on 279 cases (every mode × direction × trigger, gains up to +54 dB, the ambient light, every built-in look). For a deeper A/B, load the committed `studio_engine.py` (`git show HEAD:app/studio_engine.py`) with `importlib`, run both on the same packets with the renderers' `rng` seeded alike, and compare frames, levels and spectra, including silence, gains up to +54 dB and every mode. Browsers throttle timers in hidden tabs to about 1 s, so in-page JS checks need multi-second waits.
 
 **Testing app capture without sound:**
 - **Tone:** play an inaudible tone (18.5 kHz at −70 dBFS) from a process with a distinctive name. A copy of the base interpreter renamed `tonegen.exe` works, run with `PYTHONHOME` set to the base install and `PYTHONPATH` to the venv's site-packages.
@@ -54,7 +59,7 @@ Engine logic can be tested offline by importing `app.studio_engine.Analyzer` / `
 - **Time:** `time.process_time()` ticks in 15.6 ms steps on Windows, so CPU comparisons need long or repeated runs.
 
 **Testing the beat without sound:**
-- **Offline:** synthesize songs with known beat times (kick, snare, hats, a bass line and a chord per bar, at 60–180 BPM, four-on-the-floor, rock, swung hip-hop, tempo drift, breakdowns), feed `Analyzer` and `BeatTracker` the same 480-frame packets, and score the fired beats against the true ones (±70 ms) plus the bar starts. Also feed music without a steady beat (pads, random piano notes, speech-like bursts): it must never lock.
+- **Offline:** synthesize songs with known beat times (kick, snare, hats, a bass line and a chord per bar, at 60–180 BPM, four-on-the-floor, rock, swung hip-hop, tempo drift, breakdowns), feed `Analyzer` and `BeatTracker` the same 480-frame packets, and score the fired beats against the true ones (±70 ms) plus the bar starts. Also feed music without a steady beat (pads, random piano notes, speech-like bursts): it must never lock. `tests/beat_fixtures.py` has these fixtures and pins what the tracker does on them. Its known defects (the bar position on rock patterns and after breakdowns, locking on perfectly clean tones) are listed in `docs/architecture/current-system.md`, and their tests are expected to fail.
 - **In the page:** run `studio.py` with `audio_input.AudioInput` replaced by a fake that streams synthetic songs at real-time pace (no sound plays), then check the tempo pill, the Music card and beat segments.
 - **Player controls:** don't press play/pause, next or previous while testing: they act on the owner's real player.
 
@@ -115,7 +120,7 @@ Segment fields:
 The JS `enforce()` / `dbLimits()` must stay in sync with these limits.
 
 ### Engine (`app/studio_engine.py`)
-- **Audio input (`app/audio_input.py` on `app/wasapi.py`):** the studio's own WASAPI capture through cffi.
+- **Audio input (`app/audio_input.py` on `app/wasapi.py`):** the studio's own WASAPI capture through cffi. On other platforms `wasapi` isn't imported, so the code still imports (tests, the frozen build's smoke test): there are no sources, and the input reports "Audio capture needs Windows".
   - **Sources** (config `audio`):
     - an output's loopback (`device`: `default` or a name)
     - an input (`in:` + name)
@@ -249,7 +254,7 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 - **FOLO studio** (formerly Audio Studio): the `studio.py` server, engine, config store and web UI.
   - **Editing:** spectrum and strip editors, inspector, live meters and a perceptual brightness bar.
   - **Triggers:** Level, Hits and Beat.
-  - **Libraries:** reactive presets, 12 whole-strip effects, and 14 genre presets with tags, all in a left-hand effects menu grouped under umbrella categories with search.
+  - **Libraries:** reactive presets, 14 whole-strip effects, and 14 genre presets with tags, all in a left-hand effects menu grouped under umbrella categories with search.
   - **Your presets:** save, tag, edit and delete them, and a ★ default restored by Reset all.
   - **Colors by range:** bulk recoloring per spectrum range.
   - **Live sync:** pages follow changes made elsewhere, LED count changes are followed with segment scaling, and Undo is offered for whole-strip changes.

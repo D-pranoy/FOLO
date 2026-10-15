@@ -54,6 +54,9 @@ Workflows use GitHub-authored actions (`actions/*`, `github/*`) and the third-pa
 | Action | Used for |
 |---|---|
 | `googleapis/release-please-action` | The release PR and changelog ([RB-23](../runbooks/m8-release.md#rb-23-release-pipeline)) |
+| `astral-sh/setup-uv` | uv and Python for the Python jobs in CI ([RB-01](../runbooks/m1-foundation.md#rb-01-toolchains-and-safety-net)) |
+| `Swatinem/rust-cache` | Caching Rust builds in CI ([RB-01](../runbooks/m1-foundation.md#rb-01-toolchains-and-safety-net)) |
+| `EmbarkStudios/cargo-deny-action` | Licence, advisory and source checks of the Rust dependencies ([RB-01](../runbooks/m1-foundation.md#rb-01-toolchains-and-safety-net)) |
 
 CodeQL runs from GitHub's default setup only. A CodeQL job in a workflow conflicts with it, so no workflow adds one.
 

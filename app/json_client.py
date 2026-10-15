@@ -35,8 +35,7 @@ def fetch_server_info(host, port, timeout=10):
     return reply['info']
 
 
-class JsonClient(object):
-
+class JsonClient:
     def __init__(self, host, port, timeout=10, priority=100, duration=None):
 
         self.host = host
@@ -46,16 +45,15 @@ class JsonClient(object):
         # Milliseconds hyperion keeps the colors if no new data arrives
         self.duration = duration
         self.connected = False
-        self.socket = None
+        self.socket: socket.socket | None = None
 
     def __del__(self):
         self.disconnect()
 
     def connect(self):
-
         """
         Open a socket connection to the server
-        :param host: Hostname oder ip address of the server
+        :param host: Hostname or IP address of the server
         :param port: Port of the server
         :param timeout: timeout in seconds
         """
@@ -73,27 +71,29 @@ class JsonClient(object):
             reader = Thread(target=self._drain, args=(self.socket,))
             reader.daemon = True
             reader.start()
-        except socket.error as exc:
-            print("Error on connection to ", self.host, ":", self.port, "\nMessage: ", exc)
+        except OSError as exc:
+            print('Error on connection to ', self.host, ':', self.port, '\nMessage: ', exc)
 
     def _drain(self, sock):
         try:
             while sock.recv(65536):
                 pass
-        except (socket.error, OSError, ValueError):
+        except (OSError, ValueError):
             pass
 
     def send(self, command):
+        assert self.socket is not None, 'not connected'
         self.socket.sendall((json.dumps(command) + '\n').encode('ascii'))
 
     def disconnect(self):
         if self.connected:
             try:
-                self.send({"command": "clear", "priority": self.priority})
-                self.socket.close()
+                self.send({'command': 'clear', 'priority': self.priority})
+                if self.socket is not None:
+                    self.socket.close()
                 self.connected = False
-            except socket.error as exc:
-                print("Could not close socket connection\nMessage: ", exc)
+            except OSError as exc:
+                print('Could not close socket connection\nMessage: ', exc)
 
     def send_led_data(self, led_data):
         """
@@ -108,20 +108,20 @@ class JsonClient(object):
         if not led_data:
             return
         message = {
-            "command": "color",
-            "color": list(led_data),
-            "priority": self.priority,
-            "origin": ORIGIN
+            'command': 'color',
+            'color': list(led_data),
+            'priority': self.priority,
+            'origin': ORIGIN,
         }
         if self.duration:
-            message["duration"] = self.duration
+            message['duration'] = self.duration
         try:
             self.send(message)
-        except socket.error as exc:
-            print("Error while sending the led data\nMessage: ", exc)
+        except OSError as exc:
+            print('Error while sending the led data\nMessage: ', exc)
             # Recreate the socket
             self.connected = False
-            print("Reconnecting...")
+            print('Reconnecting...')
             self.connect()
             if self.connected:
-                print("Connected.")
+                print('Connected.')
