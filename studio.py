@@ -5,12 +5,14 @@ A local web UI for building audio reactive led segments: pick led ranges,
 assign frequency ranges with thresholds, and see the result live in the
 browser and on the leds through hyperion.
 
-Usage: python studio.py [--port 8777] [--no-browser]
-Stop with Ctrl+C.
+Usage: python studio.py [--port 8777] [--no-browser] [--config studio.json] [--seed N]
+Stop with Ctrl+C or Ctrl+Break, by closing its console, or with SIGTERM.
+It logs JSON lines to stderr.
 """
 
 import argparse
 import json
+import logging
 import os
 import sys
 import threading
@@ -19,17 +21,16 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, BASE_DIR)
+# The effect engine's package (folo_source), also without installing it
+sys.path.insert(0, os.path.join(BASE_DIR, 'source'))
 
-from app.json_client import fetch_server_info
-from app.studio_config import ConfigStore
-from app.studio_engine import (
-    DISPLAY_BANDS,
-    DISPLAY_MAX_HZ,
-    DISPLAY_MIN_HZ,
-    StudioEngine,
-    audio_sources,
-)
+from folo_source.inputs.audio.analyzer import DISPLAY_BANDS, DISPLAY_MAX_HZ, DISPLAY_MIN_HZ
+from folo_source.legacy.json_client import fetch_server_info
+from folo_source.legacy.v1 import ConfigStore
+from folo_source.runtime import lifecycle, logs
+from folo_source.runtime.engine import StudioEngine, audio_sources
+
+log = logging.getLogger('studio')
 
 WEB_DIR = os.path.join(BASE_DIR, 'web')
 STATIC_FILES = {
@@ -53,7 +54,7 @@ def fetch_led_count(hyperion, quiet=False):
         return len(fetch_server_info(hyperion['host'], hyperion['port'], timeout=5)['leds'])
     except (OSError, ValueError, KeyError, RuntimeError) as exc:
         if not quiet:
-            print(f'Could not read the led layout from hyperion: {exc}')
+            log.warning('could not read the LED layout from Hyperion: %s', exc)
         return None
 
 
@@ -64,10 +65,10 @@ def watch_layout(store, stopping):
     while not stopping.wait(LAYOUT_POLL):
         led_count = fetch_led_count(store.config['hyperion'], quiet=True)
         if led_count and led_count != store.config['led_count']:
-            print(
-                'Hyperion now has {} leds (was {}), scaling the segments to fit'.format(
-                    led_count, store.config['led_count']
-                )
+            log.info(
+                'Hyperion now has %d LEDs (was %d), scaling the segments to fit',
+                led_count,
+                store.config['led_count'],
             )
             store.set_led_count(led_count)
 
@@ -115,7 +116,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         try:
             return audio_sources()
         except Exception as exc:  # pylint: disable=broad-except
-            print(f'Could not list audio sources: {exc}')
+            log.warning('could not list the audio sources: %s', exc)
             return {'default': '', 'devices': [], 'apps': []}
 
     def _state(self):
@@ -228,39 +229,51 @@ def main():
     parser.add_argument(
         '--no-browser', action='store_true', help="don't open the UI in the browser"
     )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        help='seed for the random modes (drops, fire), for repeatable output',
+    )
     args = parser.parse_args()
+
+    logs.setup()
+    shutdown = lifecycle.Shutdown()
+    shutdown.install()
 
     store = ConfigStore(args.config)
     store.load(fetch_led_count)
-    print('Leds: {}, segments: {}'.format(store.config['led_count'], len(store.config['segments'])))
+    log.info('LEDs: %d, segments: %d', store.config['led_count'], len(store.config['segments']))
 
-    engine = StudioEngine(store)
+    engine = StudioEngine(store, seed=args.seed)
     engine.start()
 
     stopping = threading.Event()
-    watcher = threading.Thread(target=watch_layout, args=(store, stopping))
-    watcher.daemon = True
+    watcher = threading.Thread(
+        target=watch_layout, args=(store, stopping), name='layout-watch', daemon=True
+    )
     watcher.start()
 
     server = StudioServer(('127.0.0.1', args.port), store, engine)
+    serving = threading.Thread(target=server.serve_forever, name='http', daemon=True)
+    serving.start()
 
     url = f'http://127.0.0.1:{args.port}/'
-    print(f'Audio studio running at {url}')
-    print('Stop with Ctrl+C')
+    log.info('FOLO studio running at %s', url)
     if not args.no_browser:
         webbrowser.open(url)
 
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        shutdown.wait()
     finally:
         server.stopping = True
         stopping.set()
+        server.shutdown()
         engine.stop()
         store.save()
         server.server_close()
-        print('Stopped')
+        lifecycle.join([serving, watcher])
+        log.info('stopped')
+        shutdown.done()
 
 
 if __name__ == '__main__':

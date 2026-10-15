@@ -1,10 +1,12 @@
 """
-Configuration of the FOLO studio: segments that map a frequency range of the
-audio to a range of leds. Everything coming from the web UI goes through
-sanitize_config() so the engine can trust the values.
+Configuration of the FOLO studio (studio.json, version 1): segments that
+map a frequency range of the audio to a range of leds. Everything coming
+from the web UI goes through sanitize_config() so the engine can trust the
+values. The reference for the v1 migration and the clamp corpus (RB-03).
 """
 
 import json
+import logging
 import math
 import os
 import re
@@ -12,9 +14,11 @@ import threading
 import uuid
 from typing import Any
 
+log = logging.getLogger(__name__)
+
 HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
 
-# The last six move by themselves, after LedFx effects (see studio_engine)
+# The last six move by themselves, after LedFx effects (see effects/visualizers.py)
 MODES = ('fill', 'pulse', 'spectrum', 'shift', 'scroll', 'drops', 'scan', 'wipe', 'flow', 'fire')
 DIRECTIONS = ('forward', 'reverse', 'center', 'edges')
 # level: threshold and ceiling are dB levels of the band.
@@ -379,10 +383,10 @@ class ConfigStore:
         data = None
         if os.path.exists(self.path):
             try:
-                with open(self.path) as config_file:
+                with open(self.path, encoding='utf-8') as config_file:
                     data = json.load(config_file)
             except (OSError, ValueError) as exc:
-                print(f'Could not read {self.path}: {exc}')
+                log.warning('could not read %s: %s', self.path, exc)
         stored = sanitize_config(data)
         led_count = lookup_led_count(stored['hyperion']) or stored['led_count']
         if data is None:
@@ -444,6 +448,6 @@ class ConfigStore:
                 self._timer.cancel()
                 self._timer = None
             tmp_path = self.path + '.tmp'
-            with open(tmp_path, 'w') as config_file:
+            with open(tmp_path, 'w', encoding='utf-8') as config_file:
                 json.dump(self.config, config_file, indent=2)
             os.replace(tmp_path, self.path)

@@ -1,4 +1,4 @@
-//! Version 1 (today's `studio.json`): a port of `app/studio_config.py`'s
+//! Version 1 (today's `studio.json`): a port of `folo_source/legacy/v1.py`'s
 //! `sanitize_config()`, statement by statement, so that it gives the same
 //! output on the RB-01 corpus (`tests/corpus/sanitize_config.json`). Version 1
 //! is looser about types than the v2 clamper: it reads numbers from strings,
@@ -39,7 +39,7 @@ const MAX_PRESETS: usize = 60;
 const MAX_TAGS: usize = 16;
 const MAX_TAG_LENGTH: usize = 24;
 
-/// A new id, as `studio_config.new_id()` makes them.
+/// A new id, as `v1.new_id()` makes them.
 pub type NewId<'a> = &'a mut dyn FnMut() -> String;
 
 /// `_float(value, default, lo, hi)`.

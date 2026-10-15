@@ -163,7 +163,7 @@ Python (the effect engine) and Rust (the node) clamp documents with the same alg
   - `range`: `start` and `end` are swapped when reversed.
 - **Params:** a layer's `params` are clamped with its effect's parameter schema when the effect is known (`audio-visualizer`); otherwise they are kept for the effect to validate.
 
-**Version 1** (today's `studio.json`) keeps its own rules, which are looser about types: `app/studio_config.py`'s `sanitize_config()` is the reference, `specs/schema/studio-v1.json` describes its limits, and the node's Rust port (`folo-protocol`, module `v1`) must give the same output on the RB-01 corpus.
+**Version 1** (today's `studio.json`) keeps its own rules, which are looser about types: `sanitize_config()` in `folo_source/legacy/v1.py` is the reference, `specs/schema/studio-v1.json` describes its limits, and the node's Rust port (`folo-protocol`, module `v1`) must give the same output on the RB-01 corpus.
 
 ## Migration from the current `studio.json` (version 1)
 

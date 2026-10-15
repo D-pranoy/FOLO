@@ -31,7 +31,7 @@ py -3.13 -m venv .venv
 
 | Task | Command |
 |---|---|
-| Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json]` |
+| Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json] [--seed N]` |
 | List audio sources (outputs, inputs, apps playing audio) | the studio's Audio input card, or `GET http://127.0.0.1:8777/api/sources` |
 | Tests (goldens, beat fixtures, `sanitize_config`, the studio starting, the clamper, contract drift and the conformance harness; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
 | Lint, format, types | `uv run ruff check .`, `uv run ruff format .`, `uv run pyright` |
@@ -44,9 +44,9 @@ py -3.13 -m venv .venv
 | Rust | `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (toolchain pinned in `rust-toolchain.toml`) |
 | Frozen studio (PyInstaller one-dir) | `uv sync --group packaging`, then `uv run pyinstaller --noconfirm packaging/folo-studio.spec`; `dist\folo-studio\folo-studio.exe --help` |
 | Syntax check the UI | `node --check web\studio.js` |
-| Ask Hyperion for its LED layout | JSON API: send `{"command":"serverinfo","tan":1}\n` to `localhost:19444` (see `app.json_client.fetch_server_info`) |
+| Ask Hyperion for its LED layout | JSON API: send `{"command":"serverinfo","tan":1}\n` to `localhost:19444` (see `folo_source.legacy.json_client.fetch_server_info`) |
 
-**Restart rules:** Python changes need the studio process restarted (kill the `python.exe` running `studio.py`, then start `studio.bat` again; LEDs blink briefly). `web/*` files are served with `no-store`, so UI changes only need a page refresh.
+**Restart rules:** Python changes need the studio process restarted (Ctrl+C in its console, or kill the `python.exe` running `studio.py`, then start `studio.bat` again; LEDs blink briefly). `web/*` files are served with `no-store`, so UI changes only need a page refresh.
 
 **Testing without touching the live setup:** `studio.json` is the live config, edited through the UI, and the studio drives real LEDs. Test destructive or experimental changes on a second instance with a copied config and Hyperion output disabled:
 
@@ -55,7 +55,7 @@ py -3.13 -m venv .venv
 .venv\Scripts\python.exe studio.py --port 8778 --no-browser --config <copy>.json
 ```
 
-Engine logic can be tested offline by importing `app.studio_engine.Analyzer` / `Renderer` and feeding numpy blocks, frames × channels or mono (see how `Renderer.render(config, spectrum, dt)` is called from `StudioEngine._on_audio`). `tests/golden_cases.py` does exactly that for the golden frames, with synthetic signals from `tests/synth.py` and `Renderer(analyzer, rng=np.random.default_rng(seed))`. For A/B work on real audio, record the capture device to a `.npy` (`device.recorder(samplerate=48000).record(numframes=...)`) and feed both engines the same 480-frame packets so their frames line up. Stacking the frames of one segment into an image (time down, LEDs across) is a quick way to see whether a moving mode looks right. A speed-up should leave the output byte for byte the same, which `tests/test_golden_renderer.py` checks on 279 cases (every mode × direction × trigger, gains up to +54 dB, the ambient light, every built-in look). For a deeper A/B, load the committed `studio_engine.py` (`git show HEAD:app/studio_engine.py`) with `importlib`, run both on the same packets with the renderers' `rng` seeded alike, and compare frames, levels and spectra, including silence, gains up to +54 dB and every mode. Browsers throttle timers in hidden tabs to about 1 s, so in-page JS checks need multi-second waits.
+Engine logic can be tested offline by importing `folo_source.inputs.audio.analyzer.Analyzer` / `folo_source.effects.visualizers.Renderer` and feeding numpy blocks, frames × channels or mono (see how `Renderer.render(config, spectrum, dt)` is called from `StudioEngine._on_audio`). `tests/golden_cases.py` does exactly that for the golden frames, with synthetic signals from `tests/synth.py` and `Renderer(analyzer, rng=np.random.default_rng(seed))`. For A/B work on real audio, record the capture device to a `.npy` (`device.recorder(samplerate=48000).record(numframes=...)`) and feed both engines the same 480-frame packets so their frames line up. Stacking the frames of one segment into an image (time down, LEDs across) is a quick way to see whether a moving mode looks right. A speed-up should leave the output byte for byte the same, which `tests/test_golden_renderer.py` checks on 279 cases (every mode × direction × trigger, gains up to +54 dB, the ambient light, every built-in look). For a deeper A/B, export the committed package (`git archive HEAD source | tar -x -C <dir>`), run it in a second process with that `source` folder first on `sys.path`, feed both the same packets with the renderers' `rng` seeded alike, and compare frames, levels and spectra, including silence, gains up to +54 dB and every mode. Browsers throttle timers in hidden tabs to about 1 s, so in-page JS checks need multi-second waits.
 
 **Testing app capture without sound:**
 - **Tone:** play an inaudible tone (18.5 kHz at −70 dBFS) from a process with a distinctive name. A copy of the base interpreter renamed `tonegen.exe` works, run with `PYTHONHOME` set to the base install and `PYTHONPATH` to the venv's site-packages.
@@ -64,7 +64,7 @@ Engine logic can be tested offline by importing `app.studio_engine.Analyzer` / `
 
 **Testing the beat without sound:**
 - **Offline:** synthesize songs with known beat times (kick, snare, hats, a bass line and a chord per bar, at 60–180 BPM, four-on-the-floor, rock, swung hip-hop, tempo drift, breakdowns), feed `Analyzer` and `BeatTracker` the same 480-frame packets, and score the fired beats against the true ones (±70 ms) plus the bar starts. Also feed music without a steady beat (pads, random piano notes, speech-like bursts): it must never lock. `tests/beat_fixtures.py` has these fixtures and pins what the tracker does on them. Its known defects (the bar position on rock patterns and after breakdowns, locking on perfectly clean tones) are listed in `docs/architecture/current-system.md`, and their tests are expected to fail.
-- **In the page:** run `studio.py` with `audio_input.AudioInput` replaced by a fake that streams synthetic songs at real-time pace (no sound plays), then check the tempo pill, the Music card and beat segments.
+- **In the page:** run `studio.py` with `folo_source.inputs.audio.windows.audio_input.AudioInput` replaced by a fake that streams synthetic songs at real-time pace (no sound plays), then check the tempo pill, the Music card and beat segments.
 - **Player controls:** don't press play/pause, next or previous while testing: they act on the owner's real player.
 
 `.claude/launch.json` (git-ignored) has a `studio-test` configuration for the in-app browser preview: port 8778 with a config copy in a session scratchpad. Point `--config` at your own copy before using it.
@@ -85,8 +85,13 @@ Engine logic can be tested offline by importing `app.studio_engine.Analyzer` / `
 
 A watcher thread polls Hyperion's LED count every 5 s and calls `ConfigStore.set_led_count`, which scales all segments proportionally.
 
-### Config (`app/studio_config.py`)
-`sanitize_config()` is the single source of truth for the schema and its limits. Everything the UI sends goes through it.
+The server runs on its own thread while the main thread waits for a stop:
+- **Logs:** JSON lines on stderr (`runtime/logs.py`): `ts`, `level`, `logger`, `msg` and `exc` (the format in [control plane](docs/architecture/control-plane.md#supervision)). Nothing prints.
+- **Stopping:** Ctrl+C, Ctrl+Break, closing its console or SIGTERM (`runtime/lifecycle.py`'s `Shutdown`). It stops the server, the engine and the layout watcher, joins their threads within 3 s, clears its colors in Hyperion and saves the config. A kill still works: Hyperion releases the LEDs after `duration`.
+- **Randomness:** `--seed N` seeds the random modes (drops, fire), for repeatable output.
+
+### Config (`folo_source/legacy/v1.py`)
+`sanitize_config()` is the single source of truth for the schema and its limits. Everything the UI sends goes through it. It stays as the reference for the v1 migration and the clamp corpus. The file is read and written as UTF-8.
 
 `ConfigStore` behaviour:
 - **Replacement:** the config dict is replaced as a whole on every change, never mutated, so readers use it without locks.
@@ -123,8 +128,18 @@ Segment fields:
 
 The JS `enforce()` / `dbLimits()` must stay in sync with these limits.
 
-### Engine (`app/studio_engine.py`)
-- **Audio input (`app/audio_input.py` on `app/wasapi.py`):** the studio's own WASAPI capture through cffi. On other platforms `wasapi` isn't imported, so the code still imports (tests, the frozen build's smoke test): there are no sources, and the input reports "Audio capture needs Windows".
+### Engine (`source/folo_source/`, the `folo-source` package)
+The effect engine, restructured from the studio's engine in RB-03 with the same output (the goldens pin it). `studio.py` puts `source/` on `sys.path`, so it runs without installing the package; `uv sync` installs it editable. Paths below are inside `source/folo_source/`:
+- `inputs/audio/analyzer.py`: `Analyzer`, `Spectrum`, `AutoLevel` and `channel_peaks()`
+- `inputs/audio/windows/`: the WASAPI capture (`audio_input.py` on `wasapi.py`)
+- `inputs/media/windows.py`: now playing
+- `signals/beat.py`: the beat tracker
+- `effects/visualizers.py`: `Renderer`, `SegmentState`, the modes and the beat targets; `effects/colors.py`: palettes and album colors
+- `runtime/engine.py`: `StudioEngine`, which wires them together and renders silence while idle; `runtime/lifecycle.py`: shutdown, thread joins, the seeded random generator; `runtime/logs.py`: JSON-line logging
+- `legacy/`: what the controller takes over later: `v1.py` (the config), `ambient.py` (the ambient light, RB-08), `hyperion.py` and `json_client.py` (the Hyperion output, RB-10)
+- `contracts/`: the generated models and the clamper (RB-02)
+
+- **Audio input (`inputs/audio/windows/audio_input.py` on `wasapi.py`):** the studio's own WASAPI capture through cffi. On other platforms `wasapi` isn't imported, so the code still imports (tests, the frozen build's smoke test): there are no sources, and the input reports "Audio capture needs Windows".
   - **Sources** (config `audio`):
     - an output's loopback (`device`: `default` or a name)
     - an input (`in:` + name)
@@ -159,12 +174,12 @@ The JS `enforce()` / `dbLimits()` must stay in sync with these limits.
   - `fire`: base sparks heat the segment, heat rises at `speed`, and flames reach higher with the level.
   - **Hits** for drops and wipe: the shaped target rising past `HIT_ON` (0.5) after dropping below `HIT_OFF` (0.25), at most one per `HIT_GAP`. On the beat trigger every loud enough beat is a hit.
   - **Idle glow** (`floor`) is the minimum brightness of what the mode draws (scan eye, wipe colors, flow, flame height); scroll and drops use it as a dim palette backdrop.
-- **Ambient light (`Ambient`, in `Renderer.render` before `master`):**
+- **Ambient light (`legacy/ambient.py`'s `Ambient`, in `Renderer.render` before `master`):**
   - **Blend:** crossfades the segments' frame with `ambient.color × level`; `breathe` pulses between 30% and 100% over `BREATHE_PERIOD` (8 s).
   - **Silence:** the audio counts as silent while its loudest bin is below `QUIET_DB` (−70 dB), and `quiet` counts the seconds.
   - **Fades:** into the ambient light over `AMBIENT_FADE_IN` (1.5 s), eased; back to reactive in `AMBIENT_FADE_OUT` (0.15 s), so the first beat after a pause still shows.
   - **Paused player:** with `now_playing.pause_ambient`, Auto switches after `PAUSE_QUIET` (0.3 s) of silence instead of `idle_after` while the player says it's paused. Other sound (a game) keeps it reactive.
-- **Beat tracker (`app/beat_tracker.py`, `BeatTracker`):** pushed with every spectrum right before it's rendered (`StudioEngine._track_beat()`), silence included.
+- **Beat tracker (`signals/beat.py`, `BeatTracker`):** pushed with every spectrum right before it's rendered (`StudioEngine._track_beat()`), silence included.
   - **Onsets:** 100 per second: how much 24 log-spaced bands (40 Hz–10 kHz, their loudest bin, floored 50 dB below the loudest band) rose over 20 ms, averaged.
   - **Tempo:** every 0.1 s, the autocorrelation of the last 8 s of onsets (a 1 s moving average taken out, older onsets weighted down over 3 s) at each candidate period from 60 to 200 BPM, plus its double and quadruple, weighted by a log-Gaussian around 120 BPM and towards the tempo already found. A far tempo must persist 1 s before it's taken.
   - **Lock:** `confidence` is the autocorrelation at the beat, smoothed. Beats fire only after it stays above `LOCK_ON` (0.3) for 0.5 s, and stop below `LOCK_OFF` (0.2) or after 1 s of silence; 3 s of silence forgets the tempo. Synthetic music with a steady beat measured 0.35–0.8. Pads, random piano notes and speech-like bursts stayed below 0.3, apart from peaks (up to 0.32) shorter than the half second a lock needs.
@@ -172,14 +187,14 @@ The JS `enforce()` / `dbLimits()` must stay in sync with these limits.
   - **Bars:** each beat of four collects accents: bass onsets (below 150 Hz) and how much the bands below 4 kHz changed since the beat before (chords and bass notes change on the first beat, drums repeat). The beat with the most (15% margin) is `downbeat`.
   - **When it runs:** only while an enabled segment uses the beat or a page streamed in the last 3 s (`_beat_wanted()`); otherwise `skip()`. A new song from now playing resets it.
   - **Measured:** on synthetic songs it locks after about 4 s and every beat lands within 10 ms. It costs about 50–70 µs a packet (0.5–0.7% of a core) while it runs.
-- **Now playing (`app/now_playing.py`, `NowPlaying` thread):** Windows' media sessions (`GlobalSystemMediaTransportControlsSessionManager`) through the `winrt` packages; without them its state is `unavailable`.
+- **Now playing (`inputs/media/windows.py`, `NowPlaying` thread):** Windows' media sessions (`GlobalSystemMediaTransportControlsSessionManager`) through the `winrt` packages; without them its state is `unavailable`.
   - **Session:** a playing one first, and among those the app the studio captures (`audio.app` in only mode, matched in the app id: Arc reports `Arc.exe`).
   - **Following:** the sessions' change events wake the thread, plus a check every second, and the title is read again every 5 s anyway.
   - **Album art:** read when the song changes (again after 2 s if the player hasn't set it yet), decoded to 48×48 by `BitmapDecoder`. `cover_colors()` picks up to five hues from a histogram weighted by chroma², at full brightness and a bit more saturated; grey or dark art gives none.
   - **Album colors on the LEDs:** `Renderer._prepare(config, colors)` swaps each segment's palette for as many art colors (`cover_palette()`: the strongest first for lows, the second for mids, the third for highs), so a new cover is worked out once.
   - **Controls:** `control()` runs `try_toggle_play_pause_async` / `try_skip_next_async` / `try_skip_previous_async` on the shown session.
-- **Idle thread:** after `IDLE_AFTER` (0.1 s) without an audio packet, it renders silence at `IDLE_FPS` (30), so fades, releases and the ambient light keep going. Packets stop when nothing plays on some devices, or when capture fails. Rendering from both threads is serialised by `_render_lock`. `fps` counts audio packets only, so it reads 0 while idle.
-- **`HyperionSender` thread:** sends JSON `color` commands with priority 100, origin `Audio Effects` and `duration` 2000 ms, so Hyperion releases the LEDs if the studio dies. Hyperion rejects an `origin` longer than 20 characters.
+- **Idle thread (`runtime/engine.py`):** after `IDLE_AFTER` (0.1 s) without an audio packet, it renders silence at `IDLE_FPS` (30), so fades, releases and the ambient light keep going. Packets stop when nothing plays on some devices, or when capture fails. Rendering from both threads is serialised by `_render_lock`. `fps` counts audio packets only, so it reads 0 while idle.
+- **`HyperionSender` thread (`legacy/hyperion.py`):** sends JSON `color` commands with priority 100, origin `Audio Effects` and `duration` 2000 ms, so Hyperion releases the LEDs if the studio dies. Hyperion rejects an `origin` longer than 20 characters.
   - **Rate:** it checks for a new frame at the configured fps and sends it when it changed. An unchanged frame (silence, a solid ambient light) goes out again only every `KEEPALIVE` (0.5 s), well within `duration` and WLED's 2.5 s live timeout. Parsing our 40 commands a second cost Hyperion's JSON thread about 6% of a core.
 - **Stream snapshot fields:** `spectrum` (192 log-spaced bands, 20 Hz–20 kHz, as dB integers), `leds` (hex), `levels {id: [raw dB, value 0–1, average dB]}`, `led_count`, `revision`, `server_id` and `status`. The bands and the rounded levels (`shown_levels()`; `render()` returns them unrounded) are worked out once per streamed frame and shared by every open page. `status.ambient` is the fade (0 reactive … 1 ambient light) and `status.quiet` the seconds of silence. `status.input` is `AudioInput.status()` plus `gain` and `auto` (the auto level gain), and `status.audio.device` is the source's label. `status.beat` has `bpm` (0 until found), `confidence`, `locked`, `phase` (0–1 through the beat) and `bar_beat` (0 is the first). `status.media` is `NowPlaying.status()`: `state` (`off`, `unavailable`, `error`, `none`, `playing`, `paused` or `stopped`), `app`, `title`, `artist`, `album`, `art` (an id, 0 without art) and `colors`.
 
@@ -255,9 +270,9 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 ### Contracts (`specs/`, RB-02)
 The machine-readable forms of the prose specifications in `docs/specs/`. Nothing in the running studio uses them yet; the rebuild's engine and node will.
 - **Sources:** JSON Schemas per document and entity in `specs/schema/` (including `studio-v1.json`, today's `studio.json`), `specs/openapi.yaml` (OpenAPI 3.1, the client API) and `specs/asyncapi.yaml` (AsyncAPI 3.0: the live channel, the source link, ingest and the binary frames). Clamping rules the schema keywords can't say are custom `x-folo-*` keywords, read by both clampers.
-- **Generated, committed, never edited:** `specs/generated/folo.schema.json` (all schemas bundled into one `$defs`, every object default expanded), `app/contracts/models.py` (pydantic), `crates/folo-protocol/src/generated.rs` (typify, run by `crates/xtask`), `ui/src/lib/api/schema.ts` (openapi-typescript) and `crates/folo-protocol/src/v1/pyunicode.rs` (Python 3.13's Unicode facts for the v1 port, from `scripts/pyunicode.py`).
-- **Clampers (clamp, never reject):** `app/contracts/clamp.py` and its port `crates/folo-protocol/src/clamp.rs` agree on `tests/corpus/clamp_v2.json`. `crates/folo-protocol/src/v1/` ports `sanitize_config` with Python's quirks (`str()` of junk values, rounding, truthiness) and matches `tests/corpus/sanitize_config.json`.
-- **Checks:** `tests/test_contract_drift.py` compares the spec tables with the schemas and `studio_config.py`'s limits; `scripts/contracts.py check` validates everything and regenerates into a temporary folder to catch drift; `scripts/conformance.py` drives a running API with schemathesis and checks message files, with one fixture per AsyncAPI message in `specs/fixtures/`.
+- **Generated, committed, never edited:** `specs/generated/folo.schema.json` (all schemas bundled into one `$defs`, every object default expanded), `source/folo_source/contracts/models.py` (pydantic), `crates/folo-protocol/src/generated.rs` (typify, run by `crates/xtask`), `ui/src/lib/api/schema.ts` (openapi-typescript) and `crates/folo-protocol/src/v1/pyunicode.rs` (Python 3.13's Unicode facts for the v1 port, from `scripts/pyunicode.py`).
+- **Clampers (clamp, never reject):** `source/folo_source/contracts/clamp.py` and its port `crates/folo-protocol/src/clamp.rs` agree on `tests/corpus/clamp_v2.json`. `crates/folo-protocol/src/v1/` ports `sanitize_config` with Python's quirks (`str()` of junk values, rounding, truthiness) and matches `tests/corpus/sanitize_config.json`.
+- **Checks:** `tests/test_contract_drift.py` compares the spec tables with the schemas and `legacy/v1.py`'s limits; `scripts/contracts.py check` validates everything and regenerates into a temporary folder to catch drift; `scripts/conformance.py` drives a running API with schemathesis and checks message files, with one fixture per AsyncAPI message in `specs/fixtures/`.
 
 ## Changes from upstream (so far)
 
@@ -271,6 +286,7 @@ The machine-readable forms of the prose specifications in `docs/specs/`. Nothing
   - **Live sync:** pages follow changes made elsewhere, LED count changes are followed with segment scaling, and Undo is offered for whole-strip changes.
   - **Ambient light:** audio reactive On / Auto / Off, with a solid or breathing ambient color when the music stops.
   - **Look and speed:** glass panels over a Deep Night glow. The page draws only when new data or input arrives, so it uses about a quarter of the CPU it used to.
+  - **The engine as a package:** `folo-source` (`source/folo_source/`), with JSON-line logs and a clean stop on signals and console events.
   - **A lighter engine:** each audio packet is analysed in about half the time (the same output, byte for byte), quiet windows skip the FFTs, Hyperion only gets frames that changed, and hidden pages stop streaming.
   - **Audio input:** the studio's own WASAPI capture. It listens to an output, an input, only one app or everything except one app, follows default output switches and app restarts, and has input meters, stats, gain and auto level.
   - **LedFx effects:** six moving modes (scroll, drops, scan, wipe, flow, fire) with per-segment speed and size, and an LedFx group of 18 effects (Energy, Scroll, Wavelength, Power, Rain, Spotlight, Scan, Scan multi, Strobe, Blade Power+, Bar, Multicolor bar, Bands, Equalizer, Blocks, Fire, Lava lamp, Marching).
@@ -292,13 +308,12 @@ The machine-readable forms of the prose specifications in `docs/specs/`. Nothing
 - **Dark strip with Hyperion and the studio both fine:** check for audio first. Segments with no idle glow (`floor` 0) render black in silence, and the stream's `spectrum` sits at −120 when nothing plays.
 - **Hyperion's own audio effect or a pinned source hides the studio:** these API commands work without auth: `{"command":"sourceselect","auto":true}` and `{"command":"componentstate","componentstate":{"component":"AUDIO","state":false}}`. `serverinfo` → `priorities` shows which source is visible.
 - **WLED goes dark when Hyperion stops:** with "stay on after streaming" off, re-enable it with `POST http://<wled-host>/json/state` and `{"seg":[{"id":0,"on":true}]}`.
-- **Stopping the studio:** it runs as two `python.exe` processes whose command line contains `studio.py` (the venv launcher plus the interpreter); stop both.
+- **Stopping the studio:** Ctrl+C in its console stops it cleanly. Otherwise it runs as two `python.exe` processes whose command line contains `studio.py` (the venv launcher plus the interpreter); stop both.
 
 ## Not tested yet
 
 - A real default output switch or an unplugged device. The notification and reopen paths were only tested with simulated changes, to leave the owner's audio alone.
 - The glitch counter: it was never seen above 0.
-- Studio shutdown with Ctrl+C.
 - Switching audio devices while the studio runs.
 - The beat tracker on real music: it was only measured on synthetic songs. The timing offset that suits the real LEDs isn't known yet.
 - The player controls (previous, play/pause, next): never pressed, to leave the owner's player alone. Only refusing a bad action was tested.

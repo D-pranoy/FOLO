@@ -1,6 +1,6 @@
 # Control plane
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (the effect engine's logs and shutdown; no node yet)
 
 Covers roles, ports, pairing, links, settings, supervision and status. Decided in [ADR-0003](../decisions/ADR-0003-system-roles.md), [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md), [ADR-0009](../decisions/ADR-0009-client-access.md) and [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md).
 
@@ -86,6 +86,8 @@ Recovery: `folo pair reset` or the local UI. You must be at the machine; it can'
 
 - The desktop app supervises a managed node, or a service manager (Windows service, systemd) supervises the node.
 - The node supervises `folo-source`: it checks a heartbeat, restarts it with backoff, and stops it when disabled. Source logs appear in the controller's log viewer.
+  - **Logs:** `folo-source` writes them to stderr as JSON lines, one object per record: `ts` (UTC, RFC 3339 with milliseconds), `level` (`debug`, `info`, `warning`, `error` or `critical`), `logger`, `msg`, and `exc` with the traceback when there is one.
+  - **Stopping:** it shuts down cleanly on SIGINT, SIGTERM and Windows console control events (Ctrl+C, Ctrl+Break, closing its console), and joins its threads with timeouts.
 - `folo-capture` always runs in the signed-in user's session. The node starts it when the node itself runs in that session; otherwise the desktop app starts it at sign-in ([display capture](../integrations/display-capture.md#where-capture-runs)).
 - **Media sessions** (now playing) also belong to the user's session. In Windows service mode, the effect engine runs outside it, so now playing reports `unavailable` in v1 ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
 

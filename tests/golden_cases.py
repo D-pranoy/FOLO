@@ -26,9 +26,17 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from app import studio_config, studio_engine
-from app.audio_input import channel_peaks
-from app.beat_tracker import ONSET_DELAY, BeatTracker
+from folo_source.effects.visualizers import Renderer, shown_levels
+from folo_source.inputs.audio.analyzer import (
+    SAMPLERATE,
+    Analyzer,
+    AutoLevel,
+    Spectrum,
+    channel_peaks,
+)
+from folo_source.legacy import v1 as studio_config
+from folo_source.runtime.engine import IDLE_AFTER, IDLE_FPS, MAX_DT, StudioEngine
+from folo_source.signals.beat import ONSET_DELAY, BeatTracker
 from tests import synth
 
 GOLDEN_DIR = Path(__file__).parent / 'golden'
@@ -278,7 +286,7 @@ def all_cases() -> list[Case]:
 
 @dataclass
 class Packet:
-    spectrum: studio_engine.Spectrum
+    spectrum: Spectrum
     frames: int
     dt: float
 
@@ -308,15 +316,15 @@ def analyse(key: tuple[str, float, bool]) -> list[Packet]:
     name, gain, auto_level = key
     if key not in _analyses:
         _analyses.clear()  # one at a time: callers go through cases grouped by analysis
-        analyzer = studio_engine.Analyzer()
-        level = studio_engine.AutoLevel()
+        analyzer = Analyzer()
+        level = AutoLevel()
         out: list[Packet] = []
         for frames in synth.packets(signal(name)):
             analyzer.offset = gain + (level.gain if auto_level else 0.0)
             spectrum = analyzer.push(frames, channel_peaks(frames))
-            dt = min(studio_engine.MAX_DT, len(frames) / float(studio_engine.SAMPLERATE))
+            dt = min(MAX_DT, len(frames) / float(SAMPLERATE))
             level.update(spectrum.loudest, dt)
-            shared = studio_engine.Spectrum(
+            shared = Spectrum(
                 spectrum.padded_for(False), spectrum.padded_for(True), spectrum.offset
             )
             out.append(Packet(shared, len(frames), dt))
@@ -331,9 +339,9 @@ def idle_steps(seconds: float) -> list[float]:
     """
     if seconds <= 0:
         return []
-    steps = [studio_engine.IDLE_AFTER]
+    steps = [IDLE_AFTER]
     while sum(steps) < seconds:
-        steps.append(1.0 / studio_engine.IDLE_FPS)
+        steps.append(1.0 / IDLE_FPS)
     return steps
 
 
@@ -344,15 +352,15 @@ def uses_beat(config: Config) -> bool:
 def render(case: Case) -> Result:
     """Renders a case from the shared spectra, packet by packet like the engine."""
     config = case.config
-    analyzer = studio_engine.Analyzer()
-    renderer = studio_engine.Renderer(analyzer, rng=np.random.default_rng(SEED))
-    beat = BeatTracker(analyzer.freqs, studio_engine.SAMPLERATE)
+    analyzer = Analyzer()
+    renderer = Renderer(analyzer, rng=np.random.default_rng(SEED))
+    beat = BeatTracker(analyzer.freqs, SAMPLERATE)
     tracking = uses_beat(config)
     order = [s['id'] for s in config['segments']]
     frames: list[bytes] = []
     levels: list[Any] = []
 
-    def step(spectrum: studio_engine.Spectrum, count: int, dt: float) -> None:
+    def step(spectrum: Spectrum, count: int, dt: float) -> None:
         # StudioEngine._track_beat, without a page watching
         if tracking:
             beat.lead = ONSET_DELAY + config['beat']['offset'] / 1000.0
@@ -363,13 +371,13 @@ def render(case: Case) -> Result:
             config, spectrum, dt, beat=beat, colors=case.colors, paused=case.paused
         )
         frames.append(frame)
-        shown = studio_engine.shown_levels(seg_levels)
+        shown = shown_levels(seg_levels)
         levels.append([shown[i] for i in order])
 
     for packet in analyse(case.analysis):
         step(packet.spectrum, packet.frames, packet.dt)
     for dt in idle_steps(case.idle):
-        step(studio_engine.Spectrum.silent(), int(dt * studio_engine.SAMPLERATE), dt)
+        step(Spectrum.silent(), int(dt * SAMPLERATE), dt)
     count = config['led_count']
     data = np.frombuffer(b''.join(frames), dtype=np.uint8).reshape(len(frames), count, 3)
     return Result(data, levels)
@@ -394,7 +402,7 @@ def render_with_engine(case: Case) -> Frames:
     """
     if case.idle or case.paused or case.colors:
         raise ValueError('render_with_engine only covers audio packets')
-    engine = studio_engine.StudioEngine(FakeStore(case.config))
+    engine = StudioEngine(FakeStore(case.config))
     engine.renderer.rng = np.random.default_rng(SEED)
     engine._watched = float('-inf')  # pyright: ignore[reportPrivateUsage]  # no page is watching
     frames: list[bytes] = []

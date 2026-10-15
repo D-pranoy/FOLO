@@ -13,7 +13,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app import studio_config as sc
+from folo_source.legacy import v1 as sc
 from tests import sanitize_corpus, strategies
 
 HEX = re.compile(r'^#[0-9A-F]{6}$')

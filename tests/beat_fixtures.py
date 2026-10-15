@@ -19,9 +19,8 @@ from typing import Any
 
 import numpy as np
 
-from app import studio_engine
-from app.audio_input import channel_peaks
-from app.beat_tracker import BeatTracker
+from folo_source.inputs.audio.analyzer import SAMPLERATE, Analyzer, channel_peaks
+from folo_source.signals.beat import BeatTracker
 from tests import synth
 
 BEAT_DIR = Path(__file__).parent / 'golden' / 'beat'
@@ -78,8 +77,8 @@ def run(fixture: Fixture) -> Run:
     made = fixture.make()
     song = made if isinstance(made, synth.Song) else None
     frames = made.frames if isinstance(made, synth.Song) else made
-    analyzer = studio_engine.Analyzer()
-    tracker = BeatTracker(analyzer.freqs, studio_engine.SAMPLERATE)
+    analyzer = Analyzer()
+    tracker = BeatTracker(analyzer.freqs, SAMPLERATE)
     fired: dict[str, list[int]] = {f'{g:g}': [] for g in GRIDS}
     bar_beats: list[int] = []
     locks: list[int] = []
