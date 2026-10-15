@@ -1,0 +1,242 @@
+"""
+The conformance harness (RB-02 step 5): drives an implementation of FOLO's
+API or WebSocket channels against the contracts in specs/.
+
+    uv run python scripts/conformance.py api --url http://127.0.0.1:8777/api/v1 [--key KEY] [st ...]
+    uv run python scripts/conformance.py messages DIR
+
+`api` runs schemathesis against specs/openapi.yaml: every operation with
+generated requests, every response checked against the spec. Point it at a
+node in demo mode (docs/process/testing-policy.md), never at a live setup.
+
+`messages` checks captured WebSocket messages against specs/asyncapi.yaml.
+DIR holds one message per file, named after its AsyncAPI message
+(components/messages), optionally with --<anything> before the extension:
+`config.apply.json`, `subscribe--empty.json`, `surfaceFrame--rgb8.fols`.
+JSON files are checked against the message's payload schema; `.fols` and
+`.folg` files are surface and signal frames, checked against their layout
+(specs/schema/source-link.json). An implementation's tests can dump what it
+sends into a folder and run this. CI runs it on specs/fixtures/.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+from collections.abc import Iterator
+from functools import cache
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+import yaml
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
+
+ROOT = Path(__file__).resolve().parent.parent
+SPECS = ROOT / 'specs'
+OPENAPI = SPECS / 'openapi.yaml'
+ASYNCAPI = SPECS / 'asyncapi.yaml'
+SOURCE_LINK = SPECS / 'schema' / 'source-link.json'
+FIXTURES = SPECS / 'fixtures'
+
+Json = Any
+PIXEL_BYTES = {1: 3, 2: 6, 3: 12}  # rgb8, rgb16, rgbf32: bytes per cell
+
+
+# ---------------------------------------------------------------- API
+
+
+def run_api(url: str, key: str | None, extra: list[str]) -> int:
+    st = shutil.which('st') or shutil.which('schemathesis')
+    if st is None:
+        raise SystemExit('schemathesis is needed: uv sync')
+    cmd = [
+        st,
+        'run',
+        str(OPENAPI),
+        '--url',
+        url,
+        '--checks',
+        'all',
+        '--exclude-tag',
+        'websockets',
+        '--no-color',
+    ]
+    if key:
+        cmd += ['--header', f'Authorization: Bearer {key}']
+    # Its report has non-ASCII characters, which a Windows console can't take otherwise
+    env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
+    return subprocess.run(cmd + extra, check=False, env=env).returncode
+
+
+# ---------------------------------------------------------------- messages
+
+
+def _load(path: Path) -> Json:
+    text = path.read_text(encoding='utf-8')
+    return yaml.safe_load(text) if path.suffix in ('.yaml', '.yml') else json.loads(text)
+
+
+def _retrieve(uri: str) -> Resource[Json]:
+    """Schemas referenced from the AsyncAPI document: local files only."""
+    if urlparse(uri).scheme != 'file':
+        raise ValueError(f'only local files are read: {uri}')
+    return Resource.from_contents(_load(Path.from_uri(uri)), default_specification=DRAFT202012)
+
+
+@cache
+def _registry() -> Registry[Json]:
+    asyncapi = Resource.from_contents(_load(ASYNCAPI), default_specification=DRAFT202012)
+    return Registry(retrieve=_retrieve).with_resource(ASYNCAPI.as_uri(), asyncapi)  # type: ignore[call-arg]
+
+
+@cache
+def message_names() -> tuple[str, ...]:
+    return tuple(_load(ASYNCAPI)['components']['messages'])
+
+
+@cache
+def _validator(message: str) -> Draft202012Validator:
+    pointer = f'{ASYNCAPI.as_uri()}#/components/messages/{message}/payload'
+    return Draft202012Validator({'$ref': pointer}, registry=_registry())
+
+
+@cache
+def _layout(name: str) -> tuple[list[dict[str, Json]], int]:
+    header = json.loads(SOURCE_LINK.read_text(encoding='utf-8'))['$defs'][name]
+    return header['x-folo-layout'], header['x-folo-header-size']
+
+
+def _fields(data: bytes, layout: list[dict[str, Json]]) -> dict[str, Json]:
+    formats = {1: '<B', 2: '<H', 4: '<I', 8: '<Q'}
+    out: dict[str, Json] = {}
+    for field in layout:
+        raw = data[field['offset'] : field['offset'] + field['size']]
+        name = field['field']
+        value = (
+            raw.decode('ascii', 'replace')
+            if name == 'magic'
+            else struct.unpack(formats[field['size']], raw)[0]
+        )
+        if name == 'reserved':
+            out.setdefault('reserved', []).append(value)
+        else:
+            out[name] = value
+    return out
+
+
+def check_frame(data: bytes, kind: str) -> list[str]:
+    """A surface (FOLS) or signal (FOLG) frame against its layout."""
+    layout, size = _layout('SurfaceFrameHeader' if kind == 'surface' else 'SignalFrameHeader')
+    if len(data) < size:
+        return [f'shorter than the {size}-byte header']
+    fields = _fields(data, layout)
+    problems: list[str] = []
+    for field in layout:
+        if (
+            'value' in field
+            and field['field'] != 'reserved'
+            and fields[field['field']] != field['value']
+        ):
+            problems.append(
+                f'{field["field"]} is {fields[field["field"]]!r}, not {field["value"]!r}'
+            )
+    if any(value != 0 for value in fields.get('reserved', [])):
+        problems.append('a reserved field is not 0')
+    payload = len(data) - size
+    if kind == 'surface':
+        fmt = fields['pixel_format']
+        if fmt not in PIXEL_BYTES:
+            return [*problems, f'unknown pixel format {fmt}']
+        if fields['flags'] & ~0b11:
+            problems.append(f'unknown flags {fields["flags"]:#04x}')
+        lz4 = fields['flags'] & 1
+        expected = fields['width'] * fields['height'] * PIXEL_BYTES[fmt]
+        if not lz4 and payload != expected:
+            problems.append(
+                f'payload is {payload} bytes; '
+                f'{fields["width"]} x {fields["height"]} cells need {expected}'
+            )
+        if fields['width'] < 1 or fields['height'] < 1:
+            problems.append('width and height must be at least 1')
+    elif payload != 4 * fields['count']:
+        problems.append(
+            f'payload is {payload} bytes; '
+            f'{fields["count"]} float32 values need {4 * fields["count"]}'
+        )
+    return problems
+
+
+def message_of(path: Path) -> str:
+    return path.name.split('--')[0].removesuffix(path.suffix)
+
+
+def check_message_file(path: Path) -> list[str]:
+    message = message_of(path)
+    if path.suffix in ('.fols', '.folg'):
+        expected = 'surfaceFrame' if path.suffix == '.fols' else 'signalFrame'
+        if message != expected:
+            return [f'{path.name}: {path.suffix} files hold {expected} messages']
+        return [
+            f'{path.name}: {p}'
+            for p in check_frame(path.read_bytes(), expected.removesuffix('Frame'))
+        ]
+    if message not in message_names():
+        return [f'{path.name}: no AsyncAPI message is called {message}']
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError as exc:
+        return [f'{path.name}: not JSON: {exc}']
+    problems: list[str] = []
+    for error in _validator(message).iter_errors(payload):  # pyright: ignore[reportUnknownMemberType]
+        where = '/'.join(str(part) for part in error.path) or '(root)'
+        problems.append(f'{path.name}: {where}: {error.message}')
+    return sorted(problems)[:5]
+
+
+def message_files(folder: Path) -> Iterator[Path]:
+    return iter(sorted(p for p in folder.iterdir() if p.suffix in ('.json', '.fols', '.folg')))
+
+
+def check_messages(folder: Path) -> list[str]:
+    problems: list[str] = []
+    files = list(message_files(folder))
+    if not files:
+        return [f'{folder}: no message files']
+    for path in files:
+        problems += check_message_file(path)
+    return problems
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    commands = parser.add_subparsers(dest='command', required=True)
+    api = commands.add_parser('api', help='run schemathesis against a running API')
+    api.add_argument(
+        '--url', required=True, help='the API base, for example http://127.0.0.1:8777/api/v1'
+    )
+    api.add_argument('--key', help='a client key (loopback needs none)')
+    messages = commands.add_parser('messages', help='check captured WebSocket messages')
+    messages.add_argument('folder', type=Path, nargs='?', default=FIXTURES)
+    args, extra = parser.parse_known_args()
+    if args.command == 'api':
+        sys.exit(run_api(args.url, args.key, extra))
+    problems = check_messages(args.folder)
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    if problems:
+        sys.exit(f'{len(problems)} problem(s)')
+    print(f'{args.folder}: every message conforms')
+
+
+if __name__ == '__main__':
+    main()

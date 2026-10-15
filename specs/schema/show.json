@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShowDocument",
+  "description": "show.json: the active scene per zone, the scenes with their layers, and the default scene (docs/specs/config-model.md, docs/architecture/content.md).",
+  "type": "object",
+  "properties": {
+    "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+    "revision": {"$ref": "common.json#/$defs/Revision", "default": 0},
+    "server_id": {"$ref": "common.json#/$defs/ServerId", "default": ""},
+    "active": {
+      "description": "Zone id: scene id.",
+      "type": "object",
+      "additionalProperties": {"$ref": "common.json#/$defs/Ref"},
+      "default": {}
+    },
+    "default_scene": {
+      "description": "What Reset all restores: a scene id, or a built-in id (fx:*, genre:*) resolved through the alias table.",
+      "$ref": "common.json#/$defs/Ref",
+      "default": ""
+    },
+    "scenes": {"type": "array", "items": {"$ref": "#/$defs/Scene"}, "maxItems": 256, "default": []}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Scene": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "name": {"type": "string", "maxLength": 40, "default": "Scene"},
+        "tags": {"$ref": "common.json#/$defs/Tags", "default": []},
+        "provenance": {"$ref": "#/$defs/Provenance"},
+        "layers_by_role": {
+          "description": "Surface role (strip.main, canvas.room, ...): its layers, bottom first.",
+          "type": "object",
+          "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/Layer"}, "maxItems": 64},
+          "default": {}
+        },
+        "macros": {"type": "array", "items": {"$ref": "#/$defs/Macro"}, "maxItems": 8, "default": []}
+      },
+      "additionalProperties": false
+    },
+    "Provenance": {
+      "description": "Where an applied scene came from.",
+      "type": "object",
+      "properties": {
+        "pack": {"type": "string", "maxLength": 64, "default": ""},
+        "version": {"type": "string", "maxLength": 32, "default": ""},
+        "item": {"type": "string", "maxLength": 64, "default": ""}
+      },
+      "additionalProperties": false
+    },
+    "Macro": {
+      "description": "A knob that drives parameters of several layers.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "name": {"type": "string", "maxLength": 24, "default": "Macro"},
+        "value": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+        "targets": {"type": "array", "items": {"$ref": "#/$defs/MacroTarget"}, "maxItems": 16, "default": []}
+      },
+      "additionalProperties": false
+    },
+    "MacroTarget": {
+      "type": "object",
+      "properties": {
+        "layer": {"$ref": "common.json#/$defs/Ref", "default": ""},
+        "param": {"type": "string", "maxLength": 64, "default": ""},
+        "min": {"type": "number", "minimum": -1000000, "maximum": 1000000, "default": 0},
+        "max": {"type": "number", "minimum": -1000000, "maximum": 1000000, "default": 1}
+      },
+      "additionalProperties": false
+    },
+    "Layer": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "name": {"type": "string", "maxLength": 40, "default": "Layer"},
+        "effect": {"$ref": "#/$defs/EffectRef", "default": {}},
+        "params": {
+          "description": "The effect's parameters, clamped with its parameter schema when the effect is known.",
+          "type": "object",
+          "default": {},
+          "x-folo-params-by-effect": {"audio-visualizer": "#/$defs/AudioVisualizerParams"}
+        },
+        "region": {"$ref": "#/$defs/Region", "default": {"kind": "relative"}},
+        "blend": {"enum": ["max", "add", "alpha", "multiply"], "default": "max"},
+        "axis": {"enum": ["linear_x", "linear_y", "radial", "angular"], "default": "linear_x"},
+        "enabled": {"type": "boolean", "default": true},
+        "solo": {"type": "boolean", "default": false},
+        "lane": {"type": "integer", "minimum": -1, "maximum": 15, "default": -1}
+      },
+      "additionalProperties": false
+    },
+    "EffectRef": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64, "default": "audio-visualizer"},
+        "version": {"type": "string", "maxLength": 32, "default": "1.0.0"}
+      },
+      "additionalProperties": false
+    },
+    "Region": {
+      "description": "Where a layer sits on its surface.",
+      "oneOf": [
+        {"$ref": "#/$defs/CellsRegion"},
+        {"$ref": "#/$defs/RelativeRegion"},
+        {"$ref": "#/$defs/RectRegion"}
+      ],
+      "default": {"kind": "relative"}
+    },
+    "CellsRegion": {
+      "description": "Absolute cells start-end (inclusive) of a strip.",
+      "type": "object",
+      "properties": {
+        "kind": {"const": "cells"},
+        "start": {"type": "integer", "minimum": 0, "maximum": 1999, "default": 0},
+        "end": {"type": "integer", "minimum": 0, "maximum": 1999, "default": 1999}
+      },
+      "required": ["kind"],
+      "additionalProperties": false,
+      "x-folo-rules": ["range"]
+    },
+    "RelativeRegion": {
+      "description": "start-end along a strip, 0-1 of its length.",
+      "type": "object",
+      "properties": {
+        "kind": {"const": "relative"},
+        "start": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "end": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}
+      },
+      "required": ["kind"],
+      "additionalProperties": false,
+      "x-folo-rules": ["range"]
+    },
+    "RectRegion": {
+      "description": "A rectangle of a canvas, 0-1 of its width and height.",
+      "type": "object",
+      "properties": {
+        "kind": {"const": "rect"},
+        "x": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "y": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "width": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+        "height": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "AudioVisualizerParams": {
+      "description": "The audio-visualizer effect's parameters: today's segment fields, unchanged. threshold and ceiling show the widest range here; the thresholds rule applies the limits of the trigger.",
+      "type": "object",
+      "properties": {
+        "freq_lo": {"type": "number", "minimum": 10, "maximum": 24000, "default": 60, "x-folo-decimals": 2},
+        "freq_hi": {"type": "number", "minimum": 10, "maximum": 24000, "default": 250, "x-folo-decimals": 2},
+        "trigger": {"enum": ["level", "hits", "beat"], "default": "level"},
+        "beats": {"enum": [0.5, 1, 2, 4], "default": 1},
+        "threshold": {"type": "number", "minimum": -120, "maximum": 39, "default": -60, "x-folo-decimals": 1},
+        "ceiling": {"type": "number", "minimum": -119, "maximum": 40, "default": -25, "x-folo-decimals": 1},
+        "gain": {"type": "number", "minimum": 0.1, "maximum": 8, "default": 1},
+        "curve": {"type": "number", "minimum": 0.2, "maximum": 5, "default": 1},
+        "attack": {"type": "number", "minimum": 0, "maximum": 2000, "default": 15},
+        "release": {"type": "number", "minimum": 0, "maximum": 5000, "default": 200},
+        "floor": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "mode": {"enum": ["fill", "pulse", "spectrum", "shift", "scroll", "drops", "scan", "wipe", "flow", "fire"], "default": "fill"},
+        "direction": {"enum": ["forward", "reverse", "center", "edges"], "default": "forward"},
+        "speed": {"type": "number", "minimum": 0, "maximum": 2000, "default": 120},
+        "width": {"type": "number", "minimum": 1, "maximum": 100, "default": 20},
+        "peak": {"type": "boolean", "default": false},
+        "palette": {"$ref": "common.json#/$defs/Palette", "default": ["#FFFFFF"]}
+      },
+      "additionalProperties": false,
+      "x-folo-rules": ["band", "thresholds"],
+      "x-folo-band": {"low": "freq_lo", "high": "freq_hi", "ratio": 1.01},
+      "x-folo-thresholds": {
+        "trigger": "trigger",
+        "by_trigger": {
+          "hits": {"threshold": {"minimum": 0, "maximum": 39, "default": 3}, "ceiling": {"minimum": 1, "maximum": 40, "default": 10}}
+        },
+        "otherwise": {"threshold": {"minimum": -120, "maximum": -1, "default": -60}, "ceiling": {"minimum": -119, "maximum": 0, "default": -25}},
+        "gap": 1
+      }
+    }
+  }
+}

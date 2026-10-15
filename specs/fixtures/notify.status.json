@@ -1,0 +1,14 @@
+{
+ "jsonrpc": "2.0",
+ "method": "status",
+ "params": {
+  "state": "running",
+  "workers": {
+   "engine": "running"
+  },
+  "inputs": {
+   "audio": "ok"
+  },
+  "errors": []
+ }
+}

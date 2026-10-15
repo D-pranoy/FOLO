@@ -23,5 +23,6 @@ CLAUDE.local.md
 .claude/launch.json
 .claude/settings.local.json
 
-# Test outputs
+# Test outputs (and the crashes schemathesis keeps)
 *.folopack
+.schemathesis/

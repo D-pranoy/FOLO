@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProvidersDocument",
+  "description": "providers.json: provider instances and their settings (docs/specs/config-model.md, docs/integrations/).",
+  "type": "object",
+  "properties": {
+    "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+    "revision": {"$ref": "common.json#/$defs/Revision", "default": 0},
+    "server_id": {"$ref": "common.json#/$defs/ServerId", "default": ""},
+    "providers": {"type": "array", "items": {"$ref": "#/$defs/ProviderInstance"}, "maxItems": 64, "default": []}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ProviderInstance": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "kind": {"enum": ["hyperion", "wled", "hue"], "default": "hyperion"},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Provider"},
+        "enabled": {"type": "boolean", "default": true},
+        "rate_hz": {"type": "integer", "minimum": 1, "maximum": 100, "default": 40},
+        "settings": {"$ref": "#/$defs/ProviderSettings", "default": {"kind": "hyperion"}, "x-folo-kind-from": "kind"},
+        "output": {"enum": ["element", "raster"], "default": "element", "description": "raster is reserved."}
+      },
+      "additionalProperties": false
+    },
+    "ProviderSettings": {
+      "oneOf": [
+        {"$ref": "#/$defs/HyperionSettings"},
+        {"$ref": "#/$defs/WledSettings"},
+        {"$ref": "#/$defs/HueSettings"}
+      ],
+      "default": {"kind": "hyperion"}
+    },
+    "HyperionSettings": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "hyperion"},
+        "host": {"type": "string", "maxLength": 255, "default": "localhost"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 19444},
+        "priority": {"type": "integer", "minimum": 1, "maximum": 253, "default": 100},
+        "origin": {"description": "Hyperion rejects an origin longer than 20 characters.", "type": "string", "maxLength": 20, "default": "FOLO"}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "WledSettings": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "wled"},
+        "host": {"type": "string", "maxLength": 255, "default": ""},
+        "transport": {"enum": ["ddp", "dnrgb"], "default": "ddp"},
+        "timeout_s": {"description": "WLED's realtime timeout.", "type": "integer", "minimum": 1, "maximum": 255, "default": 2}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "HueSettings": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "hue"},
+        "bridge_id": {"type": "string", "maxLength": 32, "default": ""},
+        "address": {"type": "string", "maxLength": 255, "default": ""},
+        "streaming_mode": {"enum": ["managed", "linked"], "default": "managed"}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    }
+  }
+}

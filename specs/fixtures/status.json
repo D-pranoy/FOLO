@@ -1,0 +1,59 @@
+{
+ "type": "status",
+ "data": {
+  "sources": {
+   "local": {
+    "state": "connected",
+    "input": {
+     "state": "ok",
+     "label": "Speakers",
+     "message": "",
+     "rate": 48000,
+     "channels": 2,
+     "event_driven": true,
+     "packets_per_s": 100.0,
+     "delay_ms": 2.1,
+     "glitches": 0,
+     "peaks_db": [
+      -12.5,
+      -13.0
+     ],
+     "clip": false,
+     "gain_db": 0.0,
+     "auto_gain_db": 0.0
+    },
+    "beat": {
+     "bpm": 120.0,
+     "confidence": 0.7,
+     "locked": true,
+     "phase": 0.25,
+     "bar_beat": 1
+    },
+    "media": {
+     "state": "playing",
+     "app": "Music.exe",
+     "title": "Song",
+     "artist": "Artist",
+     "album": "Album",
+     "art": 3,
+     "colors": [
+      "#4B00FF",
+      "#FF3399"
+     ]
+    }
+   }
+  },
+  "zones": {
+   "living": {
+    "active": true,
+    "ambient": 0.0,
+    "quiet_s": 0.0
+   }
+  },
+  "providers": {
+   "hyperion": {
+    "state": "connected"
+   }
+  }
+ }
+}

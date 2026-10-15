@@ -1,0 +1,90 @@
+{
+ "jsonrpc": "2.0",
+ "id": 1,
+ "method": "config.apply",
+ "params": {
+  "revision": 3,
+  "inputs": {
+   "audio": {
+    "device": "default",
+    "app": "",
+    "app_mode": "only",
+    "gain": 0,
+    "auto_level": false
+   },
+   "media": {
+    "enabled": true
+   },
+   "screens": []
+  },
+  "surfaces": [
+   {
+    "index": 0,
+    "surface": {
+     "id": "main",
+     "kind": "strip",
+     "resolution": {
+      "width": 150,
+      "height": 1
+     },
+     "role": "strip.main"
+    },
+    "scene": "scene1",
+    "role": "strip.main"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "scene1",
+    "name": "Lows",
+    "layers_by_role": {
+     "strip.main": [
+      {
+       "id": "l1",
+       "name": "Lows",
+       "effect": {
+        "id": "audio-visualizer",
+        "version": "1.0.0"
+       },
+       "params": {
+        "freq_lo": 30,
+        "freq_hi": 150,
+        "trigger": "hits",
+        "threshold": 2,
+        "ceiling": 10,
+        "mode": "pulse",
+        "palette": [
+         "#0033CC",
+         "#000080"
+        ]
+       },
+       "region": {
+        "kind": "relative",
+        "start": 0,
+        "end": 0.5
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "publish": {
+   "surfaces": [
+    {
+     "index": 0,
+     "width": 150,
+     "height": 1,
+     "rate_hz": 100,
+     "pixel_format": "rgb8",
+     "lz4": false
+    }
+   ],
+   "signals": [
+    {
+     "name": "beat",
+     "index": 0
+    }
+   ]
+  }
+ }
+}

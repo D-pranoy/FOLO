@@ -1,0 +1,21 @@
+{
+  "name": "folo-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FOLO's user interface, scaffolded in RB-11. Until then: the client API types generated from specs/openapi.yaml, and the AsyncAPI check (RB-02).",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "generate:api": "openapi-typescript ../specs/openapi.yaml --output src/lib/api/schema.ts",
+    "check:types": "tsc --noEmit --project tsconfig.json",
+    "check:asyncapi": "node scripts/check-asyncapi.mjs ../specs/asyncapi.yaml"
+  },
+  "devDependencies": {
+    "@asyncapi/parser": "3.6.4",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

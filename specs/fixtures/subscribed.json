@@ -1,0 +1,11 @@
+{
+ "type": "subscribed",
+ "data": {
+  "topics": {
+   "status": {},
+   "spectrum:local": {
+    "index": 0
+   }
+  }
+ }
+}

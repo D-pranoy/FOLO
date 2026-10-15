@@ -18,7 +18,7 @@ The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specificatio
 
 **FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The upstream effect runner (`main.py` + `effects/`), ported to Python 3, is gone from `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)); it stays on `main` and in the `v0.9.0-legacy` tag.
 
-No build step. Tests, lint and type checks run through uv, and CI runs them on Windows and Ubuntu (`.github/workflows/ci.yml`).
+No build step. Tests, lint and type checks run through uv, and CI runs them on Windows and Ubuntu (`.github/workflows/ci.yml`). The contracts of the rebuild (`specs/`) generate committed Python, Rust and TypeScript code; CI fails when it's out of date (see [Contracts](#contracts-specs-rb-02)).
 
 ## Commands
 
@@ -33,10 +33,14 @@ py -3.13 -m venv .venv
 |---|---|
 | Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json]` |
 | List audio sources (outputs, inputs, apps playing audio) | the studio's Audio input card, or `GET http://127.0.0.1:8777/api/sources` |
-| Tests (goldens, beat fixtures, `sanitize_config`, the studio starting; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
+| Tests (goldens, beat fixtures, `sanitize_config`, the studio starting, the clamper, contract drift and the conformance harness; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
 | Lint, format, types | `uv run ruff check .`, `uv run ruff format .`, `uv run pyright` |
 | Every pre-commit hook | `uv run pre-commit run --all-files` (`uv run pre-commit install` once to run them on commit) |
-| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus]` |
+| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp]` |
+| Contract tools (once, needs Node.js 22) | `npm ci` in `ui\` |
+| Regenerate the schema bundle and the Python, Rust and TypeScript types (after changing `specs/`) | `uv run python scripts/contracts.py generate` |
+| Validate the contracts and fail on drift (what CI runs) | `uv run python scripts/contracts.py check`, then `npm run check:types` in `ui\` |
+| Conformance: an API, or captured WebSocket messages | `uv run python scripts/conformance.py api --url <base>/api/v1` (never a live setup) / `messages [DIR]` (default `specs/fixtures`) |
 | Rust | `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (toolchain pinned in `rust-toolchain.toml`) |
 | Frozen studio (PyInstaller one-dir) | `uv sync --group packaging`, then `uv run pyinstaller --noconfirm packaging/folo-studio.spec`; `dist\folo-studio\folo-studio.exe --help` |
 | Syntax check the UI | `node --check web\studio.js` |
@@ -247,6 +251,13 @@ A single-file vanilla JS app with no framework or bundler, and no CDN, so it wor
 - **Tags:** tags are kept, editable on saved presets and searchable. `All genres` is a tag on Default.
 
 `config.default_preset` can be a saved id or a built-in id (`genre:*`, `fx:*`). Built-ins only exist in JS, so **Reset all with a default preset happens client-side**, and the server's `/api/reset` is only the fallback.
+
+### Contracts (`specs/`, RB-02)
+The machine-readable forms of the prose specifications in `docs/specs/`. Nothing in the running studio uses them yet; the rebuild's engine and node will.
+- **Sources:** JSON Schemas per document and entity in `specs/schema/` (including `studio-v1.json`, today's `studio.json`), `specs/openapi.yaml` (OpenAPI 3.1, the client API) and `specs/asyncapi.yaml` (AsyncAPI 3.0: the live channel, the source link, ingest and the binary frames). Clamping rules the schema keywords can't say are custom `x-folo-*` keywords, read by both clampers.
+- **Generated, committed, never edited:** `specs/generated/folo.schema.json` (all schemas bundled into one `$defs`, every object default expanded), `app/contracts/models.py` (pydantic), `crates/folo-protocol/src/generated.rs` (typify, run by `crates/xtask`), `ui/src/lib/api/schema.ts` (openapi-typescript) and `crates/folo-protocol/src/v1/pyunicode.rs` (Python 3.13's Unicode facts for the v1 port, from `scripts/pyunicode.py`).
+- **Clampers (clamp, never reject):** `app/contracts/clamp.py` and its port `crates/folo-protocol/src/clamp.rs` agree on `tests/corpus/clamp_v2.json`. `crates/folo-protocol/src/v1/` ports `sanitize_config` with Python's quirks (`str()` of junk values, rounding, truthiness) and matches `tests/corpus/sanitize_config.json`.
+- **Checks:** `tests/test_contract_drift.py` compares the spec tables with the schemas and `studio_config.py`'s limits; `scripts/contracts.py check` validates everything and regenerates into a temporary folder to catch drift; `scripts/conformance.py` drives a running API with schemathesis and checks message files, with one fixture per AsyncAPI message in `specs/fixtures/`.
 
 ## Changes from upstream (so far)
 

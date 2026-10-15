@@ -1,0 +1,10 @@
+{
+ "jsonrpc": "2.0",
+ "method": "activity",
+ "params": {
+  "surface": 0,
+  "active": true,
+  "level_db": -22.5,
+  "quiet_s": 0.0
+ }
+}

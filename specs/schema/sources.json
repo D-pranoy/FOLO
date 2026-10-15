@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourcesDocument",
+  "description": "sources.json: paired sources, their role, assigned surfaces and inputs (docs/specs/config-model.md, docs/architecture/control-plane.md).",
+  "type": "object",
+  "properties": {
+    "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+    "revision": {"$ref": "common.json#/$defs/Revision", "default": 0},
+    "server_id": {"$ref": "common.json#/$defs/ServerId", "default": ""},
+    "sources": {"type": "array", "items": {"$ref": "#/$defs/Source"}, "maxItems": 64, "default": []}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Source": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Source"},
+        "role": {"description": "This controller's relation to the source.", "enum": ["owner", "consumer"], "default": "owner"},
+        "public_key": {"description": "The source's static X25519 key, base64url.", "type": "string", "maxLength": 64, "default": ""},
+        "surfaces": {"type": "array", "items": {"$ref": "common.json#/$defs/Ref"}, "maxItems": 64, "default": []},
+        "inputs": {"$ref": "#/$defs/SourceInputs", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "SourceInputs": {
+      "type": "object",
+      "properties": {
+        "audio": {"$ref": "#/$defs/AudioInputSettings", "default": {}},
+        "media": {"$ref": "#/$defs/MediaInputSettings", "default": {}},
+        "screens": {"type": "array", "items": {"$ref": "#/$defs/ScreenInput"}, "maxItems": 16, "default": []}
+      },
+      "additionalProperties": false
+    },
+    "AudioInputSettings": {
+      "type": "object",
+      "properties": {
+        "device": {"description": "default (follows the default output), an output name (its loopback), or in:<input name>.", "type": "string", "maxLength": 300, "default": "default"},
+        "app": {"description": "An app's executable name, lowercase; empty for none (Windows only in v1).", "type": "string", "maxLength": 260, "default": ""},
+        "app_mode": {"enum": ["only", "except"], "default": "only"},
+        "gain": {"type": "number", "minimum": -24, "maximum": 24, "default": 0},
+        "auto_level": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    },
+    "MediaInputSettings": {
+      "type": "object",
+      "properties": {
+        "enabled": {"description": "Read media sessions (Windows) or MPRIS (Linux).", "type": "boolean", "default": true}
+      },
+      "additionalProperties": false
+    },
+    "ScreenInput": {
+      "type": "object",
+      "properties": {
+        "id": {"description": "The selected screen.", "type": "string", "maxLength": 128, "default": ""},
+        "enabled": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    }
+  }
+}

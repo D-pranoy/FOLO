@@ -1,0 +1,7 @@
+{
+ "type": "config_changed",
+ "data": {
+  "document": "show",
+  "revision": 12
+ }
+}

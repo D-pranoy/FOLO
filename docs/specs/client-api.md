@@ -1,6 +1,6 @@
 # Client API
 
-Status: Draft · Implementation: Not started
+Status: Draft · Implementation: Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; no server yet)
 
 The controller's API for clients: the UI, the desktop app, the Android app later, the Home Assistant client library, and scripts. It is served on the controller's single port (default 8777). The machine-readable form is `specs/openapi.yaml` ([specifications](README.md)).
 
@@ -13,7 +13,7 @@ The controller's API for clients: the UI, the desktop app, the Android app later
   - Loopback requests need no key.
   - Unauthenticated: `/api/v1/health`, static UI files and the pairing endpoints, which use their own proofs.
 - **Scopes:** `control` (everyday use) and `admin` (configuration, pairing, packs, updates).
-- **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status.
+- **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header ([RFC 9110, section 15.5.6](https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed)).
 - **Concurrency:** documents carry `revision` and `server_id`. Writers may send `If-Match: <revision>`; without it, the last writer wins, as today.
 - **Body limit:** 1 MB by default.
 
@@ -65,8 +65,9 @@ The controller's API for clients: the UI, the desktop app, the Android app later
   - `zone:<id>` (reactive state: ambient fade 0–1, seconds of silence)
   - `surface:<id>`, `target:<id>`
 - **Server → client:**
-  - JSON messages: `status`, `levels`, `config_changed {document, revision}`, `event` (job progress, update states).
-  - Binary frames for pixel data and the spectrum (the same header as the [source link frame](source-link.md#surface-frames)).
+  - JSON messages: `status`, `levels`, `config_changed {document, revision}`, `event` (job progress, update states), and `subscribed`, which acknowledges a subscription and gives each binary topic its frame index.
+  - Binary frames for pixel data and the spectrum, in the [source link's](source-link.md) frame formats: pixel data as surface frames (`FOLS`) and the spectrum as signal frames (`FOLG`, band levels in dB). The surface or signal index in a frame is the one `subscribed` gave its topic.
+- **Envelope:** every JSON message from the server is `{"type": "<type>", "data": {...}}`. Client messages are `{"subscribe": [topics]}`, `{"unsubscribe": [topics]}` and `{"auth": {"key": "<client key>"}}`.
 - **Rate:** about 30 Hz per client by default. Under backpressure the newest data wins.
 
 ## Ingest

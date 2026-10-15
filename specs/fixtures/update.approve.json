@@ -1,0 +1,8 @@
+{
+ "jsonrpc": "2.0",
+ "id": 10,
+ "method": "update.approve",
+ "params": {
+  "version": "1.1.0"
+ }
+}

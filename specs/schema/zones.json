@@ -1,0 +1,398 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ZonesDocument",
+  "description": "zones.json: zones, targets, surfaces and mappings (docs/specs/config-model.md, docs/architecture/spatial-model.md).",
+  "type": "object",
+  "properties": {
+    "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
+    "revision": {"$ref": "common.json#/$defs/Revision", "default": 0},
+    "server_id": {"$ref": "common.json#/$defs/ServerId", "default": ""},
+    "zones": {"type": "array", "items": {"$ref": "#/$defs/Zone"}, "maxItems": 64, "default": []}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Zone": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Zone"},
+        "type": {"enum": ["music", "screen", "desk", "room", "custom"], "default": "custom"},
+        "bounds": {"$ref": "#/$defs/Bounds", "default": {}},
+        "reference": {"$ref": "#/$defs/Reference", "default": {}},
+        "targets": {"type": "array", "items": {"$ref": "#/$defs/Target"}, "maxItems": 256, "default": []},
+        "surfaces": {"type": "array", "items": {"$ref": "#/$defs/Surface"}, "maxItems": 64, "default": []},
+        "mappings": {"type": "array", "items": {"$ref": "#/$defs/Mapping"}, "maxItems": 512, "default": []},
+        "flash_limiter": {"$ref": "#/$defs/FlashLimiter", "default": {}},
+        "hue_sync": {"$ref": "#/$defs/HueSync", "default": {}},
+        "reactive": {"enum": ["on", "auto", "off"], "default": "on"},
+        "ambient": {"$ref": "#/$defs/Ambient", "default": {}},
+        "beat_offset_ms": {"type": "integer", "minimum": -200, "maximum": 200, "default": 0},
+        "album_colors": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    },
+    "Bounds": {
+      "description": "Room dimensions, metres.",
+      "type": "object",
+      "properties": {
+        "x": {"type": "number", "minimum": 0.1, "maximum": 1000, "default": 4},
+        "y": {"type": "number", "minimum": 0.1, "maximum": 1000, "default": 4},
+        "z": {"type": "number", "minimum": 0.1, "maximum": 1000, "default": 2.5}
+      },
+      "additionalProperties": false
+    },
+    "Reference": {
+      "type": "object",
+      "properties": {
+        "kind": {"enum": ["tv", "listening", "desk", "none"], "default": "none"},
+        "position": {"$ref": "common.json#/$defs/Vec3", "default": {}},
+        "orientation": {"$ref": "common.json#/$defs/Orientation", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "FlashLimiter": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean", "default": true},
+        "exempt_reason": {"type": "string", "maxLength": 200, "default": ""}
+      },
+      "additionalProperties": false
+    },
+    "HueSync": {
+      "type": "object",
+      "properties": {
+        "mode": {"enum": ["off", "managed", "linked"], "default": "off"},
+        "configuration_id": {"type": "string", "maxLength": 64, "default": ""}
+      },
+      "additionalProperties": false
+    },
+    "Ambient": {
+      "description": "The ambient light shown when audio reactiveness is off, or in auto after silence.",
+      "type": "object",
+      "properties": {
+        "color": {"$ref": "common.json#/$defs/Color", "default": "#4B00FF"},
+        "style": {"enum": ["solid", "breathe"], "default": "solid"},
+        "level": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.35},
+        "idle_after": {"type": "number", "minimum": 1, "maximum": 600, "default": 5},
+        "on_pause": {"type": "boolean", "default": true}
+      },
+      "additionalProperties": false
+    },
+    "Target": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "name": {"$ref": "common.json#/$defs/Name", "default": "Light"},
+        "kind": {"enum": ["point", "line", "grid", "display"], "default": "line"},
+        "provider": {"$ref": "#/$defs/ProviderBinding", "default": {}},
+        "geometry": {"$ref": "#/$defs/Geometry", "default": {"kind": "line"}, "x-folo-kind-from": "kind"},
+        "capabilities": {"$ref": "#/$defs/Capabilities", "default": {}},
+        "calibration": {"$ref": "#/$defs/Calibration", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "ProviderBinding": {
+      "type": "object",
+      "properties": {
+        "instance": {"$ref": "common.json#/$defs/Ref", "default": ""},
+        "address": {"$ref": "#/$defs/Address", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "Address": {
+      "description": "Where the target's elements are on the provider: a range of LEDs, or Hue entertainment channels.",
+      "type": "object",
+      "properties": {
+        "start": {"type": "integer", "minimum": 0, "maximum": 65535, "default": 0},
+        "count": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 1},
+        "channels": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 255}, "maxItems": 20, "default": []}
+      },
+      "additionalProperties": false
+    },
+    "Geometry": {
+      "description": "Where a target's elements are, by kind. It follows the target's kind.",
+      "oneOf": [
+        {"$ref": "#/$defs/PointGeometry"},
+        {"$ref": "#/$defs/LineGeometry"},
+        {"$ref": "#/$defs/GridGeometry"},
+        {"$ref": "#/$defs/DisplayGeometry"}
+      ],
+      "default": {"kind": "line"}
+    },
+    "PointGeometry": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "point"},
+        "position": {"$ref": "common.json#/$defs/Vec3", "default": {}}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "LineGeometry": {
+      "description": "Elements spaced evenly along a path, or at explicit positions (Hue gradient channels).",
+      "type": "object",
+      "properties": {
+        "kind": {"const": "line"},
+        "path": {"type": "array", "items": {"$ref": "common.json#/$defs/Vec3"}, "maxItems": 64, "default": []},
+        "count": {"type": "integer", "minimum": 1, "maximum": 2000, "default": 1},
+        "positions": {"type": "array", "items": {"$ref": "common.json#/$defs/Vec3"}, "maxItems": 2000, "default": []}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "GridGeometry": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "grid"},
+        "plane": {"$ref": "common.json#/$defs/Plane", "default": {}},
+        "width": {"type": "integer", "minimum": 1, "maximum": 256, "default": 1},
+        "height": {"type": "integer", "minimum": 1, "maximum": 256, "default": 1},
+        "wiring": {"$ref": "#/$defs/Wiring", "default": {}}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "Wiring": {
+      "type": "object",
+      "properties": {
+        "order": {"enum": ["row", "column"], "default": "row"},
+        "serpentine": {"type": "boolean", "default": false},
+        "start": {"enum": ["top_left", "top_right", "bottom_left", "bottom_right"], "default": "top_left"}
+      },
+      "additionalProperties": false
+    },
+    "DisplayGeometry": {
+      "description": "Reserved for projection mapping: validated but never executed in v1 (docs/architecture/projection-mapping-groundwork.md).",
+      "type": "object",
+      "properties": {
+        "kind": {"const": "display"},
+        "rect": {"$ref": "common.json#/$defs/Plane", "default": {}},
+        "resolution": {"$ref": "#/$defs/DisplayResolution", "default": {}},
+        "warp": {"$ref": "#/$defs/Warp", "default": {}},
+        "mask": {
+          "description": "A polygon in the rectangle's (u, v) coordinates, 0-1; empty for none.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/UV"},
+          "maxItems": 64,
+          "default": []
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "DisplayResolution": {
+      "type": "object",
+      "properties": {
+        "width": {"type": "integer", "minimum": 1, "maximum": 16384, "default": 1920},
+        "height": {"type": "integer", "minimum": 1, "maximum": 16384, "default": 1080}
+      },
+      "additionalProperties": false
+    },
+    "Warp": {
+      "type": "object",
+      "properties": {
+        "kind": {"enum": ["none", "homography", "mesh"], "default": "none"},
+        "matrix": {
+          "description": "Homography, row-major 3 x 3.",
+          "type": "array",
+          "items": {"type": "number", "minimum": -1000000, "maximum": 1000000},
+          "maxItems": 9,
+          "default": []
+        },
+        "mesh": {
+          "description": "Mesh warp: control points in (u, v), row-major.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/UV"},
+          "maxItems": 4096,
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "UV": {
+      "type": "object",
+      "properties": {
+        "u": {"type": "number", "minimum": -1, "maximum": 2, "default": 0},
+        "v": {"type": "number", "minimum": -1, "maximum": 2, "default": 0}
+      },
+      "additionalProperties": false
+    },
+    "Capabilities": {
+      "description": "What a target can do: as discovered from its provider, and the user's overrides (docs/architecture/capabilities.md).",
+      "type": "object",
+      "properties": {
+        "discovered": {"$ref": "#/$defs/CapabilityDescriptor", "default": {}},
+        "overrides": {"$ref": "#/$defs/CapabilityOverrides", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "CapabilityDescriptor": {
+      "type": "object",
+      "properties": {
+        "color_model": {"enum": ["onoff", "dimmer", "cct", "rgb", "rgbw", "rgbcct", "xy"], "default": "rgb"},
+        "addressing": {"enum": ["single", "zoned", "pixel"], "default": "pixel"},
+        "delivery": {"enum": ["streaming", "state"], "default": "streaming"},
+        "limits": {"$ref": "#/$defs/CapabilityLimits", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "CapabilityOverrides": {
+      "description": "Only the fields the user changed; the others come from the discovered descriptor.",
+      "type": "object",
+      "properties": {
+        "color_model": {"enum": ["onoff", "dimmer", "cct", "rgb", "rgbw", "rgbcct", "xy"]},
+        "addressing": {"enum": ["single", "zoned", "pixel"]},
+        "delivery": {"enum": ["streaming", "state"]},
+        "limits": {"$ref": "#/$defs/CapabilityLimits"}
+      },
+      "additionalProperties": false
+    },
+    "CapabilityLimits": {
+      "type": "object",
+      "properties": {
+        "max_rate_hz": {"type": "number", "minimum": 0.1, "maximum": 1000, "default": 60},
+        "latency_ms": {"type": "number", "minimum": 0, "maximum": 5000, "default": 0},
+        "cct_min_k": {"type": "number", "minimum": 1000, "maximum": 20000, "default": 2000},
+        "cct_max_k": {"type": "number", "minimum": 1000, "maximum": 20000, "default": 6500},
+        "gamut": {"$ref": "#/$defs/Gamut", "default": {}},
+        "min_brightness": {"type": "number", "minimum": 0, "maximum": 1, "default": 0}
+      },
+      "additionalProperties": false
+    },
+    "Gamut": {
+      "description": "Primaries as CIE xy; the defaults are sRGB's.",
+      "type": "object",
+      "properties": {
+        "red": {"$ref": "#/$defs/XY", "default": {"x": 0.64, "y": 0.33}},
+        "green": {"$ref": "#/$defs/XY", "default": {"x": 0.3, "y": 0.6}},
+        "blue": {"$ref": "#/$defs/XY", "default": {"x": 0.15, "y": 0.06}}
+      },
+      "additionalProperties": false
+    },
+    "XY": {
+      "type": "object",
+      "properties": {
+        "x": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "y": {"type": "number", "minimum": 0, "maximum": 1, "default": 0}
+      },
+      "additionalProperties": false
+    },
+    "Calibration": {
+      "type": "object",
+      "properties": {
+        "gamma": {"type": "number", "minimum": 0.1, "maximum": 5, "default": 1},
+        "white_balance": {"$ref": "#/$defs/WhiteBalance", "default": {}},
+        "brightness_min": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
+        "brightness_max": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+        "color_order": {"enum": ["rgb", "rbg", "grb", "gbr", "brg", "bgr"], "default": "rgb"},
+        "latency_ms": {"type": "number", "minimum": 0, "maximum": 5000, "default": 0}
+      },
+      "additionalProperties": false
+    },
+    "WhiteBalance": {
+      "type": "object",
+      "properties": {
+        "r": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+        "g": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+        "b": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}
+      },
+      "additionalProperties": false
+    },
+    "Surface": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "kind": {"enum": ["strip", "canvas"], "default": "strip"},
+        "resolution": {"$ref": "#/$defs/SurfaceResolution", "default": {}},
+        "placement": {"$ref": "#/$defs/Placement", "default": {"kind": "none"}},
+        "role": {"type": "string", "maxLength": 64, "default": "strip.main"},
+        "background": {"$ref": "common.json#/$defs/Color", "default": "#000000"},
+        "master": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+        "sources": {
+          "description": "Source ids in priority order.",
+          "type": "array",
+          "items": {"$ref": "common.json#/$defs/Ref"},
+          "maxItems": 32,
+          "default": []
+        },
+        "blend_sources": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    },
+    "SurfaceResolution": {
+      "description": "Cells. A strip is width x 1, up to 2000 cells.",
+      "type": "object",
+      "properties": {
+        "width": {"type": "integer", "minimum": 1, "maximum": 2000, "default": 150},
+        "height": {"type": "integer", "minimum": 1, "maximum": 1024, "default": 1}
+      },
+      "additionalProperties": false
+    },
+    "Placement": {
+      "oneOf": [
+        {"$ref": "#/$defs/NoPlacement"},
+        {"$ref": "#/$defs/PathPlacement"},
+        {"$ref": "#/$defs/PlanePlacement"}
+      ],
+      "default": {"kind": "none"}
+    },
+    "NoPlacement": {
+      "description": "Unplaced: manual mappings only.",
+      "type": "object",
+      "properties": {"kind": {"const": "none"}},
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "PathPlacement": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "path"},
+        "points": {"type": "array", "items": {"$ref": "common.json#/$defs/Vec3"}, "maxItems": 64, "default": []}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "PlanePlacement": {
+      "type": "object",
+      "properties": {
+        "kind": {"const": "plane"},
+        "plane": {"$ref": "common.json#/$defs/Plane", "default": {}}
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "Mapping": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "common.json#/$defs/Id", "default": ""},
+        "surface": {"$ref": "common.json#/$defs/Ref", "default": ""},
+        "target": {"$ref": "common.json#/$defs/Ref", "default": ""},
+        "method": {"enum": ["plane", "path", "manual"], "default": "manual"},
+        "kernel": {"$ref": "#/$defs/Kernel", "default": {}},
+        "edge": {"enum": ["clamp", "none"], "default": "clamp"},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 100, "default": 0},
+        "blend": {"enum": ["max", "alpha"], "default": "max"},
+        "ranges": {"type": "array", "items": {"$ref": "#/$defs/ManualRange"}, "maxItems": 64, "default": []}
+      },
+      "additionalProperties": false
+    },
+    "Kernel": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["nearest", "bilinear", "area"], "default": "area"},
+        "radius": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5}
+      },
+      "additionalProperties": false
+    },
+    "ManualRange": {
+      "description": "Cells of the surface onto elements of the target, optionally reversed.",
+      "type": "object",
+      "properties": {
+        "cells": {"$ref": "common.json#/$defs/Span", "default": {}},
+        "elements": {"$ref": "common.json#/$defs/Span", "default": {}},
+        "reversed": {"type": "boolean", "default": false}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+ "jsonrpc": "2.0",
+ "method": "media",
+ "params": {
+  "state": "playing",
+  "app": "Music.exe",
+  "title": "Song",
+  "artist": "Artist",
+  "album": "Album",
+  "art": 3,
+  "colors": [
+   "#4B00FF",
+   "#FF3399"
+  ]
+ }
+}

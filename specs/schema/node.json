@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NodeSettings",
+  "description": "node.toml's settings, as they look after parsing. Overridable by FOLO_* variables and CLI flags (docs/architecture/control-plane.md#settings-layering).",
+  "type": "object",
+  "properties": {
+    "role": {"enum": ["controller", "source"], "default": "controller"},
+    "listen": {"$ref": "#/$defs/Listen", "default": {}},
+    "data_dir": {"description": "Empty for the platform default (ADR-0010).", "type": "string", "maxLength": 1024, "default": ""},
+    "remote_access": {"$ref": "#/$defs/RemoteAccess", "default": {}},
+    "log_level": {"enum": ["error", "warn", "info", "debug", "trace"], "default": "info"},
+    "local_source": {"$ref": "#/$defs/LocalSource", "default": {}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Listen": {
+      "type": "object",
+      "properties": {
+        "address": {"type": "string", "maxLength": 255, "default": "0.0.0.0"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 8777}
+      },
+      "additionalProperties": false
+    },
+    "RemoteAccess": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean", "default": false},
+        "allowed_hosts": {
+          "description": "Host names and addresses accepted by the Host check, besides the loopback names.",
+          "type": "array",
+          "items": {"type": "string", "maxLength": 255},
+          "maxItems": 32,
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "LocalSource": {
+      "type": "object",
+      "properties": {
+        "enabled": {"description": "Run a local source alongside the controller (off in Docker).", "type": "boolean", "default": true}
+      },
+      "additionalProperties": false
+    }
+  }
+}

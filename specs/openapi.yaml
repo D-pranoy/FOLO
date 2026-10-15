@@ -1,0 +1,816 @@
+openapi: 3.1.0
+info:
+  title: FOLO client API
+  version: 1.0.0
+  summary: The controller's API for the UI, the desktop app, scripts and the Home Assistant client library.
+  description: |
+    Machine-readable form of docs/specs/client-api.md, which it must agree with.
+    Mutating requests must send Content-Type application/json. Documents carry
+    `revision` and `server_id`; writers may send `If-Match: <revision>`. The body
+    limit is 1 MB. Errors are `{"error": {"code", "message", "details"}}`.
+    Loopback requests need no key. WebSockets (live, ingest, source link) are
+    described in specs/asyncapi.yaml.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://{host}:{port}/api/v1
+    variables:
+      host:
+        default: localhost
+      port:
+        default: '8777'
+security:
+  - bearer: []
+  - session: []
+tags:
+  - name: node
+  - name: zones
+  - name: show
+  - name: providers
+  - name: sources
+  - name: library
+  - name: clients
+  - name: updates
+  - name: system
+  - name: auth
+  - name: websockets
+paths:
+  /health:
+    get:
+      tags: [node]
+      operationId: getHealth
+      summary: Liveness; no configuration revealed
+      security: []
+      responses:
+        '200':
+          description: The node is up.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/Health'}
+  /info:
+    get:
+      tags: [node]
+      operationId: getInfo
+      summary: Controller id, name, version, role, contract versions, capabilities
+      responses:
+        '200':
+          description: About this node.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/Info'}
+        default: {$ref: '#/components/responses/Error'}
+  /state:
+    get:
+      tags: [node]
+      operationId: getState
+      summary: Everything a UI needs to start, in one call
+      responses:
+        '200':
+          description: The state.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/State'}
+        default: {$ref: '#/components/responses/Error'}
+  /zones:
+    get:
+      tags: [zones]
+      operationId: getZones
+      summary: Zones with targets, surfaces and mappings
+      responses:
+        '200':
+          description: The zones document.
+          content:
+            application/json:
+              schema: {$ref: 'schema/zones.json'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [zones]
+      operationId: createZone
+      summary: Add a zone (clamped)
+      requestBody: {$ref: '#/components/requestBodies/Zone'}
+      responses:
+        '201': {$ref: '#/components/responses/Zone'}
+        default: {$ref: '#/components/responses/Error'}
+  /zones/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [zones]
+      operationId: getZone
+      responses:
+        '200': {$ref: '#/components/responses/Zone'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [zones]
+      operationId: putZone
+      summary: Replace a zone (clamped)
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody: {$ref: '#/components/requestBodies/Zone'}
+      responses:
+        '200': {$ref: '#/components/responses/Zone'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [zones]
+      operationId: deleteZone
+      responses:
+        '204': {description: Deleted.}
+        default: {$ref: '#/components/responses/Error'}
+  /zones/{id}/activate:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [zones]
+      operationId: activateZone
+      summary: Activate a zone, following the activation rules
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/ActivateRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/ZoneActivation'}
+        default: {$ref: '#/components/responses/Error'}
+  /zones/{id}/deactivate:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [zones]
+      operationId: deactivateZone
+      responses:
+        '200': {$ref: '#/components/responses/ZoneActivation'}
+        default: {$ref: '#/components/responses/Error'}
+  /zones/{id}/identify:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [zones]
+      operationId: identifyTarget
+      summary: Identify a target
+      requestBody: {$ref: '#/components/requestBodies/Test'}
+      responses:
+        '202': {description: Started.}
+        default: {$ref: '#/components/responses/Error'}
+  /zones/{id}/test:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [zones]
+      operationId: testZone
+      summary: Run test sweeps
+      requestBody: {$ref: '#/components/requestBodies/Test'}
+      responses:
+        '202': {description: Started.}
+        default: {$ref: '#/components/responses/Error'}
+  /show:
+    get:
+      tags: [show]
+      operationId: getShow
+      summary: Scenes per zone and the default scene
+      responses:
+        '200': {$ref: '#/components/responses/Show'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [show]
+      operationId: putShow
+      summary: Replace the whole show document (clamped), keeping today's edit flow
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/show.json'}
+      responses:
+        '200': {$ref: '#/components/responses/Show'}
+        default: {$ref: '#/components/responses/Error'}
+  /scenes/{id}/apply:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [show]
+      operationId: applyScene
+      summary: Apply a scene to a zone, with role overrides
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/SceneApplyRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Show'}
+        default: {$ref: '#/components/responses/Error'}
+  /effects:
+    get:
+      tags: [show]
+      operationId: getEffects
+      summary: The effect catalog with parameter schemas
+      responses:
+        '200':
+          description: The effects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: 'schema/api.json#/$defs/EffectInfo'}
+        default: {$ref: '#/components/responses/Error'}
+  /providers:
+    get:
+      tags: [providers]
+      operationId: getProviders
+      responses:
+        '200':
+          description: The providers document.
+          content:
+            application/json:
+              schema: {$ref: 'schema/providers.json'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [providers]
+      operationId: createProvider
+      requestBody: {$ref: '#/components/requestBodies/Provider'}
+      responses:
+        '201': {$ref: '#/components/responses/Provider'}
+        default: {$ref: '#/components/responses/Error'}
+  /providers/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [providers]
+      operationId: getProvider
+      responses:
+        '200': {$ref: '#/components/responses/Provider'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [providers]
+      operationId: putProvider
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody: {$ref: '#/components/requestBodies/Provider'}
+      responses:
+        '200': {$ref: '#/components/responses/Provider'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [providers]
+      operationId: deleteProvider
+      responses:
+        '204': {description: Deleted.}
+        default: {$ref: '#/components/responses/Error'}
+  /providers/discover:
+    post:
+      tags: [providers]
+      operationId: discoverProviders
+      summary: Run discovery (mDNS, Hue discovery)
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/DiscoverRequest'}
+      responses:
+        '200':
+          description: Devices found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: 'schema/api.json#/$defs/DiscoveredDevice'}
+        default: {$ref: '#/components/responses/Error'}
+  /providers/{id}/admin/{action}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+      - name: action
+        in: path
+        required: true
+        description: A basic administration action of the provider (ADR-0014).
+        schema: {type: string, maxLength: 64}
+    get:
+      tags: [providers]
+      operationId: getProviderAdmin
+      summary: Basic device administration (read)
+      responses:
+        '200': {$ref: '#/components/responses/Any'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [providers]
+      operationId: postProviderAdmin
+      summary: Basic device administration (change)
+      requestBody:
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        '200': {$ref: '#/components/responses/Any'}
+        default: {$ref: '#/components/responses/Error'}
+  /providers/{id}/hue/pair:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [providers]
+      operationId: pairHueBridge
+      summary: The link-button pairing flow, with progress
+      responses:
+        '200':
+          description: Pairing progress.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/HuePairing'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources:
+    get:
+      tags: [sources]
+      operationId: getSources
+      responses:
+        '200':
+          description: The sources document.
+          content:
+            application/json:
+              schema: {$ref: 'schema/sources.json'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [sources]
+      operationId: getSource
+      responses:
+        '200': {$ref: '#/components/responses/Source'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [sources]
+      operationId: putSource
+      summary: Inputs, assignments, priorities (clamped)
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/sources.json#/$defs/Source'}
+      responses:
+        '200': {$ref: '#/components/responses/Source'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [sources]
+      operationId: deleteSource
+      summary: Unpair a source
+      responses:
+        '204': {description: Unpaired.}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/{id}/inputs:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [sources]
+      operationId: getSourceInputs
+      summary: Available inputs; the UI refreshes it every 5 s while the input editor is open
+      responses:
+        '200':
+          description: The inputs.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/InputList'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/{id}/media:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [sources]
+      operationId: getSourceMedia
+      summary: Now-playing state
+      responses:
+        '200':
+          description: What's playing.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/MediaState'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/{id}/media/art:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [sources]
+      operationId: getSourceMediaArt
+      summary: The current album art; clients add the art id to bust caches
+      responses:
+        '200':
+          description: The image.
+          content:
+            image/*:
+              schema: {type: string, contentEncoding: binary}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/{id}/media/control:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [sources]
+      operationId: controlSourceMedia
+      summary: Play/pause, next or previous on the source's shown media session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/MediaControl'}
+      responses:
+        '204': {description: Done.}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/invites:
+    post:
+      tags: [sources]
+      operationId: createInvite
+      summary: Create a source invite (admin)
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/InviteRequest'}
+      responses:
+        '201':
+          description: The invite. Treat it like a password.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/Invite'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/join-requests:
+    get:
+      tags: [sources]
+      operationId: getJoinRequests
+      responses:
+        '200':
+          description: Pending join requests.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: 'schema/api.json#/$defs/JoinRequest'}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/join-requests/{id}/approve:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [sources]
+      operationId: approveJoinRequest
+      responses:
+        '204': {description: Approved.}
+        default: {$ref: '#/components/responses/Error'}
+  /sources/join-requests/{id}/reject:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [sources]
+      operationId: rejectJoinRequest
+      responses:
+        '204': {description: Rejected.}
+        default: {$ref: '#/components/responses/Error'}
+  /library/packs:
+    get:
+      tags: [library]
+      operationId: getPacks
+      responses:
+        '200':
+          description: Installed packs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: 'schema/api.json#/$defs/PackInfo'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [library]
+      operationId: installPack
+      summary: Install a .folopack (admin)
+      requestBody:
+        required: true
+        content:
+          application/zip:
+            schema: {type: string, contentEncoding: binary}
+      responses:
+        '201':
+          description: Installed.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/PackInfo'}
+        default: {$ref: '#/components/responses/Error'}
+  /library/packs/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [library]
+      operationId: getPack
+      responses:
+        '200':
+          description: The pack's manifest.
+          content:
+            application/json:
+              schema: {$ref: 'schema/pack.json'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [library]
+      operationId: removePack
+      responses:
+        '204': {description: Removed.}
+        default: {$ref: '#/components/responses/Error'}
+  /library/packs/{id}/export:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [library]
+      operationId: exportPack
+      responses:
+        '200':
+          description: The .folopack.
+          content:
+            application/zip:
+              schema: {type: string, contentEncoding: binary}
+        default: {$ref: '#/components/responses/Error'}
+  /clients:
+    get:
+      tags: [clients]
+      operationId: getClients
+      responses:
+        '200':
+          description: Client keys (never the keys themselves).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: 'schema/api.json#/$defs/ClientInfo'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [clients]
+      operationId: issueClient
+      summary: Issue a client key and its connect code (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/ClientRequest'}
+      responses:
+        '201':
+          description: The key, shown once.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/IssuedClient'}
+        default: {$ref: '#/components/responses/Error'}
+  /clients/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [clients]
+      operationId: getClient
+      responses:
+        '200':
+          description: The client.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/ClientInfo'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [clients]
+      operationId: revokeClient
+      responses:
+        '204': {description: Revoked.}
+        default: {$ref: '#/components/responses/Error'}
+  /updates:
+    get:
+      tags: [updates]
+      operationId: getUpdates
+      summary: Update status for every node
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/UpdateStatus'}
+        default: {$ref: '#/components/responses/Error'}
+  /updates/{node}/approve:
+    parameters: [{$ref: '#/components/parameters/Node'}]
+    post:
+      tags: [updates]
+      operationId: approveUpdate
+      responses:
+        '202': {description: Approved.}
+        default: {$ref: '#/components/responses/Error'}
+  /updates/{node}/skip:
+    parameters: [{$ref: '#/components/parameters/Node'}]
+    post:
+      tags: [updates]
+      operationId: skipUpdate
+      responses:
+        '204': {description: Skipped.}
+        default: {$ref: '#/components/responses/Error'}
+  /updates/policy:
+    get:
+      tags: [updates]
+      operationId: getUpdatePolicy
+      responses:
+        '200': {$ref: '#/components/responses/UpdatePolicy'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [updates]
+      operationId: putUpdatePolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/UpdatePolicy'}
+      responses:
+        '200': {$ref: '#/components/responses/UpdatePolicy'}
+        default: {$ref: '#/components/responses/Error'}
+  /system:
+    get:
+      tags: [system]
+      operationId: getSystem
+      summary: Remote access, start at sign-in and service status
+      responses:
+        '200': {$ref: '#/components/responses/System'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [system]
+      operationId: putSystem
+      summary: Start at sign-in and the service are loopback only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/SystemSettings'}
+      responses:
+        '200': {$ref: '#/components/responses/System'}
+        default: {$ref: '#/components/responses/Error'}
+  /system/logs:
+    get:
+      tags: [system]
+      operationId: getLogs
+      summary: Log viewer
+      parameters:
+        - name: lines
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 10000, default: 500}
+      responses:
+        '200':
+          description: The newest lines.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/LogLines'}
+        default: {$ref: '#/components/responses/Error'}
+  /system/backup:
+    get:
+      tags: [system]
+      operationId: getBackup
+      summary: Back up the configuration (secrets excluded)
+      responses:
+        '200':
+          description: The backup.
+          content:
+            application/zip:
+              schema: {type: string, contentEncoding: binary}
+        default: {$ref: '#/components/responses/Error'}
+  /system/restore:
+    post:
+      tags: [system]
+      operationId: restoreBackup
+      requestBody:
+        required: true
+        content:
+          application/zip:
+            schema: {type: string, contentEncoding: binary}
+      responses:
+        '204': {description: Restored.}
+        default: {$ref: '#/components/responses/Error'}
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Start a browser session (HttpOnly, SameSite=Strict cookie)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/LoginRequest'}
+      responses:
+        '204':
+          description: Logged in; the session cookie is set.
+        default: {$ref: '#/components/responses/Error'}
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      responses:
+        '204': {description: Logged out.}
+        default: {$ref: '#/components/responses/Error'}
+  /auth/requests:
+    post:
+      tags: [auth]
+      operationId: requestClientKey
+      summary: Approval-based client pairing; the call returns once an admin decides or it expires (3 minutes)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/AuthRequest'}
+      responses:
+        '200':
+          description: The outcome.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/AuthResult'}
+        default: {$ref: '#/components/responses/Error'}
+  /auth/requests/{id}/approve:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [auth]
+      operationId: approveClientKeyRequest
+      responses:
+        '204': {description: Approved.}
+        default: {$ref: '#/components/responses/Error'}
+  /live:
+    get:
+      tags: [websockets]
+      operationId: live
+      summary: The live WebSocket (specs/asyncapi.yaml, channel live)
+      responses:
+        '101': {description: Switching to the WebSocket protocol.}
+        default: {$ref: '#/components/responses/Error'}
+  /ingest/surfaces:
+    get:
+      tags: [websockets]
+      operationId: ingestSurfaces
+      summary: Third-party surface frames with a scoped ingest token (specs/asyncapi.yaml, channel ingest)
+      responses:
+        '101': {description: Switching to the WebSocket protocol.}
+        default: {$ref: '#/components/responses/Error'}
+  /source-link:
+    get:
+      tags: [websockets]
+      operationId: sourceLink
+      summary: Source nodes (specs/asyncapi.yaml, channel sourceLink); proven by the Noise handshake
+      security: []
+      responses:
+        '101': {description: Switching to the WebSocket protocol.}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: A client key (folo_c_...), scope control or admin.
+    session:
+      type: apiKey
+      in: cookie
+      name: folo_session
+      description: The browser session after /auth/login.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, maxLength: 64}
+    Node:
+      name: node
+      in: path
+      required: true
+      description: A node id.
+      schema: {type: string, maxLength: 64}
+    IfMatch:
+      name: If-Match
+      in: header
+      description: The revision the writer last saw. Without it, the last writer wins.
+      schema: {type: string, maxLength: 32}
+  requestBodies:
+    Zone:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: 'schema/zones.json#/$defs/Zone'}
+    Provider:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: 'schema/providers.json#/$defs/ProviderInstance'}
+    Test:
+      content:
+        application/json:
+          schema: {$ref: 'schema/api.json#/$defs/TestRequest'}
+  responses:
+    Error:
+      description: An error.
+      content:
+        application/json:
+          schema: {$ref: 'schema/api.json#/$defs/Error'}
+    Any:
+      description: A provider-specific result.
+      content:
+        application/json:
+          schema: {type: object}
+    Zone:
+      description: The zone, as clamped.
+      content:
+        application/json:
+          schema: {$ref: 'schema/zones.json#/$defs/Zone'}
+    ZoneActivation:
+      description: The zone's activation.
+      content:
+        application/json:
+          schema: {$ref: 'schema/api.json#/$defs/ZoneActivation'}
+    Show:
+      description: The show document, as clamped.
+      content:
+        application/json:
+          schema: {$ref: 'schema/show.json'}
+    Provider:
+      description: The provider instance, as clamped.
+      content:
+        application/json:
+          schema: {$ref: 'schema/providers.json#/$defs/ProviderInstance'}
+    Source:
+      description: The source, as clamped.
+      content:
+        application/json:
+          schema: {$ref: 'schema/sources.json#/$defs/Source'}
+    UpdatePolicy:
+      description: The update policy.
+      content:
+        application/json:
+          schema: {$ref: 'schema/api.json#/$defs/UpdatePolicy'}
+    System:
+      description: The system settings.
+      content:
+        application/json:
+          schema: {$ref: 'schema/api.json#/$defs/SystemSettings'}

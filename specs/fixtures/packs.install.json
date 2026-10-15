@@ -1,0 +1,11 @@
+{
+ "jsonrpc": "2.0",
+ "id": 2,
+ "method": "packs.install",
+ "params": {
+  "id": "folo/genres",
+  "version": "1.0.0",
+  "url": "http://controller:8777/api/v1/library/packs/folo-genres/export",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+ }
+}
