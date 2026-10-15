@@ -4,8 +4,10 @@ engine's legacy path until RB-08 moves it to the controller.
 """
 
 import math
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from folo_source.effects.colors import hex_to_rgb
 from folo_source.inputs.audio.analyzer import QUIET_DB
@@ -66,7 +68,14 @@ class Ambient:
             rgb *= BREATHE_LOW + (1.0 - BREATHE_LOW) * breath
         return rgb
 
-    def blend(self, out, config, spectrum, dt, paused=False):
+    def blend(
+        self,
+        out: npt.NDArray[np.float64],
+        config: dict[str, Any],
+        spectrum: Any,
+        dt: float,
+        paused: bool = False,
+    ) -> npt.NDArray[np.float64]:
         """
         Mixes the ambient light into `out` (leds x rgb, before `master`).
         """
