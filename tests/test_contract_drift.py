@@ -178,6 +178,20 @@ def test_audio_visualizer_table(config_model: str) -> None:
             check_field(field('AudioVisualizerParams', names[0]), values, default)
 
 
+def test_post_processing_table(config_model: str) -> None:
+    by_effect: dict[str, str] = field('Layer', 'params')['x-folo-params-by-effect']
+    rows = table(config_model, '**Post-processing parameters**')
+    fields: dict[str, set[str]] = {}
+    for row in rows:
+        effect, name = row['Effect'].strip('`'), row['Field'].strip('`')
+        fields.setdefault(effect, set()).add(name)
+        definition = by_effect[effect].removeprefix('#/$defs/')
+        check_field(field(definition, name), row['Range / values'], row['Default'])
+    assert set(fields) == set(by_effect) - {'audio-visualizer'}
+    for effect, names in fields.items():
+        assert set(resolve(DEFS[by_effect[effect].removeprefix('#/$defs/')])['properties']) == names
+
+
 def test_source_inputs_table(config_model: str) -> None:
     for row in table(config_model, '**Source** (in `sources.json`)'):
         name = row['Field'].strip('`')
