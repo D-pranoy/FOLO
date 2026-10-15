@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (RB-03 awaits its first CI run)
 
 ## RB-03: Effect engine restructure
 
@@ -19,7 +19,7 @@ Status: Accepted · Implementation: Not started
 2. Keep `app/studio_config.py` as `folo_source/legacy/v1.py`, the reference for migration and the clamp corpus.
 3. **Logging:** stdlib `logging` with JSON lines for the node to collect. Replace every `print`.
 4. **Lifecycle:** clean shutdown on SIGINT, SIGTERM and Windows console control events; join threads with timeouts; seedable randomness.
-5. **Settings:** received from the node (command line or loopback handshake); no settings file of its own.
+5. **Settings:** received from whoever runs the engine; no settings file of its own. Until the node starts it with its settings on the command line or over a loopback handshake ([RB-06](m3-controller-core.md#rb-06-node-core)), the legacy studio hands over its config store.
 6. **Server bugs:** fix the defects listed in [current system](../architecture/current-system.md#known-defects-to-fix-in-the-rebuild) that live in shared code (encoding, joining threads).
 7. The legacy studio (`studio.py`, `web/`) keeps working, importing from the new package, until M3 and M4 replace it.
 
