@@ -36,7 +36,7 @@ Status: Accepted · Implementation: Partial (RB-03 done)
    - **`AudioInput`:**
      - capture plus the Analyzer, exposing full and fast spectra and `band_levels`
      - Windows: output loopback, inputs and app capture (only / except)
-     - Linux: PulseAudio/PipeWire monitors and inputs
+     - Linux: PulseAudio/PipeWire monitors and inputs, through the PulseAudio client library ([ADR-0031](../decisions/ADR-0031-linux-audio-capture.md))
      - gain and auto level; quiet-window skip; stats and meters
    - **`MediaInput`:** Windows media sessions through `winrt`; Linux MPRIS through `dbus-fast`. Album art, cover colours, play state, controls.
    - `GeneratorInput` (time, LFO, noise)

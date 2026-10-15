@@ -68,10 +68,10 @@ Status: Accepted · Implementation: Not started
    - units into `/usr/lib/systemd/{user,system}/`; the node and workers into `/usr/lib/folo/`
    - `postinst` runs `daemon-reload` only; units are not enabled
    - `prerm` stops the units
-   - dependencies: `libpipewire-0.3`, `xdg-desktop-portal` with a backend, `libwebkit2gtk-4.1`, `libayatana-appindicator3`
+   - dependencies: `libpipewire-0.3`, `libpulse0` (`pulseaudio-libs` in the rpm), `xdg-desktop-portal` with a backend, `libwebkit2gtk-4.1`, `libayatana-appindicator3`
 3. **First run** asks about the background service (`systemctl --user enable --now folo`) and start at sign-in. `folo service install --user` does the same.
 4. **AppImage:** start at sign-in through XDG with the `$APPIMAGE` path (warn if it moves); links the system libpipewire.
-5. **Arch:** `packaging/arch/PKGBUILD` for `folo-bin`, repackaging the release tarball with the same units and Arch dependency names (`pipewire`, `xdg-desktop-portal`, `webkit2gtk-4.1`, `libayatana-appindicator`). CI validates it with `makepkg` in an `archlinux` container. Publishing to the AUR is a maintainer step in the release checklist.
+5. **Arch:** `packaging/arch/PKGBUILD` for `folo-bin`, repackaging the release tarball with the same units and Arch dependency names (`pipewire`, `libpulse`, `xdg-desktop-portal`, `webkit2gtk-4.1`, `libayatana-appindicator`). CI validates it with `makepkg` in an `archlinux` container. Publishing to the AUR is a maintainer step in the release checklist.
 6. **Build hosts:** `ubuntu-22.04` (x64) and `ubuntu-22.04-arm` (arm64).
 7. **Tests:**
    - install the deb in Ubuntu 22.04 and 24.04 containers and check the layout (`dpkg -c`)
