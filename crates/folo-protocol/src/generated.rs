@@ -11120,19 +11120,22 @@ impl ::std::convert::TryFrom<::std::string::String> for PublishSurfacePixelForma
 }
 ///`Purpose`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(tag = "kind", content = "proof")]
+#[serde(tag = "kind", deny_unknown_fields)]
 pub enum Purpose {
     #[serde(rename = "connect")]
     Connect,
     #[serde(rename = "invite")]
-    Invite(PurposeProof),
+    Invite {
+        ///HMAC-SHA256(invite secret, handshake hash), base64url.
+        proof: PurposeProof,
+    },
     #[serde(rename = "join_request")]
     JoinRequest,
-}
-impl ::std::convert::From<PurposeProof> for Purpose {
-    fn from(value: PurposeProof) -> Self {
-        Self::Invite(value)
-    }
+    #[serde(rename = "local")]
+    Local {
+        ///The node's launch token for its own effect engine, on the loopback link only.
+        token: PurposeToken,
+    },
 }
 ///HMAC-SHA256(invite secret, handshake hash), base64url.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -11177,6 +11180,60 @@ impl ::std::convert::TryFrom<::std::string::String> for PurposeProof {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for PurposeProof {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The node's launch token for its own effect engine, on the loopback link only.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PurposeToken(::std::string::String);
+impl ::std::ops::Deref for PurposeToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PurposeToken> for ::std::string::String {
+    fn from(value: PurposeToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PurposeToken {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PurposeToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PurposeToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PurposeToken {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
