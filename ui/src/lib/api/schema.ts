@@ -2099,6 +2099,31 @@ export interface components {
                     /** @default 1 */
                     height: number;
                 };
+                /** @description The brightness post-processing effect: saturation around each cell's luma, then a multiplier. */
+                BrightnessParams: {
+                    /** @default 1 */
+                    brightness: number;
+                    /** @default 1 */
+                    saturation: number;
+                };
+                /** @description The mirror post-processing effect: the half it keeps is copied, reversed, onto the other. */
+                MirrorParams: {
+                    /**
+                     * @default first
+                     * @enum {unknown}
+                     */
+                    keep: "first" | "second";
+                };
+                /** @description The blur post-processing effect: a box blur, in cells on each side. */
+                BlurParams: {
+                    /** @default 1 */
+                    radius: number;
+                };
+                /** @description The trail post-processing effect: an afterglow fading with this time constant, in ms. */
+                TrailParams: {
+                    /** @default 300 */
+                    fade: number;
+                };
                 /** @description The audio-visualizer effect's parameters: today's segment fields, unchanged. threshold and ceiling show the widest range here; the thresholds rule applies the limits of the trigger. */
                 AudioVisualizerParams: {
                     /** @default 60 */

@@ -150,6 +150,17 @@ class BeatStatus(BaseModel):
     ]
 
 
+class BlurParams(BaseModel):
+    """
+    The blur post-processing effect: a box blur, in cells on each side.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    radius: Annotated[int, Field(ge=1, le=16)] = 1
+
+
 class Bounds(BaseModel):
     """
     Room dimensions, metres.
@@ -161,6 +172,18 @@ class Bounds(BaseModel):
     x: Annotated[float, Field(ge=0.1, le=1000.0)] = 4
     y: Annotated[float, Field(ge=0.1, le=1000.0)] = 4
     z: Annotated[float, Field(ge=0.1, le=1000.0)] = 2.5
+
+
+class BrightnessParams(BaseModel):
+    """
+    The brightness post-processing effect: saturation around each cell's luma, then a multiplier.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    brightness: Annotated[float, Field(ge=0.0, le=4.0)] = 1
+    saturation: Annotated[float, Field(ge=0.0, le=4.0)] = 1
 
 
 class CellsRegion(BaseModel):
@@ -666,6 +689,17 @@ class MetricsParams(BaseModel):
     render_ms: Annotated[float, Field(ge=0.0)]
     publish_fps: Annotated[float, Field(ge=0.0)]
     dropped: Annotated[int, Field(ge=0)]
+
+
+class MirrorParams(BaseModel):
+    """
+    The mirror post-processing effect: the half it keeps is copied, reversed, onto the other.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    keep: Literal['first', 'second'] = 'first'
 
 
 class NoPlacement(BaseModel):
@@ -1212,6 +1246,17 @@ class Topic(RootModel[str]):
             pattern='^(status|(spectrum|levels|beat|media|input):[^\\s:]{1,64}|zone:[^\\s:]{1,64}|surface:[^\\s:]{1,64}|target:[^\\s:]{1,64})$',
         ),
     ]
+
+
+class TrailParams(BaseModel):
+    """
+    The trail post-processing effect: an afterglow fading with this time constant, in ms.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    fade: Annotated[int, Field(ge=10, le=5000)] = 300
 
 
 class UV(BaseModel):

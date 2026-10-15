@@ -80,7 +80,7 @@
           "description": "The effect's parameters, clamped with its parameter schema when the effect is known.",
           "type": "object",
           "default": {},
-          "x-folo-params-by-effect": {"audio-visualizer": "#/$defs/AudioVisualizerParams"}
+          "x-folo-params-by-effect": {"audio-visualizer": "#/$defs/AudioVisualizerParams", "brightness": "#/$defs/BrightnessParams", "mirror": "#/$defs/MirrorParams", "blur": "#/$defs/BlurParams", "trail": "#/$defs/TrailParams"}
         },
         "region": {"$ref": "#/$defs/Region", "default": {"kind": "relative"}},
         "blend": {"enum": ["max", "add", "alpha", "multiply"], "default": "max"},
@@ -143,6 +143,39 @@
         "height": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}
       },
       "required": ["kind"],
+      "additionalProperties": false
+    },
+    "BrightnessParams": {
+      "description": "The brightness post-processing effect: saturation around each cell's luma, then a multiplier.",
+      "type": "object",
+      "properties": {
+        "brightness": {"type": "number", "minimum": 0, "maximum": 4, "default": 1},
+        "saturation": {"type": "number", "minimum": 0, "maximum": 4, "default": 1}
+      },
+      "additionalProperties": false
+    },
+    "MirrorParams": {
+      "description": "The mirror post-processing effect: the half it keeps is copied, reversed, onto the other.",
+      "type": "object",
+      "properties": {
+        "keep": {"enum": ["first", "second"], "default": "first"}
+      },
+      "additionalProperties": false
+    },
+    "BlurParams": {
+      "description": "The blur post-processing effect: a box blur, in cells on each side.",
+      "type": "object",
+      "properties": {
+        "radius": {"type": "integer", "minimum": 1, "maximum": 16, "default": 1}
+      },
+      "additionalProperties": false
+    },
+    "TrailParams": {
+      "description": "The trail post-processing effect: an afterglow fading with this time constant, in ms.",
+      "type": "object",
+      "properties": {
+        "fade": {"type": "integer", "minimum": 10, "maximum": 5000, "default": 300}
+      },
       "additionalProperties": false
     },
     "AudioVisualizerParams": {
