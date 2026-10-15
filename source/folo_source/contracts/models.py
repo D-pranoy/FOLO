@@ -922,6 +922,20 @@ class Purpose3(BaseModel):
     kind: Literal['join_request']
 
 
+class Purpose4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: Literal['local']
+    token: Annotated[
+        str,
+        Field(
+            description="The node's launch token for its own effect engine, on the loopback link only.",
+            max_length=64,
+        ),
+    ]
+
+
 class RectRegion(BaseModel):
     """
     A rectangle of a canvas, 0-1 of its width and height.
@@ -1627,7 +1641,7 @@ class Hello(BaseModel):
         Field(description='Source-link versions it supports.', min_length=1),
     ]
     node: NodeSummary
-    purpose: Purpose1 | Purpose2 | Purpose3
+    purpose: Purpose1 | Purpose2 | Purpose3 | Purpose4
 
 
 class InputList(BaseModel):

@@ -44,3 +44,4 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0028](ADR-0028-studio-features-carried-into-the-rebuild.md) | Studio features carried into the rebuild | Accepted |
 | [0029](ADR-0029-visual-design-language.md) | Visual design language | Accepted |
 | [0030](ADR-0030-rebuild-on-a-v1-branch.md) | The rebuild lands on a `v1` branch | Accepted |
+| [0032](ADR-0032-local-source-link.md) | The effect engine's link to its node | Proposed |

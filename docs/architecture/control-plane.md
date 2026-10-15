@@ -86,6 +86,7 @@ Recovery: `folo pair reset` or the local UI. You must be at the machine; it can'
 
 - The desktop app supervises a managed node, or a service manager (Windows service, systemd) supervises the node.
 - The node supervises `folo-source`: it checks a heartbeat, restarts it with backoff, and stops it when disabled. Source logs appear in the controller's log viewer.
+  - **Link:** the node starts it with the URL of its loopback source link and a launch token in its environment, and the engine connects back with that token. Its `status` messages, at least once a second, are the heartbeat ([source link](../specs/source-link.md#the-local-link), [ADR-0032](../decisions/ADR-0032-local-source-link.md)).
   - **Logs:** `folo-source` writes them to stderr as JSON lines, one object per record: `ts` (UTC, RFC 3339 with milliseconds), `level` (`debug`, `info`, `warning`, `error` or `critical`), `logger`, `msg`, and `exc` with the traceback when there is one.
   - **Stopping:** it shuts down cleanly on SIGINT, SIGTERM and Windows console control events (Ctrl+C, Ctrl+Break, closing its console), and joins its threads with timeouts.
 - `folo-capture` always runs in the signed-in user's session. The node starts it when the node itself runs in that session; otherwise the desktop app starts it at sign-in ([display capture](../integrations/display-capture.md#where-capture-runs)).
