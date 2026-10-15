@@ -491,6 +491,19 @@
    ],
    "additionalProperties": false
   },
+  "BlurParams": {
+   "description": "The blur post-processing effect: a box blur, in cells on each side.",
+   "type": "object",
+   "properties": {
+    "radius": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 16,
+     "default": 1
+    }
+   },
+   "additionalProperties": false
+  },
   "Bounds": {
    "description": "Room dimensions, metres.",
    "type": "object",
@@ -512,6 +525,25 @@
      "minimum": 0.1,
      "maximum": 1000,
      "default": 2.5
+    }
+   },
+   "additionalProperties": false
+  },
+  "BrightnessParams": {
+   "description": "The brightness post-processing effect: saturation around each cell's luma, then a multiplier.",
+   "type": "object",
+   "properties": {
+    "brightness": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 4,
+     "default": 1
+    },
+    "saturation": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 4,
+     "default": 1
     }
    },
    "additionalProperties": false
@@ -1840,7 +1872,11 @@
      "type": "object",
      "default": {},
      "x-folo-params-by-effect": {
-      "audio-visualizer": "#/$defs/AudioVisualizerParams"
+      "audio-visualizer": "#/$defs/AudioVisualizerParams",
+      "brightness": "#/$defs/BrightnessParams",
+      "mirror": "#/$defs/MirrorParams",
+      "blur": "#/$defs/BlurParams",
+      "trail": "#/$defs/TrailParams"
      }
     },
     "region": {
@@ -2534,6 +2570,20 @@
     "publish_fps",
     "dropped"
    ],
+   "additionalProperties": false
+  },
+  "MirrorParams": {
+   "description": "The mirror post-processing effect: the half it keeps is copied, reversed, onto the other.",
+   "type": "object",
+   "properties": {
+    "keep": {
+     "enum": [
+      "first",
+      "second"
+     ],
+     "default": "first"
+    }
+   },
    "additionalProperties": false
   },
   "Name": {
@@ -4745,6 +4795,19 @@
     "surface:<id>",
     "target:<id>"
    ]
+  },
+  "TrailParams": {
+   "description": "The trail post-processing effect: an afterglow fading with this time constant, in ms.",
+   "type": "object",
+   "properties": {
+    "fade": {
+     "type": "integer",
+     "minimum": 10,
+     "maximum": 5000,
+     "default": 300
+    }
+   },
+   "additionalProperties": false
   },
   "UV": {
    "type": "object",

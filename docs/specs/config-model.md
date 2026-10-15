@@ -73,7 +73,7 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 
 **Scene:** `id`, `name`, `tags` (up to 16 of up to 24 characters), `provenance? {pack, version, item}`, `layers_by_role {role: Layer[]}` (up to 64 layers per role), `macros[]` (up to 8: `id`, `name`, `value` 0–1 (default 0.5), `targets[] {layer, param, min, max}`).
 
-**Layer:** `id`, `name`, `effect {id, version}`, `params` (validated against the effect's JSON Schema; the `audio-visualizer` effect's are below), `region`, `blend`, `axis`, `enabled` (default true), `solo` (default false), `lane` (UI row: −1…15, −1 places it automatically).
+**Layer:** `id`, `name`, `effect {id, version}`, `params` (validated against the effect's JSON Schema; the `audio-visualizer` and post-processing effects' are below), `region`, `blend`, `axis`, `enabled` (default true), `solo` (default false), `lane` (UI row: −1…15, −1 places it automatically).
 - `region`: `{kind: cells, start, end}` (absolute cells, 0–1999), `{kind: relative, start, end}` (0–1 along a strip) or `{kind: rect, x, y, width, height}` (0–1 of a canvas). Default: the whole surface (`relative`, 0–1).
 - `blend`: `max` (default, today's behaviour), `add`, `alpha` or `multiply`.
 - `axis`: how a 1D effect runs on a canvas: `linear_x` (default), `linear_y`, `radial` or `angular`.
@@ -98,6 +98,16 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 | `width` | 1–100 % of the region (moving modes) | 20 |
 | `peak` | boolean (fill) | false |
 | `palette` | 1–16 colours `#RRGGBB` | `["#FFFFFF"]` |
+
+**Post-processing parameters** (the effects that change what is below them in the stack, [pipeline](../architecture/pipeline.md#effects)):
+
+| Effect | Field | Range / values | Default |
+|---|---|---|---|
+| `brightness` | `brightness` | 0–4 (a multiplier) | 1 |
+| `brightness` | `saturation` | 0–4 (0 grey, 1 unchanged) | 1 |
+| `mirror` | `keep` | `first`, `second` | `first` |
+| `blur` | `radius` | 1–16 cells | 1 |
+| `trail` | `fade` | 10–5000 ms | 300 |
 
 **Limits carried over:** 64 layers per surface, 16 lanes, 2000 elements per strip surface, 60 saved presets, 16 tags of up to 24 characters.
 
@@ -161,7 +171,7 @@ Python (the effect engine) and Rust (the node) clamp documents with the same alg
   - `band`: `freq_lo` and `freq_hi` are swapped when reversed; `freq_hi` is raised to `freq_lo` × 1.01 (at most 24000, with `freq_lo` then set to `freq_hi` / 1.01); both are rounded to 2 decimals.
   - `thresholds`: `threshold` and `ceiling` take the hits limits and defaults when `trigger` is `hits`, else the level limits; `ceiling` is raised to `threshold` + 1; both are rounded to 1 decimal.
   - `range`: `start` and `end` are swapped when reversed.
-- **Params:** a layer's `params` are clamped with its effect's parameter schema when the effect is known (`audio-visualizer`); otherwise they are kept for the effect to validate.
+- **Params:** a layer's `params` are clamped with its effect's parameter schema when the effect is known (`audio-visualizer`, `brightness`, `mirror`, `blur`, `trail`); otherwise they are kept for the effect to validate.
 
 **Version 1** (today's `studio.json`) keeps its own rules, which are looser about types: `sanitize_config()` in `folo_source/legacy/v1.py` is the reference, `specs/schema/studio-v1.json` describes its limits, and the node's Rust port (`folo-protocol`, module `v1`) must give the same output on the RB-01 corpus.
 

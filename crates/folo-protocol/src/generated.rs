@@ -1278,6 +1278,20 @@ pub struct BeatStatus {
     ///Share of the current beat gone by.
     pub phase: f64,
 }
+///The blur post-processing effect: a box blur, in cells on each side.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BlurParams {
+    #[serde(default = "defaults::default_nzu64::<::std::num::NonZeroU64, 1>")]
+    pub radius: ::std::num::NonZeroU64,
+}
+impl ::std::default::Default for BlurParams {
+    fn default() -> Self {
+        Self {
+            radius: defaults::default_nzu64::<::std::num::NonZeroU64, 1>(),
+        }
+    }
+}
 ///Room dimensions, metres.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -1295,6 +1309,23 @@ impl ::std::default::Default for Bounds {
             x: defaults::bounds_x(),
             y: defaults::bounds_y(),
             z: defaults::bounds_z(),
+        }
+    }
+}
+///The brightness post-processing effect: saturation around each cell's luma, then a multiplier.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BrightnessParams {
+    #[serde(default = "defaults::brightness_params_brightness")]
+    pub brightness: f64,
+    #[serde(default = "defaults::brightness_params_saturation")]
+    pub saturation: f64,
+}
+impl ::std::default::Default for BrightnessParams {
+    fn default() -> Self {
+        Self {
+            brightness: defaults::brightness_params_brightness(),
+            saturation: defaults::brightness_params_saturation(),
         }
     }
 }
@@ -7607,6 +7638,80 @@ pub struct MetricsParams {
     pub publish_fps: f64,
     pub render_ms: f64,
 }
+///The mirror post-processing effect: the half it keeps is copied, reversed, onto the other.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MirrorParams {
+    #[serde(default = "defaults::mirror_params_keep")]
+    pub keep: MirrorParamsKeep,
+}
+impl ::std::default::Default for MirrorParams {
+    fn default() -> Self {
+        Self {
+            keep: defaults::mirror_params_keep(),
+        }
+    }
+}
+///`MirrorParamsKeep`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum MirrorParamsKeep {
+    #[serde(rename = "first")]
+    First,
+    #[serde(rename = "second")]
+    Second,
+}
+impl ::std::fmt::Display for MirrorParamsKeep {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::First => f.write_str("first"),
+            Self::Second => f.write_str("second"),
+        }
+    }
+}
+impl ::std::str::FromStr for MirrorParamsKeep {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "first" => Ok(Self::First),
+            "second" => Ok(Self::Second),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for MirrorParamsKeep {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for MirrorParamsKeep {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for MirrorParamsKeep {
+    fn default() -> Self {
+        MirrorParamsKeep::First
+    }
+}
 ///`Name`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
@@ -13804,6 +13909,20 @@ impl<'de> ::serde::Deserialize<'de> for Topic {
             })
     }
 }
+///The trail post-processing effect: an afterglow fading with this time constant, in ms.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TrailParams {
+    #[serde(default = "defaults::default_u64::<i64, 300>")]
+    pub fade: i64,
+}
+impl ::std::default::Default for TrailParams {
+    fn default() -> Self {
+        Self {
+            fade: defaults::default_u64::<i64, 300>(),
+        }
+    }
+}
 ///`Unsubscribe`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -16346,6 +16465,12 @@ pub mod defaults {
     pub(super) fn bounds_z() -> f64 {
         2.5_f64
     }
+    pub(super) fn brightness_params_brightness() -> f64 {
+        1_f64
+    }
+    pub(super) fn brightness_params_saturation() -> f64 {
+        1_f64
+    }
     pub(super) fn calibration_brightness_max() -> f64 {
         1_f64
     }
@@ -16722,6 +16847,9 @@ pub mod defaults {
     }
     pub(super) fn mapping_target() -> super::Ref {
         super::Ref("".to_string())
+    }
+    pub(super) fn mirror_params_keep() -> super::MirrorParamsKeep {
+        super::MirrorParamsKeep::First
     }
     pub(super) fn node_settings_data_dir() -> super::NodeSettingsDataDir {
         super::NodeSettingsDataDir("".to_string())

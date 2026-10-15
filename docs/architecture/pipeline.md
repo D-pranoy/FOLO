@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer effect and surfaces)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer and post-processing effects, and surfaces)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -61,7 +61,11 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
   - **Audio visualizers:** the existing modes fill, pulse, spectrum, shift, scroll, drops, scan, wipe, flow and fire. Each layer has the existing segment semantics: band, trigger (level, hits or beat), beats per flash, threshold, ceiling, gain, curve, attack, release, idle glow, direction, speed, size, peak hold and palette.
   - **Album colours:** when the zone enables them, each layer's palette is replaced by colours from the album art (strongest for lows, then mids, then highs), recomputed only when the cover changes.
   - **Screen:** turns a captured frame into a canvas, with colour, saturation, smoothing and video/game profiles.
-  - **Post-processing:** brightness and saturation, mirror, blur, trail.
+  - **Post-processing:** brightness and saturation, mirror, blur, trail. These layers change what is below them in the stack, inside their region, instead of drawing a line; their blend mode doesn't apply. Their parameters are in the [configuration model](../specs/config-model.md#entities-summary).
+    - `brightness`: moves each channel toward the cell's luma (`0.2126 R + 0.7152 G + 0.0722 B`) or away from it by `saturation` (0 grey, 1 unchanged), multiplies by `brightness` and clips to 0–255.
+    - `mirror`: copies the half of the region that `keep` names, reversed, onto the other half. It works along a strip, or along a canvas's columns (its rows when the layer's `axis` is `linear_y`). A middle cell stays as it is.
+    - `blur`: each cell becomes the average of the cells up to `radius` away along a strip, or in the square of that radius on a canvas. Past the region's edges, its edge cells repeat.
+    - `trail`: an afterglow. Each cell is at least what the layer gave it the frame before, faded by `e^(−dt / fade)`. It starts over when its region changes size.
 - **1D effects on canvases** use axis modes: `linear_x`, `linear_y`, `radial` and `angular`. Every visualizer therefore works on 2D surfaces and in any zone.
   - The effect renders a line of `L` cells. Each cell of the layer's rectangle takes the line's cell `min(L − 1, ⌊t × L⌋)`, where `t` (0–1) is the position of the cell's centre along the axis:
     - `linear_x`: across the columns; `L` is the rectangle's width.
