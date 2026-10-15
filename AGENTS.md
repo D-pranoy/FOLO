@@ -138,7 +138,8 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
 - `inputs/media/input.py`: `MediaInput`, now playing through `inputs/media/windows.py`. Linux's MPRIS isn't implemented yet, so it's unavailable there.
 - `inputs/generator.py` (time, LFOs and noise), `inputs/screen.py` (no frames until folo-capture, RB-14) and `inputs/listing.py` (what `inputs.list` returns)
 - `signals/beat.py`: the beat tracker, and `BeatSignal`: a tracker per zone with its beat offset, publishing `[bpm, confidence, locked, phase, bar_beat]`
-- `effects/base.py`: the effect interface (`EffectInfo`, `LayerSpec`, `Effect`) and the registry (`register()`, `create()`)
+- `effects/base.py`: the effect interface (`EffectInfo`, `LayerSpec`, `Effect` for effects that draw a line, `PostEffect` for those that change what is below them) and the registry (`register()`, `create()`)
+- `effects/post.py`: the post-processing effects `brightness`, `mirror`, `blur` and `trail`
 - `effects/visualizers.py`: the `audio-visualizer` effect (`AudioVisualizer`, `LayerState`): today's segment logic, the modes and the beat targets, drawing each layer's line; `effects/colors.py`: palettes and album colors
 - `surfaces/renderer.py`: `SurfaceRenderer`, a surface's layer stack: regions, axis modes, blend modes, background and master, as `docs/architecture/pipeline.md` defines them
 - `runtime/engine.py`: `StudioEngine`, which wires them together and renders silence while idle; `runtime/lifecycle.py`: shutdown, thread joins, the seeded random generator; `runtime/logs.py`: JSON-line logging
