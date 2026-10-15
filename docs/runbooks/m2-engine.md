@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Partial (RB-03 awaits its first CI run)
+Status: Accepted · Implementation: Partial (RB-03 done)
 
 ## RB-03: Effect engine restructure
 
