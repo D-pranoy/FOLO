@@ -98,6 +98,9 @@ strict = [
   "source/folo_source/inputs/generator.py",
   "source/folo_source/inputs/screen.py",
   "source/folo_source/inputs/listing.py",
+  "source/folo_source/effects/base.py",
+  "source/folo_source/surfaces",
+  "source/folo_source/legacy/renderer.py",
 ]
 
 [tool.pytest.ini_options]

@@ -8,7 +8,7 @@ import math
 import numpy as np
 
 
-def hex_to_rgb(color):
+def hex_to_rgb(color: str) -> tuple[int, int, int]:
     return (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
 
 

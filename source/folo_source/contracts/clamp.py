@@ -48,6 +48,11 @@ def _defs() -> dict[str, Json]:
     return json.loads(BUNDLE.read_text(encoding='utf-8'))['$defs']
 
 
+def definition(name: str) -> dict[str, Json]:
+    """A copy of one bundled schema definition, such as an effect's parameters."""
+    return copy.deepcopy(_defs()[name])
+
+
 def _effective(schema: Json) -> Json:
     """A schema with its $ref followed; keywords beside the $ref (default, x-folo-*) win."""
     while '$ref' in schema:
