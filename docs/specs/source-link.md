@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) · Contract version: 1.0
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) · Contract version: 1.1
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -41,7 +41,7 @@ Each message starts with one byte for its type:
 
 | Method | Purpose |
 |---|---|
-| `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. `publish` holds the requested resolution, rate and compression per surface, and the signals to send with their signal index. |
+| `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. Each assigned surface carries its zone's `beat_offset_ms` and `album_colors`, which its layers use. `publish` holds the requested resolution, rate and compression per surface, and the signals to send with their signal index. |
 | `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | Content distribution |
 | `inputs.list` | The inputs available on the source (outputs, inputs, apps playing audio, screens, media session), with capabilities |
 | `media.control {action}` | `play_pause`, `next` or `previous` on the shown media session |
