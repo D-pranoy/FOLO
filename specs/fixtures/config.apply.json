@@ -30,7 +30,9 @@
      "role": "strip.main"
     },
     "scene": "scene1",
-    "role": "strip.main"
+    "role": "strip.main",
+    "beat_offset_ms": 0,
+    "album_colors": false
    }
   ],
   "scenes": [

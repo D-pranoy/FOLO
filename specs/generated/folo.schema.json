@@ -122,6 +122,18 @@
     "role": {
      "type": "string",
      "maxLength": 64
+    },
+    "beat_offset_ms": {
+     "description": "Its zone's beat timing offset: beats fire earlier when positive.",
+     "type": "integer",
+     "minimum": -200,
+     "maximum": 200,
+     "default": 0
+    },
+    "album_colors": {
+     "description": "Its zone takes colours from the album art.",
+     "type": "boolean",
+     "default": false
     }
    },
    "required": [

@@ -130,6 +130,12 @@ impl ::std::default::Default for AmbientStyle {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct AssignedSurface {
+    ///Its zone takes colours from the album art.
+    #[serde(default)]
+    pub album_colors: bool,
+    ///Its zone's beat timing offset: beats fire earlier when positive.
+    #[serde(default)]
+    pub beat_offset_ms: i64,
     ///The surface index in its frames.
     pub index: u16,
     pub role: AssignedSurfaceRole,

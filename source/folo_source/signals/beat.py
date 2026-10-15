@@ -182,8 +182,8 @@ class BeatTracker:
 
     def push(self, spectrum: 'Spectrum', frames: int) -> None:
         """
-        Takes the spectrum of the latest `frames` frames of audio (a
-        studio_engine.Spectrum, levels in dB with the input gain) and moves
+        Takes the spectrum of the latest `frames` frames of audio (the
+        analyzer's Spectrum, levels in dB with the input gain) and moves
         the clock forward by their duration.
         """
         dt = frames / float(self.rate)
@@ -416,3 +416,67 @@ class BeatTracker:
         best = int(np.argmax(self._accents))
         if self._accents[best] > self._accents[self.downbeat] * DOWNBEAT_MARGIN:
             self.downbeat = best
+
+
+BEAT_SIGNAL = 'beat'  # the signal's name in config.apply's publish list
+
+
+def beat_values(tracker: BeatTracker) -> tuple[float, ...]:
+    """The beat signal's values (docs/specs/source-link.md#signal-frames)."""
+    return (
+        float(tracker.bpm),
+        float(tracker.confidence),
+        1.0 if tracker.locked else 0.0,
+        float(tracker.phase),
+        float(tracker.bar_beat),
+    )
+
+
+class BeatSignal:
+    """
+    The source's beat (RB-04 step 3): a tracker per zone the source renders
+    for, all pushed with the same analysed packets. A zone's beat offset
+    sets its tracker's `lead`, which shapes the tracker's clock and not
+    just when beats fire, so zones with different offsets need their own,
+    and an offset can change without the tracker losing its lock, as in
+    today's engine. The first zone's tracker is the one published.
+    """
+
+    def __init__(self, freqs, rate: int = 48000) -> None:
+        self.freqs = freqs
+        self.rate = rate
+        self.trackers: dict[object, BeatTracker] = {}
+
+    def keep(self, offsets: dict[object, float]) -> None:
+        """
+        Tracks the zones in `offsets` ({key: beat offset in ms}), in that
+        order: new zones get a fresh tracker, and the others are dropped.
+        """
+        trackers = {}
+        for key, offset_ms in offsets.items():
+            tracker = self.trackers.get(key)
+            if tracker is None:
+                tracker = BeatTracker(self.freqs, self.rate)
+            tracker.lead = ONSET_DELAY + offset_ms / 1000.0
+            trackers[key] = tracker
+        self.trackers = trackers
+
+    def push(self, spectrum: 'Spectrum', frames: int) -> None:
+        for tracker in self.trackers.values():
+            tracker.push(spectrum, frames)
+
+    def skip(self) -> None:
+        """While nothing needs the beat: no beats fire, and the trackers start over."""
+        for tracker in self.trackers.values():
+            tracker.skip()
+
+    def reset(self) -> None:
+        """A new song: every tracker finds its tempo afresh."""
+        for tracker in self.trackers.values():
+            tracker.reset()
+
+    def values(self) -> tuple[float, ...]:
+        """What the beat signal publishes now: the first zone's tracker, or nothing found."""
+        for tracker in self.trackers.values():
+            return beat_values(tracker)
+        return (0.0, 0.0, 0.0, 0.0, 0.0)
