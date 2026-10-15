@@ -1,6 +1,6 @@
 # M1 Foundation
 
-Status: Accepted · Implementation: Partial (RB-00 and RB-01 done; RB-02 awaits its first CI run)
+Status: Accepted · Implementation: Complete
 
 ## RB-00: Governance and documentation
 
