@@ -6,6 +6,7 @@ and sends them to Hyperion. Renders silence while no audio arrives.
 
 import threading
 import time
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -75,6 +76,10 @@ class StudioEngine:
 
     def start(self):
         self.running = True
+        # A first frame before anything can stream, so no page gets an empty one
+        # (rendering takes IDLE_AFTER to start when no audio arrives)
+        with self._render_lock:
+            self._render(Spectrum.silent(), 0.0, packet=False)
         self.media.start()
         self.input.start()
         self._idle = threading.Thread(target=self._idle_loop, name='idle-render', daemon=True)
@@ -174,7 +179,7 @@ class StudioEngine:
             self._track_beat(spectrum, len(frames))
             self._render(spectrum, dt, packet=True)
 
-    def snapshot(self):
+    def snapshot(self) -> dict[str, Any]:
         """
         Latest state for the web UI.
         """
