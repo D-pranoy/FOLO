@@ -50,7 +50,7 @@ Status: Accepted · Implementation: Partial (RB-03 done; RB-04 steps 1–5 done)
    - quantises surfaces to the requested pixel format with the same rounding as today's engine
    - resamples to the requested resolution and rate
    - optional LZ4
-   - sends frames to the node over loopback using the [source link frame format](../specs/source-link.md#surface-frames)
+   - sends frames to the node over [the local link](../specs/source-link.md#the-local-link) using the [source link frame format](../specs/source-link.md#surface-frames), through `websockets`, with `lz4` for compression ([ADR-0032](../decisions/ADR-0032-local-source-link.md))
    - also sends activity (with seconds of silence), beat signals, and media and input notifications
 8. **Executor:**
    - dependency order, double-buffered surfaces, per-layer timing

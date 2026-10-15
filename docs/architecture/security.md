@@ -18,6 +18,7 @@ Status: Accepted · Implementation: Not started
 | Cross-site requests | JSON-only mutating requests; Origin check; HttpOnly, SameSite=Strict session cookies |
 | Sniffing on the LAN | **Source links are Noise-encrypted.** UI traffic is plain HTTP by decision ([ADR-0009](../decisions/ADR-0009-client-access.md)). Anyone who can sniff the LAN can capture a client key. Optional HTTPS is a later option. |
 | Rogue source or impersonated controller | Pinned static keys after pairing; one-time, expiring invites; join requests require a verification code and admin approval |
+| A local program posing as the effect engine | The node starts its engine with a launch token in the engine's environment, and its loopback source link accepts only that token ([ADR-0032](../decisions/ADR-0032-local-source-link.md)) |
 | Malicious content pack | Data-only packs, validated and clamped; size limits; no code execution in v1 ([ADR-0021](../decisions/ADR-0021-content-packs.md)) |
 | Tampered update | Signatures verified against a public key built into FOLO; SHA-256 checks; approvals; provenance attestations ([updates](updates.md)) |
 | Compromised build pipeline | Pinned actions, least-privilege workflow permissions, release environment with a required reviewer, Dependabot, CodeQL, cargo-deny ([ADR-0019](../decisions/ADR-0019-ci-cd-versioning-and-releases.md)) |

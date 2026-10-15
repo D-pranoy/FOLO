@@ -18,7 +18,8 @@
       "oneOf": [
         {"type": "object", "properties": {"kind": {"const": "connect"}}, "required": ["kind"], "additionalProperties": false},
         {"type": "object", "properties": {"kind": {"const": "invite"}, "proof": {"description": "HMAC-SHA256(invite secret, handshake hash), base64url.", "type": "string", "maxLength": 64}}, "required": ["kind", "proof"], "additionalProperties": false},
-        {"type": "object", "properties": {"kind": {"const": "join_request"}}, "required": ["kind"], "additionalProperties": false}
+        {"type": "object", "properties": {"kind": {"const": "join_request"}}, "required": ["kind"], "additionalProperties": false},
+        {"type": "object", "properties": {"kind": {"const": "local"}, "token": {"description": "The node's launch token for its own effect engine, on the loopback link only.", "type": "string", "maxLength": 64}}, "required": ["kind", "token"], "additionalProperties": false}
       ]
     },
     "Welcome": {

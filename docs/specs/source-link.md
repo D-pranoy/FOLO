@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) · Contract version: 1.1
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) · Contract version: 1.2
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -10,6 +10,15 @@ The connection between a source node and a controller. Decided in [ADR-0008](../
 - WebSocket subprotocol: `folo.source-link.v1`.
 - All messages after the handshake are carried inside **Noise** transport messages. Each WebSocket binary message holds one Noise message (at most 65,535 bytes).
 - Reconnect with exponential backoff (1 s up to 60 s, with jitter). The controller address is learned from the invite and refreshed from mDNS.
+
+### The local link
+
+A node's own effect engine uses the same endpoint on loopback, `ws://127.0.0.1:<port>/api/v1/source-link`, without Noise ([ADR-0032](../decisions/ADR-0032-local-source-link.md)):
+- **Launch:** the node starts the engine with the link's URL and a random 256-bit launch token (base64url) in its environment, `FOLO_SOURCE_LINK` and `FOLO_SOURCE_TOKEN`, never on its command line.
+- **Handshake:** the first message each way is the handshake payload as JSON. The engine's purpose is `local`, with the token. The node compares it in constant time, accepts one engine connection at a time and closes any other.
+- **Messages:** each WebSocket binary message after that is one message, as below, without the Noise layer. `config.apply` follows the node's response, and the engine renders nothing before it.
+- **Heartbeat:** the engine sends `status` at least once a second; after 5 s without any message the node treats it as hung.
+- **Losing the node:** the engine reconnects with the backoff above, and exits after 30 s without its node.
 
 ## Handshake
 
@@ -23,6 +32,7 @@ The connection between a source node and a controller. Decided in [ADR-0008](../
     - `connect` (already paired)
     - `invite` with `proof = HMAC-SHA256(invite_secret, handshake_hash)`
     - `join_request`
+    - `local` with the launch `token`, on [the local link](#the-local-link) only
 - **Controller response payload:**
   - `version`: the chosen version
   - `result`: `ok`, `pending` (join request) or `rejected`
@@ -71,7 +81,7 @@ All integers are little-endian:
 | 0 | 4 | Magic `FOLS` |
 | 4 | 1 | Frame format version (1) |
 | 5 | 1 | Pixel format: `1` rgb8, `2` rgb16, `3` rgbf32 |
-| 6 | 1 | Flags: bit 0 LZ4-compressed payload, bit 1 key frame |
+| 6 | 1 | Flags: bit 0 LZ4-compressed payload (in the LZ4 frame format, which records the content size; sent only when it's smaller), bit 1 key frame |
 | 7 | 1 | Reserved (0) |
 | 8 | 2 | Surface index (as assigned in `config.apply`) |
 | 10 | 2 | Width (cells) |
