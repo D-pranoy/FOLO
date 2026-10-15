@@ -1,12 +1,13 @@
 """
 Golden-frame cases for the current engine (RB-01 step 6): what is rendered,
-and the harness that renders it the way StudioEngine._on_audio does.
+and the harness that renders it the way the engine does (AudioInput.analyse,
+then StudioEngine._on_packet).
 
 Every case is a v1 config (sanitized like the studio's own), a signal from
 tests/synth.py and the audio settings. The spectra depend only on the
 signal and the audio settings, so they are analysed once per signal and
 shared by the cases; test_golden_renderer checks this against the real
-StudioEngine._on_audio path.
+StudioEngine._on_packet path.
 
 Frames are stored as PNGs (time down, LEDs across), byte for byte the
 renderer's output, so they can also be looked at.
@@ -307,7 +308,7 @@ def signal_sha256(name: str) -> str:
 
 def analyse(key: tuple[str, float, bool]) -> list[Packet]:
     """
-    The spectra StudioEngine._on_audio works out for (signal, gain, auto
+    The spectra AudioInput.analyse works out for (signal, gain, auto
     level): the input gain set before each packet, auto level following
     after it. The short window is worked out now (the engine does it when a
     hits segment asks; the result is the same), so a packet doesn't keep its
@@ -397,7 +398,7 @@ class FakeStore:
 
 def render_with_engine(case: Case) -> Frames:
     """
-    Renders a case through StudioEngine._on_audio itself (no threads, no
+    Renders a case through AudioInput.analyse and StudioEngine._on_packet (no threads, no
     devices), to check that render() mirrors it. Not for idle or paused cases.
     """
     if case.idle or case.paused or case.colors:
@@ -407,7 +408,8 @@ def render_with_engine(case: Case) -> Frames:
     engine._watched = float('-inf')  # pyright: ignore[reportPrivateUsage]  # no page is watching
     frames: list[bytes] = []
     for packet in synth.packets(signal(case.signal)):
-        engine._on_audio(packet, channel_peaks(packet), False)  # pyright: ignore[reportPrivateUsage]
+        analysed = engine.input.analyse(packet, channel_peaks(packet), False)
+        engine._on_packet(analysed)  # pyright: ignore[reportPrivateUsage]
         frames.append(engine.frame)
     count = case.config['led_count']
     return np.frombuffer(b''.join(frames), dtype=np.uint8).reshape(len(frames), count, 3)

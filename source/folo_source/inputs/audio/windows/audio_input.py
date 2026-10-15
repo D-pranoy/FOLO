@@ -1,8 +1,9 @@
 """
-The studio's audio input: picks the source from the config (an output's
-loopback, an input, one app, or everything except one app), keeps it running
-through device switches, unplugging and app restarts, and hands every batch
-of new audio to the engine. Also keeps the input meter and capture stats.
+The audio input's capture on Windows: picks the source from the settings
+(an output's loopback, an input, one app, or everything except one app),
+keeps it running through device switches, unplugging and app restarts, and
+hands every batch of new audio on. Also keeps the input meter and capture
+stats.
 """
 
 import math
@@ -10,6 +11,7 @@ import os
 import sys
 import threading
 import time
+from typing import Any
 
 import numpy as np
 
@@ -37,7 +39,7 @@ CLIP_HOLD = 2.0  # seconds the clip light stays on
 HIDDEN_APPS = {'audiodg.exe'}
 
 
-def sources():
+def sources() -> dict[str, Any]:
     """
     What the UI can pick from: {'default': default output name,
     'devices': [{'name', 'output'}], 'apps': [{'exe', 'name', 'active', 'peak'}]}.
@@ -72,27 +74,28 @@ class Waiting(Exception):
     """The source can't be opened yet (its app isn't running)."""
 
 
-class AudioInput:
+class Capture:
     """
-    Runs the capture thread. `on_audio(frames, peaks, fresh)` gets every
+    Runs the capture thread. `settings()` returns the audio input's settings
+    (`device`, `app`, `app_mode`, ...). `on_audio(frames, peaks, fresh)` gets every
     batch of new audio (frames x channels float32 at RATE) with each
     channel's peak; `fresh` is True after a gap, when older samples no longer
     belong to what's playing.
     """
 
-    def __init__(self, store, on_audio):
-        self.store = store
+    def __init__(self, settings, on_audio):
+        self.settings = settings
         self.on_audio = on_audio
         self.running = False
-        self.thread = None
-        self.state = 'starting'  # ok, waiting, error, starting
-        self.label = ''  # what is being captured, for the UI
-        self.kind = ''  # output, input, only, except
-        self.message = ''
-        self.format = (0, 0, False)  # rate, channels, event driven
-        self.packets = 0.0  # packets per second
-        self.delay = 0.0  # ms from WASAPI's capture time to the engine (median)
-        self.glitches = 0  # lost audio (data discontinuities) since the source opened
+        self.thread: threading.Thread | None = None
+        self.state: str = 'starting'  # ok, waiting, error, starting
+        self.label: str = ''  # what is being captured, for the UI
+        self.kind: str = ''  # output, input, only, except
+        self.message: str = ''
+        self.format: tuple[int, int, bool] = (0, 0, False)  # rate, channels, event driven
+        self.packets: float = 0.0  # packets per second
+        self.delay: float = 0.0  # ms from WASAPI's capture time to the engine (median)
+        self.glitches: int = 0  # lost audio (data discontinuities) since the source opened
         self._meter = [(METER_FLOOR, 0.0), (METER_FLOOR, 0.0)]
         self._clip_until = 0.0
 
@@ -107,7 +110,7 @@ class AudioInput:
 
     # -------------------------------------------------------------- status
 
-    def meter(self):
+    def meter(self) -> tuple[list[float], bool]:
         """Peak level of the first two channels (dBFS, falling) and the clip light."""
         now = time.perf_counter()
         levels = [round(max(METER_FLOOR, db - METER_FALL * (now - t)), 1) for db, t in self._meter]
@@ -134,7 +137,7 @@ class AudioInput:
     # -------------------------------------------------------------- sources
 
     def _wanted(self):
-        audio = self.store.config['audio']
+        audio = self.settings()
         return (audio['device'], audio['app'], audio['app_mode'])
 
     def _open(self, wanted):
@@ -143,7 +146,7 @@ class AudioInput:
         if app:
             procs = wasapi.processes()
             pid = wasapi.app_root(app, procs)
-            name = wasapi.app_name(pid, procs[pid][0]) if pid else wasapi.known_app_name(app)
+            name = str(wasapi.app_name(pid, procs[pid][0]) if pid else wasapi.known_app_name(app))
             only = mode != 'except'
             self.kind = 'only' if only else 'except'
             self.label = name if only else f'Everything except {name}'

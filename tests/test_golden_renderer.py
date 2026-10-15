@@ -25,7 +25,7 @@ MANIFEST = g.load_manifest()
 CASES = g.by_name(g.all_cases())
 # Grouped by analysis, so each signal is analysed once
 ORDER = [c.name for c in sorted(CASES.values(), key=lambda c: (c.analysis, c.name))]
-# Cases that also run through StudioEngine._on_audio itself
+# Cases that also run through the engine itself (AudioInput.analyse, StudioEngine._on_packet)
 ENGINE_CASES = [
     'mode-fill-level-peak',
     'mode-drops-hits',
@@ -94,7 +94,7 @@ def test_frames(name: str) -> None:
 
 @pytest.mark.parametrize('name', ENGINE_CASES)
 def test_engine_path(name: str) -> None:
-    """render() mirrors StudioEngine._on_audio: the real path gives the same frames."""
+    """render() mirrors the engine: the real path gives the same frames."""
     case = CASES[name]
     expected = g.read_png(g.RENDERER_DIR / MANIFEST['cases'][name]['png'])
     actual = g.render_with_engine(case)

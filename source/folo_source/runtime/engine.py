@@ -8,17 +8,16 @@ import threading
 import time
 
 import numpy as np
-import numpy.typing as npt
 
 from folo_source.effects.visualizers import Renderer, shown_levels
-from folo_source.inputs.audio.analyzer import SAMPLERATE, Analyzer, AutoLevel, Spectrum
+from folo_source.inputs.audio.analyzer import SAMPLERATE, Spectrum
+from folo_source.inputs.audio.input import MAX_DT, AudioInput, AudioPacket
 from folo_source.inputs.audio.windows import audio_input
 from folo_source.inputs.media import windows as now_playing
 from folo_source.legacy.hyperion import HyperionSender
 from folo_source.runtime import lifecycle
 from folo_source.signals import beat as beat_tracker
 
-MAX_DT = 0.1  # longest step the renderer takes after a gap in the audio
 # The beat tracker runs while a segment uses it, and this many seconds after
 # a page last streamed (they show the tempo)
 BEAT_WATCH = 3.0
@@ -38,7 +37,7 @@ def audio_sources():
 
 class StudioEngine:
     """
-    Analyses the audio from the input thread (audio_input.AudioInput) and
+    Analyses the audio from the input thread (AudioInput) and
     keeps the latest spectrum, led frame and segment levels for the web UI
     and the hyperion sender. `store` holds the settings (its `config`), and
     `seed` makes the random modes repeatable.
@@ -46,16 +45,17 @@ class StudioEngine:
 
     def __init__(self, store, seed: int | None = None):
         self.store = store
-        self.analyzer = Analyzer()
+        self.input = AudioInput(lambda: store.config['audio'], self._on_packet)
+        self.analyzer = self.input.analyzer
         self.renderer = Renderer(self.analyzer, rng=lifecycle.random_generator(seed))
-        self.level = AutoLevel()
+        self.level = self.input.level
         self.beat = beat_tracker.BeatTracker(self.analyzer.freqs, SAMPLERATE)
         self._beat_configs = (None, False)  # (config, whether a segment uses the beat)
         self._watched = 0.0  # when a page last streamed
-        self.media = now_playing.NowPlaying(store)
+        self.media = now_playing.NowPlaying(
+            lambda: store.config['now_playing']['enabled'], lambda: store.config['audio']
+        )
         self._track = 0  # the song the beat tracker has been following
-        self.input = audio_input.AudioInput(store, self._on_audio)
-        self._source = None  # the audio source auto level has been following
         self.sender = HyperionSender(self)
         self.lock = threading.Lock()
         # The capture thread and the idle thread both render
@@ -152,27 +152,11 @@ class StudioEngine:
             self._frames = 0
             self._fps_time = now
 
-    def _on_audio(
-        self, frames: npt.NDArray[np.float32], peaks: npt.NDArray[np.float32], fresh: bool
-    ) -> None:
-        """
-        New audio from the input thread. `fresh` after a gap: the analysis
-        window starts empty instead of mixing in what played before it.
-        """
-        audio = self.store.config['audio']
+    def _on_packet(self, packet: AudioPacket) -> None:
+        """A new analysed packet from the input thread."""
         with self._render_lock:
-            source = (audio['device'], audio['app'], audio['app_mode'])
-            if source != self._source:
-                self._source = source
-                self.level.reset()
-            if fresh:
-                self.analyzer.clear()
-            self.analyzer.offset = audio['gain'] + (self.level.gain if audio['auto_level'] else 0.0)
-            spectrum = self.analyzer.push(frames, peaks)
-            dt = min(MAX_DT, len(frames) / float(SAMPLERATE))
-            self.level.update(spectrum.loudest, dt)
-            self._track_beat(spectrum, len(frames))
-            self._render(spectrum, dt, packet=True)
+            self._track_beat(packet.spectrum, packet.frames)
+            self._render(packet.spectrum, packet.dt, packet=True)
 
     def snapshot(self):
         """
@@ -205,12 +189,12 @@ class StudioEngine:
             'levels': display[2],
             'status': {
                 'audio': {
-                    'ok': self.input.state == 'ok',
-                    'device': self.input.label,
-                    'message': self.input.message,
+                    'ok': self.input.capture.state == 'ok',
+                    'device': self.input.capture.label,
+                    'message': self.input.capture.message,
                 },
                 'input': dict(
-                    self.input.status(),
+                    self.input.capture.status(),
                     gain=self.store.config['audio']['gain'],
                     auto=round(self.level.gain, 1),
                 ),
