@@ -22,13 +22,13 @@ ROOT = Path(__file__).resolve().parent.parent
 START_TIMEOUT = 60.0
 
 
-def _free_port() -> int:
+def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         return int(sock.getsockname()[1])
 
 
-def _get(url: str, timeout: float = 5.0) -> bytes:
+def get(url: str, timeout: float = 5.0) -> bytes:
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return response.read()
 
@@ -53,7 +53,7 @@ def test_studio_starts(tmp_path: Path) -> None:
         json.dumps({'hyperion': {'enabled': False, 'host': '127.0.0.1', 'port': 9}}),
         encoding='utf-8',
     )
-    port = _free_port()
+    port = free_port()
     base = f'http://127.0.0.1:{port}'
     log = tmp_path / 'studio.log'
     with log.open('wb') as out:
@@ -77,12 +77,12 @@ def test_studio_starts(tmp_path: Path) -> None:
             while state is None:
                 assert proc.poll() is None, log.read_text(encoding='utf-8', errors='replace')
                 try:
-                    state = json.loads(_get(f'{base}/api/state'))
+                    state = json.loads(get(f'{base}/api/state'))
                 except OSError:
                     assert time.monotonic() < deadline, 'the studio did not start in time'
                     time.sleep(0.25)
             assert state['config']['hyperion']['enabled'] is False
-            assert b'<html' in _get(f'{base}/').lower()
+            assert b'<html' in get(f'{base}/').lower()
             # About three seconds of the stream: the input thread sets its state meanwhile
             messages = _stream_messages(f'{base}/api/stream', 90)
             assert all(len(m['leds']) == 6 * m['led_count'] for m in messages)

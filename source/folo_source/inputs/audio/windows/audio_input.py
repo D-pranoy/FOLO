@@ -12,12 +12,13 @@ import threading
 import time
 
 import numpy as np
-import numpy.typing as npt
+
+from folo_source.inputs.audio.analyzer import channel_peaks
 
 # Capture needs Windows. Elsewhere the module still imports (tests, the
 # frozen build's smoke test), lists no sources and reports an error.
 if sys.platform == 'win32':
-    from app import wasapi
+    from folo_source.inputs.audio.windows import wasapi
 else:
     wasapi = None
 UNSUPPORTED = 'Audio capture needs Windows'
@@ -34,14 +35,6 @@ METER_FLOOR = -90.0
 CLIP_HOLD = 2.0  # seconds the clip light stays on
 # Never offered as apps: the audio engine itself and the studio
 HIDDEN_APPS = {'audiodg.exe'}
-
-
-def channel_peaks(frames: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
-    """
-    Each channel's peak in frames x channels. Transposed first: numpy is three
-    times slower reducing over the short channel axis.
-    """
-    return np.maximum.reduce(np.abs(np.ascontiguousarray(frames.T)), axis=1)
 
 
 def sources():
@@ -218,6 +211,8 @@ class AudioInput:
                 finally:
                     stream.close()
         finally:
+            # Windows mustn't call the device watcher once Python shuts down
+            wasapi.stop_device_changes()
             wasapi.unboost(boost)
 
     def _set_state(self, state, message=''):

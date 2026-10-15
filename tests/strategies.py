@@ -1,5 +1,5 @@
 """
-Hypothesis strategies for v1 configs (app/studio_config.py): anything JSON
+Hypothesis strategies for v1 configs (folo_source/legacy/v1.py): anything JSON
 can hold, and config-shaped data whose fields mix plausible values with junk.
 """
 
@@ -9,7 +9,7 @@ from typing import Any
 
 from hypothesis import strategies as st
 
-from app import studio_config
+from folo_source.legacy import v1 as studio_config
 
 Json = Any
 

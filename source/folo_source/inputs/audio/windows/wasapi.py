@@ -525,7 +525,8 @@ class _DeviceWatcher:
     """
     Windows calls this back (IMMNotificationClient) when the default output
     changes or a device is added, removed, enabled or disabled; each of
-    those bumps `serial`. Lives as long as the process.
+    those bumps `serial`. Lives until stop_device_changes(): its callbacks
+    must not be freed while Windows can still call them.
     """
 
     def __init__(self):
@@ -578,6 +579,13 @@ class _DeviceWatcher:
             'Watching for device changes',
         )
 
+    def close(self):
+        """Stops the notifications. Windows makes no more calls once this returns."""
+        try:
+            self.enum.ptr.lpVtbl.UnregisterEndpointNotificationCallback(self.enum.ptr, self.obj)
+        finally:
+            self.enum.__exit__(None, None, None)
+
 
 _watcher = None
 _watcher_lock = threading.Lock()
@@ -597,6 +605,19 @@ def device_changes():
             except Exception:  # pylint: disable=broad-except
                 _watcher = False
     return _watcher.serial if _watcher else None
+
+
+def stop_device_changes():
+    """
+    Stops watching for device changes, before the process ends: a
+    notification arriving while Python shuts down would call freed
+    callbacks and crash it. The next device_changes() watches again.
+    """
+    global _watcher
+    with _watcher_lock:
+        watcher, _watcher = _watcher, None
+    if watcher:
+        watcher.close()
 
 
 # ---------------------------------------------------------------- processes

@@ -12953,7 +12953,7 @@ impl ::std::convert::TryFrom<::std::string::String> for StatusParamsWorkersValue
         value.parse()
     }
 }
-///Today's studio.json (version 1), as sanitize_config() in app/studio_config.py makes it. Version 1 keeps its own, looser rules (docs/specs/config-model.md#clamping-rules): this schema records its limits and defaults for the migration (RB-05), and the v1 module of folo-protocol ports the rules. threshold and ceiling show the widest range; the trigger picks the limits.
+///Today's studio.json (version 1), as sanitize_config() in folo_source/legacy/v1.py makes it. Version 1 keeps its own, looser rules (docs/specs/config-model.md#clamping-rules): this schema records its limits and defaults for the migration (RB-05), and the v1 module of folo-protocol ports the rules. threshold and ceiling show the widest range; the trigger picks the limits.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct StudioV1 {

@@ -2,7 +2,7 @@
 The prose specifications and the machine-readable contracts agree (RB-02
 step 6): the tables of docs/specs/config-model.md, client-api.md and
 source-link.md against specs/schema, specs/openapi.yaml and
-specs/asyncapi.yaml; studio-v1.json against app/studio_config.py; and the
+specs/asyncapi.yaml; studio-v1.json against folo_source/legacy/v1.py; and the
 committed schema bundle against the schema files. (Generated code is checked
 by `scripts/contracts.py check`.)
 """
@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
-from app import studio_config
+from folo_source.legacy import v1 as studio_config
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs' / 'specs'

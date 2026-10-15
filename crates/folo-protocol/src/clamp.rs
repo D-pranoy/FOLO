@@ -1,6 +1,6 @@
 //! The clamper (RB-02 step 4): makes any JSON value a valid FOLO document by
 //! the rules in docs/specs/config-model.md#clamping-rules, driven by the
-//! bundled schemas. A port of `app/contracts/clamp.py`; the shared corpus
+//! bundled schemas. A port of `folo_source/contracts/clamp.py`; the shared corpus
 //! (`tests/corpus/clamp_v2.json`) checks that they agree.
 
 use std::sync::LazyLock;

@@ -17,7 +17,7 @@ from typing import Any
 from hypothesis import HealthCheck, Phase, given, settings
 from hypothesis import strategies as st
 
-from app import studio_config
+from folo_source.legacy import v1 as studio_config
 from tests import strategies
 
 CORPUS = Path(__file__).parent / 'corpus' / 'sanitize_config.json'

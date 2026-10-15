@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from app.studio_engine import Spectrum
+    from folo_source.inputs.audio.analyzer import Spectrum
 
 HOP = 0.01  # seconds between onset values
 WINDOW = 8.0  # seconds of onsets the tempo is worked out from

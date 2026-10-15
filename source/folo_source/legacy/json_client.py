@@ -8,10 +8,14 @@ Created on 27.11.2014, last updated on 02.02.2015
 """
 
 import json
+import logging
 import socket
-from threading import Thread
+import threading
+
+log = logging.getLogger(__name__)
 
 ORIGIN = 'Audio Effects'
+READER_JOIN = 1.0  # seconds the reply reader gets to end once the socket is closed
 
 
 def fetch_server_info(host, port, timeout=10):
@@ -46,6 +50,7 @@ class JsonClient:
         self.duration = duration
         self.connected = False
         self.socket: socket.socket | None = None
+        self._reader: threading.Thread | None = None
 
     def __del__(self):
         self.disconnect()
@@ -68,11 +73,12 @@ class JsonClient:
             self.connected = True
             # Hyperion answers every command, read and discard the replies so
             # the socket buffers never fill up
-            reader = Thread(target=self._drain, args=(self.socket,))
-            reader.daemon = True
-            reader.start()
+            self._reader = threading.Thread(
+                target=self._drain, args=(self.socket,), name='hyperion-replies', daemon=True
+            )
+            self._reader.start()
         except OSError as exc:
-            print('Error on connection to ', self.host, ':', self.port, '\nMessage: ', exc)
+            log.warning('could not connect to Hyperion at %s:%s: %s', self.host, self.port, exc)
 
     def _drain(self, sock):
         try:
@@ -93,7 +99,10 @@ class JsonClient:
                     self.socket.close()
                 self.connected = False
             except OSError as exc:
-                print('Could not close socket connection\nMessage: ', exc)
+                log.warning('could not close the connection to Hyperion: %s', exc)
+        reader = self._reader
+        if reader is not None and reader is not threading.current_thread():
+            reader.join(READER_JOIN)
 
     def send_led_data(self, led_data):
         """
@@ -118,10 +127,10 @@ class JsonClient:
         try:
             self.send(message)
         except OSError as exc:
-            print('Error while sending the led data\nMessage: ', exc)
+            log.warning('could not send the LED data to Hyperion: %s', exc)
             # Recreate the socket
             self.connected = False
-            print('Reconnecting...')
+            log.info('reconnecting to Hyperion')
             self.connect()
             if self.connected:
-                print('Connected.')
+                log.info('reconnected to Hyperion')

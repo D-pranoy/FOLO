@@ -12,7 +12,7 @@ from typing import Any
 
 from hypothesis import strategies as st
 
-from app.contracts import clamp as clamp_module
+from folo_source.contracts import clamp as clamp_module
 from tests import strategies
 
 Json = Any

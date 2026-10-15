@@ -21,7 +21,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any, TypeGuard, cast
 
-BUNDLE = Path(__file__).resolve().parents[2] / 'specs' / 'generated' / 'folo.schema.json'
+BUNDLE = Path(__file__).resolve().parents[3] / 'specs' / 'generated' / 'folo.schema.json'
 SCHEMA_VERSION = 2
 
 Json = Any

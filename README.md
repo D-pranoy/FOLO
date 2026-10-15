@@ -45,7 +45,7 @@ Effects: the menu on the left groups whole-strip looks under umbrella categories
 
 The panels are frosted glass over a Deep Night glow, and the page only redraws when new audio or input arrives, so it stays light on the CPU. A page in a background tab stops streaming until you come back to it. The studio itself skips the analysis in silence and only sends Hyperion frames that changed (plus a refresh every half second). Every panel folds away with the arrow next to its title, and the browser remembers which panels are folded. Settings starts folded.
 
-Segments and saved presets are saved to `studio.json`. Stop the studio with Ctrl+C or by closing its window; Hyperion releases the LEDs within two seconds. `studio.py --help` lists the options.
+Segments and saved presets are saved to `studio.json`. Stop the studio with Ctrl+C or by closing its window: it clears its colors in Hyperion on the way out, and if it's killed instead, Hyperion releases the LEDs within two seconds. Its window shows its log, one JSON line per message. `studio.py --help` lists the options.
 
 ### Contribute
 

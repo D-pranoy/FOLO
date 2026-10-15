@@ -1,6 +1,6 @@
 """
 The clamper corpus (RB-02 step 4): v2 documents of every kind, mostly
-plausible and partly junk, and what app/contracts/clamp.py makes of them.
+plausible and partly junk, and what folo_source/contracts/clamp.py makes of them.
 The node's Rust clamper must give the same outputs
 (crates/folo-protocol/tests/corpus.rs). New ids are numbered.
 """
@@ -15,7 +15,7 @@ from typing import Any
 
 from hypothesis import HealthCheck, Phase, given, settings
 
-from app.contracts import clamp as c
+from folo_source.contracts import clamp as c
 from tests import schema_strategies
 
 CORPUS = Path(__file__).parent / 'corpus' / 'clamp_v2.json'

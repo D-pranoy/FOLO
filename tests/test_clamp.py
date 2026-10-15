@@ -1,5 +1,5 @@
 """
-The clamper (app/contracts/clamp.py) follows docs/specs/config-model.md's
+The clamper (folo_source/contracts/clamp.py) follows docs/specs/config-model.md's
 clamping rules: it never raises on an object, its output is valid against
 the schema and accepted by the generated models, and clamping twice changes
 nothing. The corpus it shares with the Rust clamper still gives the
@@ -16,8 +16,8 @@ import pytest
 from hypothesis import given, settings
 from jsonschema import Draft202012Validator
 
-from app.contracts import clamp as c
-from app.contracts import models
+from folo_source.contracts import clamp as c
+from folo_source.contracts import models
 from tests import clamp_corpus, schema_strategies
 
 Json = Any
@@ -110,7 +110,7 @@ def test_audio_visualizer_rules() -> None:
 
 
 def test_band_too_narrow_matches_sanitize_segment() -> None:
-    from app.studio_config import sanitize_segment
+    from folo_source.legacy.v1 import sanitize_segment
 
     for lo, hi in ((1000.0, 1000.0), (23990.0, 24000.0), (100.0, 100.5)):
         params = c.clamp('AudioVisualizerParams', {'freq_lo': lo, 'freq_hi': hi})
