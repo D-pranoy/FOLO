@@ -1,6 +1,6 @@
 # ADR-0032: The effect engine's link to its node
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-15
 
 ## Context
