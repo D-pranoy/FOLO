@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Partial (RB-03 and RB-05 done, with the node's first-run call coming in RB-06; RB-04 done on Windows, with Linux audio capture and MPRIS still to come in step 2)
+Status: Accepted · Implementation: Partial (RB-03 and RB-05 done, with the node's first-run call coming in RB-06; RB-04 done apart from step 2's Linux media input, MPRIS; Linux capture awaits its first CI run)
 
 ## RB-03: Effect engine restructure
 

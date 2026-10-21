@@ -49,7 +49,15 @@ jobs:
           uv run ruff format --check .
       - name: Pyright
         run: uv run pyright
-      - name: Tests (goldens, beat fixtures, sanitize_config, the studio starting)
+      - name: PulseAudio server for the Linux capture tests (ADR-0031)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils
+          pulseaudio --daemonize=yes --exit-idle-time=-1
+          pactl info
+          echo "FOLO_PULSE_TESTS=1" >> "$GITHUB_ENV"
+      - name: Tests (goldens, beat fixtures, sanitize_config, the studio starting, Linux capture)
         run: uv run pytest --cov --cov-report=xml --cov-report=term-missing:skip-covered
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

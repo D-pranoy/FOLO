@@ -5,11 +5,11 @@
 #   uv run pyinstaller --noconfirm packaging/folo-studio.spec
 #   dist/folo-studio/folo-studio --help
 #
-# The WASAPI capture (folo_source/inputs/audio/windows/wasapi.py) declares its
-# C types for cffi when it is imported, so on Windows cffi's backend and
-# parser come along, with the winrt packages that read Windows' media
-# sessions. Elsewhere the studio runs without capture, and neither is
-# installed. The package lives in source/, so that's on the search path.
+# The audio capture (WASAPI on Windows, libpulse on Linux) declares its C
+# types for cffi when it is imported, so cffi's backend and parser come
+# along, and on Windows the winrt packages that read its media sessions.
+# Linux uses the system's libpulse, which isn't bundled. The package lives in
+# source/, so that's on the search path.
 
 import sys
 from pathlib import Path
@@ -20,8 +20,9 @@ ROOT = Path(SPECPATH).parent  # noqa: F821 - defined by PyInstaller
 
 datas = [(str(ROOT / 'web'), 'web')]
 hiddenimports = []
-if sys.platform == 'win32':
+if sys.platform in ('win32', 'linux'):
     hiddenimports += ['_cffi_backend', *collect_submodules('pycparser')]
+if sys.platform == 'win32':
     hiddenimports += collect_submodules('winrt')
 
 a = Analysis(  # noqa: F821
