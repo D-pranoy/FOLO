@@ -23,7 +23,7 @@ Status: Accepted · Implementation: Not started
    - `secrets.json` with owner-only permissions (POSIX mode 0600; Windows ACL)
 5. **Identity:** X25519 static key and node id; `folo status --json`.
 6. **Supervision:**
-   - starts `folo-source` with its settings and checks a heartbeat; restarts with backoff
+   - starts `folo-source` with the local link's URL and a launch token in its environment, sends its settings over that link and checks its heartbeat; restarts with backoff ([ADR-0032](../decisions/ADR-0032-local-source-link.md))
    - collects its logs into the node's log
    - `local_source.enabled` and `role` handling
 7. **Lifecycle:** signals and service stop shut down cleanly (release outputs, stop workers, flush the store). Single instance.
@@ -48,7 +48,7 @@ Status: Accepted · Implementation: Not started
    - endpoints whose subsystems arrive later return `501` until their run book lands
 4. **Live WebSocket:** topic subscriptions; binary frames; 30 Hz per client by default; newest data wins under backpressure.
 5. **Static UI:** serve `ui/dist` (from RB-11), with hashed assets cacheable and `index.html` uncacheable.
-6. **Loopback source link endpoint** for the local source. Encryption for remote sources arrives in RB-16.
+6. **Loopback source link endpoint** for the local source, accepting only its launch token ([the local link](../specs/source-link.md#the-local-link)). Encryption for remote sources arrives in RB-16.
 7. **Conformance:** run the RB-02 harness (schemathesis and message fixtures) in CI.
 
 **Done when:** conformance tests pass and the live channel streams engine data.
