@@ -112,6 +112,7 @@ strict = [
   "source/folo_source/runtime/executor.py",
   "source/folo_source/runtime/source.py",
   "source/folo_source/legacy/renderer.py",
+  "source/folo_source/legacy/migrate.py",
 ]
 
 [tool.pytest.ini_options]

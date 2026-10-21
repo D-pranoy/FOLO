@@ -37,7 +37,7 @@ previews/*              optional images or animations
 ## Items
 
 - Each item has `id` (unique within the pack), `schema_version` and `name`. Items refer to each other as `author/pack:item`, with an optional version range.
-- **Scenes** contain `layers_by_role`, `macros` and optional `fallbacks`. They never contain addresses or keys.
+- **Scenes** contain `layers_by_role`, `macros` and optional `fallbacks`, and `led_count` when their `cells` regions were made for a strip of that length (0 otherwise), so they can be scaled to another. They never contain addresses or keys.
 - **Zone templates** contain targets with geometry and capabilities, but no provider bindings.
 - **Validation** uses the same clamping rules as the [configuration model](config-model.md). Packs that fail structural validation are rejected as a whole.
 - **Limits:** 10 MB per pack, 500 items per pack.

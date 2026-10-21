@@ -1,0 +1,158 @@
+{
+  "schema_version": 2,
+  "revision": 0,
+  "server_id": "",
+  "zones": [
+    {
+      "id": "default",
+      "name": "Default",
+      "type": "custom",
+      "bounds": {
+        "x": 4.0,
+        "y": 4.0,
+        "z": 2.5
+      },
+      "reference": {
+        "kind": "none",
+        "position": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "orientation": {
+          "yaw": 0.0,
+          "pitch": 0.0,
+          "roll": 0.0
+        }
+      },
+      "targets": [
+        {
+          "id": "strip",
+          "name": "Hyperion strip",
+          "kind": "line",
+          "provider": {
+            "instance": "hyperion",
+            "address": {
+              "start": 0,
+              "count": 150,
+              "channels": []
+            }
+          },
+          "geometry": {
+            "kind": "line",
+            "path": [],
+            "count": 150,
+            "positions": []
+          },
+          "capabilities": {
+            "discovered": {
+              "color_model": "rgb",
+              "addressing": "pixel",
+              "delivery": "streaming",
+              "limits": {
+                "max_rate_hz": 60.0,
+                "latency_ms": 0.0,
+                "cct_min_k": 2000.0,
+                "cct_max_k": 6500.0,
+                "gamut": {
+                  "red": {
+                    "x": 0.64,
+                    "y": 0.33
+                  },
+                  "green": {
+                    "x": 0.3,
+                    "y": 0.6
+                  },
+                  "blue": {
+                    "x": 0.15,
+                    "y": 0.06
+                  }
+                },
+                "min_brightness": 0.0
+              }
+            },
+            "overrides": {}
+          },
+          "calibration": {
+            "gamma": 1.0,
+            "white_balance": {
+              "r": 1.0,
+              "g": 1.0,
+              "b": 1.0
+            },
+            "brightness_min": 0.0,
+            "brightness_max": 1.0,
+            "color_order": "rgb",
+            "latency_ms": 0.0
+          }
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "main",
+          "kind": "strip",
+          "resolution": {
+            "width": 150,
+            "height": 1
+          },
+          "placement": {
+            "kind": "none"
+          },
+          "role": "strip.main",
+          "background": "#000000",
+          "master": 1.0,
+          "sources": [
+            "local"
+          ],
+          "blend_sources": false
+        }
+      ],
+      "mappings": [
+        {
+          "id": "main-strip",
+          "surface": "main",
+          "target": "strip",
+          "method": "manual",
+          "kernel": {
+            "type": "area",
+            "radius": 0.5
+          },
+          "edge": "clamp",
+          "priority": 0,
+          "blend": "max",
+          "ranges": [
+            {
+              "cells": {
+                "start": 0,
+                "count": 150
+              },
+              "elements": {
+                "start": 0,
+                "count": 150
+              },
+              "reversed": false
+            }
+          ]
+        }
+      ],
+      "flash_limiter": {
+        "enabled": true,
+        "exempt_reason": ""
+      },
+      "hue_sync": {
+        "mode": "off",
+        "configuration_id": ""
+      },
+      "reactive": "on",
+      "ambient": {
+        "color": "#4B00FF",
+        "style": "solid",
+        "level": 0.35,
+        "idle_after": 5.0,
+        "on_pause": true
+      },
+      "beat_offset_ms": 0,
+      "album_colors": false
+    }
+  ]
+}

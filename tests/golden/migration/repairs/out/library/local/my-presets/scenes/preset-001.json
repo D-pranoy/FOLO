@@ -1,0 +1,55 @@
+{
+  "id": "111f8c6a",
+  "schema_version": 2,
+  "scene": {
+    "id": "111f8c6a",
+    "name": "No id",
+    "tags": [],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "ea8085b4",
+          "name": "Segment",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 60.0,
+            "freq_hi": 250.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -60.0,
+            "ceiling": -25.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 15.0,
+            "release": 200.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FFFFFF"
+            ]
+          },
+          "region": {
+            "kind": "cells",
+            "start": 0,
+            "end": 10
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 150,
+  "fallbacks": {}
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "revision": 0,
+  "server_id": "",
+  "sources": [
+    {
+      "id": "local",
+      "name": "This computer",
+      "role": "owner",
+      "public_key": "",
+      "surfaces": [
+        "main"
+      ],
+      "inputs": {
+        "audio": {
+          "device": "default",
+          "app": "",
+          "app_mode": "only",
+          "gain": 0.0,
+          "auto_level": false
+        },
+        "media": {
+          "enabled": true
+        },
+        "screens": []
+      }
+    }
+  ]
+}
