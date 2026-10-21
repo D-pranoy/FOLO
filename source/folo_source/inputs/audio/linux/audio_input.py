@@ -33,15 +33,20 @@ NO_APPS = 'App capture needs Windows'
 def _devices(server: pulse.Server) -> list[dict[str, Any]]:
     """Every output (recorded through its monitor) and input, by description."""
     outputs = [
-        {'name': s['description'], 'id': s['monitor'], 'channels': s['channels'], 'output': True}
+        {**_layout(s), 'name': s['description'], 'id': s['monitor'], 'output': True}
         for s in server.sinks()
         if s['monitor']
     ]
     inputs = [
-        {'name': s['description'], 'id': s['name'], 'channels': s['channels'], 'output': False}
+        {**_layout(s), 'name': s['description'], 'id': s['name'], 'output': False}
         for s in server.sources()
     ]
     return outputs + inputs
+
+
+def _layout(device: dict[str, Any]) -> dict[str, Any]:
+    """Its channel count and layout: a stream records in the device's layout (ADR-0031)."""
+    return {'channels': device['channels'], 'positions': device['positions']}
 
 
 def sources() -> dict[str, Any]:
@@ -85,10 +90,10 @@ class Capture(CaptureBase):
                 default = server.server_info().get('default_sink', '')
                 sink = next((s for s in server.sinks() if s['name'] == default), None)
                 if sink is None or not sink['monitor']:
-                    raise RuntimeError('No output device')
+                    raise Waiting('No output device')
                 self.kind = 'output'
                 self.label = sink['description']
-                stream = server.record(sink['monitor'], sink['channels'], RATE)
+                stream = server.record(sink['monitor'], sink['channels'], RATE, sink['positions'])
                 return stream, _default_unchanged(server, default)
             match = find_device(_devices(server), device)
             if match is None:
@@ -97,7 +102,7 @@ class Capture(CaptureBase):
                 )
             self.kind = 'output' if match['output'] else 'input'
             self.label = match['name']
-            stream = server.record(match['id'], match['channels'], RATE)
+            stream = server.record(match['id'], match['channels'], RATE, match['positions'])
             return stream, lambda: server.connected
         except BaseException:
             server.close()

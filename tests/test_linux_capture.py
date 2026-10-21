@@ -20,6 +20,9 @@ import pytest
 from folo_source.inputs.audio.common import POLL_EVERY, Waiting
 from folo_source.inputs.audio.linux import audio_input, pulse
 
+# A 5.1 output whose layout isn't libpulse's default for six channels
+HDMI_LAYOUT = (1, 2, 5, 6, 3, 7)
+
 
 class World:
     """What the fake audio server has."""
@@ -31,12 +34,19 @@ class World:
                 'name': 'speakers',
                 'description': 'Speakers',
                 'channels': 2,
+                'positions': (1, 2),  # front left, front right
                 'monitor': 'speakers.monitor',
             },
-            {'name': 'hdmi', 'description': 'HDMI Out', 'channels': 6, 'monitor': 'hdmi.monitor'},
+            {
+                'name': 'hdmi',
+                'description': 'HDMI Out',
+                'channels': 6,
+                'positions': HDMI_LAYOUT,
+                'monitor': 'hdmi.monitor',
+            },
         ]
         self.sources: list[dict[str, Any]] = [
-            {'name': 'usb-mic', 'description': 'USB Mic', 'channels': 1},
+            {'name': 'usb-mic', 'description': 'USB Mic', 'channels': 1, 'positions': (0,)},
         ]
         self.changes = 0
         self.up = True
@@ -44,10 +54,13 @@ class World:
 
 
 class FakeRecord:
-    def __init__(self, device: str, channels: int, rate: int) -> None:
+    def __init__(
+        self, device: str, channels: int, rate: int, positions: tuple[int, ...] | None
+    ) -> None:
         self.device = device
         self.channels = channels
         self.rate = rate
+        self.positions = positions
         self.period = 0.01
         self.event_driven = True
         self.overflows = 0
@@ -90,8 +103,14 @@ class FakeServer:
     def subscribe(self) -> None:
         pass
 
-    def record(self, device: str, channels: int, rate: int = 48000) -> FakeRecord:
-        record = FakeRecord(device, channels, rate)
+    def record(
+        self,
+        device: str,
+        channels: int,
+        rate: int = 48000,
+        positions: tuple[int, ...] | None = None,
+    ) -> FakeRecord:
+        record = FakeRecord(device, channels, rate, positions)
         self.world.records.append(record)
         return record
 
@@ -119,6 +138,7 @@ def test_default_records_the_default_outputs_monitor(world: World) -> None:
     cap = capture(settings())
     stream, check = cap._open(('default', '', 'only'))  # pyright: ignore[reportPrivateUsage]
     assert (stream.device, stream.channels, stream.rate) == ('speakers.monitor', 2, 48000)
+    assert stream.positions == (1, 2)  # in the device's channel layout
     assert (cap.kind, cap.label) == ('output', 'Speakers')
     assert check()
     # A server event: the default output is asked again, and it moved
@@ -151,6 +171,7 @@ def test_named_outputs_and_inputs(world: World) -> None:
         'output',
         'HDMI Out',
     )
+    assert stream.positions == HDMI_LAYOUT
     stream, _ = cap._open(('in:usb mic', '', 'only'))  # pyright: ignore[reportPrivateUsage]
     assert (stream.device, stream.channels, cap.kind, cap.label) == (
         'usb-mic',
@@ -166,10 +187,10 @@ def test_a_missing_device_is_waited_for(world: World) -> None:
         cap._open(('in:Headset', '', 'only'))  # pyright: ignore[reportPrivateUsage]
 
 
-def test_no_default_output_is_an_error(world: World) -> None:
+def test_a_missing_default_output_is_waited_for(world: World) -> None:
     world.default = 'gone'
     cap = capture(settings())
-    with pytest.raises(RuntimeError, match='No output device'):
+    with pytest.raises(Waiting, match='No output device'):
         cap._open(('default', '', 'only'))  # pyright: ignore[reportPrivateUsage]
 
 

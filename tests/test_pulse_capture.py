@@ -25,7 +25,8 @@ import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='PulseAudio runs on Linux')
 
-SINKS = {'folo_test_a': 'FOLO test A', 'folo_test_b': 'FOLO test B'}
+# Descriptions without spaces: module arguments split on them
+SINKS = {'folo_test_a': 'FOLO-test-A', 'folo_test_b': 'FOLO-test-B'}
 AMPLITUDE = 0.5
 RATE = 48000
 
@@ -54,7 +55,7 @@ def null_sinks() -> Iterator[None]:
             'load-module',
             'module-null-sink',
             f'sink_name={name}',
-            f'sink_properties=device.description="{description}"',
+            f'sink_properties=device.description={description}',
         )
         for name, description in SINKS.items()
     ]
@@ -134,7 +135,7 @@ def test_sources_list_the_null_sinks() -> None:
     from folo_source.inputs.audio.linux import audio_input
 
     found = audio_input.sources()
-    assert found['default'] == 'FOLO test A'
+    assert found['default'] == 'FOLO-test-A'
     outputs = [d['name'] for d in found['devices'] if d['output']]
     assert set(SINKS.values()) <= set(outputs)
     # The monitors are how outputs are recorded, never listed as inputs
@@ -143,9 +144,9 @@ def test_sources_list_the_null_sinks() -> None:
 
 @pytest.mark.usefixtures('null_sinks')
 def test_a_tone_arrives_through_the_monitor() -> None:
-    with Listener('FOLO test A') as listener:
+    with Listener('FOLO-test-A') as listener:
         listener.wait(lambda: listener.capture.state == 'ok', 10.0, 'the stream did not open')
-        assert listener.capture.label == 'FOLO test A'
+        assert listener.capture.label == 'FOLO-test-A'
         assert listener.capture.format == (RATE, 2, True)
         listener.wait(lambda: len(listener.peaks) >= 10, 5.0, 'no audio from the monitor')
         assert listener.loudest() < 0.01  # silence before the tone
@@ -165,13 +166,13 @@ def test_a_tone_arrives_through_the_monitor() -> None:
 def test_a_default_sink_change_reopens_the_stream() -> None:
     with Listener('default') as listener:
         listener.wait(
-            lambda: listener.capture.state == 'ok' and listener.capture.label == 'FOLO test A',
+            lambda: listener.capture.state == 'ok' and listener.capture.label == 'FOLO-test-A',
             10.0,
             'the default output did not open',
         )
         _pactl('set-default-sink', 'folo_test_b')
         listener.wait(
-            lambda: listener.capture.label == 'FOLO test B', 15.0, 'the stream did not follow'
+            lambda: listener.capture.label == 'FOLO-test-B', 15.0, 'the stream did not follow'
         )
         listener.wait(lambda: listener.capture.state == 'ok', 10.0, 'the new stream did not open')
         listener.clear()

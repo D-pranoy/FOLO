@@ -172,6 +172,11 @@ def _text(pointer):
     return ffi.string(pointer).decode('utf-8', 'replace') if pointer != ffi.NULL else ''
 
 
+def _positions(channel_map):
+    """A device's channel layout: the position of each channel (pa_channel_position_t)."""
+    return tuple(int(channel_map.map[i]) for i in range(channel_map.channels))
+
+
 class Server:
     """A connection to the audio server, with its own threaded main loop."""
 
@@ -307,7 +312,7 @@ class Server:
         return found
 
     def sinks(self):
-        """The outputs: [{'name', 'description', 'channels', 'monitor'}]."""
+        """The outputs: [{'name', 'description', 'channels', 'positions', 'monitor'}]."""
         found = []
 
         def item(info):
@@ -316,6 +321,7 @@ class Server:
                     'name': _text(info.name),
                     'description': _text(info.description) or _text(info.name),
                     'channels': int(info.sample_spec.channels),
+                    'positions': _positions(info.channel_map),
                     'monitor': _text(info.monitor_source_name),
                 }
             )
@@ -329,7 +335,10 @@ class Server:
         return found
 
     def sources(self):
-        """The inputs, without the outputs' monitors: [{'name', 'description', 'channels'}]."""
+        """
+        The inputs, without the outputs' monitors:
+        [{'name', 'description', 'channels', 'positions'}].
+        """
         found = []
 
         def item(info):
@@ -340,6 +349,7 @@ class Server:
                     'name': _text(info.name),
                     'description': _text(info.description) or _text(info.name),
                     'channels': int(info.sample_spec.channels),
+                    'positions': _positions(info.channel_map),
                 }
             )
 
@@ -367,9 +377,12 @@ class Server:
             'pa_context_success_cb_t',
         )
 
-    def record(self, device, channels, rate=48000):
-        """A record stream from a source (a sink's monitor is a source too)."""
-        return Record(self, device, channels, rate)
+    def record(self, device, channels, rate=48000, positions=None):
+        """
+        A record stream from a source (a sink's monitor is a source too), in
+        the device's channel layout when `positions` gives it.
+        """
+        return Record(self, device, channels, rate, positions)
 
     def close(self):
         """Disconnects and stops the main loop. Safe to call more than once."""
@@ -390,11 +403,13 @@ class Server:
 
 class Record:
     """
-    A record stream at `rate` float32 in `channels`. The server signals each
-    new packet; wait() sleeps until one is there and read() takes them all.
+    A record stream at `rate` float32 in `channels`, laid out as `positions`
+    (else libpulse's default layout for that many channels). The server
+    signals each new packet; wait() sleeps until one is there and read()
+    takes them all.
     """
 
-    def __init__(self, server, device, channels, rate):
+    def __init__(self, server, device, channels, rate, positions=None):
         self.server = server
         self.rate = rate
         self.channels = channels
@@ -411,6 +426,12 @@ class Record:
         spec = ffi.new(
             'pa_sample_spec *', {'format': PA_SAMPLE_FLOAT32LE, 'rate': rate, 'channels': channels}
         )
+        layout = ffi.NULL
+        if positions and len(positions) == channels:
+            layout = ffi.new('pa_channel_map *')
+            layout.channels = channels
+            for i, position in enumerate(positions):
+                layout.map[i] = position
         attr = ffi.new(
             'pa_buffer_attr *',
             {
@@ -428,7 +449,7 @@ class Record:
             | PA_STREAM_DONT_MOVE
         )
         with server.locked():
-            self._stream = lib.pa_stream_new(server._context, b'FOLO capture', spec, ffi.NULL)
+            self._stream = lib.pa_stream_new(server._context, b'FOLO capture', spec, layout)
             if self._stream == ffi.NULL:
                 self._stream = None
                 raise PulseError(server._error('Opening the audio stream'))
