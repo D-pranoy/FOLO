@@ -134,7 +134,9 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
 - `inputs/base.py`: the `Input` interface (`kind`, `thread`, `start()`, `stop()`, `health()`, `status()`)
 - `inputs/audio/analyzer.py`: `Analyzer`, `Spectrum`, `AutoLevel` and `channel_peaks()`
 - `inputs/audio/input.py`: `AudioInput`, capture plus analysis (gain and auto level) into `AudioPacket`s, with `band_levels()` and the `input` notification's `status()`. The legacy `StudioEngine` runs on it.
+- `inputs/audio/capture.py`: this platform's `Capture` and `sources()`, on `common.py`'s `CaptureBase` (state, stats, the meter)
 - `inputs/audio/windows/`: the WASAPI capture (`Capture` in `audio_input.py`, on `wasapi.py`)
+- `inputs/audio/linux/`: the PulseAudio capture (`Capture` in `audio_input.py`, on `pulse.py`, [ADR-0031](docs/decisions/ADR-0031-linux-audio-capture.md))
 - `inputs/media/input.py`: `MediaInput`, now playing through `inputs/media/windows.py`. Linux's MPRIS isn't implemented yet, so it's unavailable there.
 - `inputs/generator.py` (time, LFOs and noise), `inputs/screen.py` (no frames until folo-capture, RB-14) and `inputs/listing.py` (what `inputs.list` returns)
 - `signals/beat.py`: the beat tracker, and `BeatSignal`: a tracker per zone with its beat offset, publishing `[bpm, confidence, locked, phase, bar_beat]`
@@ -146,7 +148,8 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
 - `legacy/`: what the controller takes over later: `v1.py` (the config), `renderer.py` (the v1 `Renderer`: a config's segments as audio-visualizer layers on one strip surface, plus the ambient light), `ambient.py` (the ambient light, RB-08), `hyperion.py` and `json_client.py` (the Hyperion output, RB-10)
 - `contracts/`: the generated models and the clamper (RB-02)
 
-- **Audio input (`inputs/audio/windows/audio_input.py` on `wasapi.py`):** the studio's own WASAPI capture through cffi. On other platforms `wasapi` isn't imported, so the code still imports (tests, the frozen build's smoke test): there are no sources, and the input reports "Audio capture needs Windows".
+- **Audio input (`inputs/audio/windows/audio_input.py` on `wasapi.py`):** the studio's own WASAPI capture through cffi. On Linux `inputs/audio/linux/` captures instead (see below). Elsewhere `wasapi` isn't imported, so the code still imports: there are no sources, and the input reports "Audio capture needs Windows".
+  - **Linux** ([ADR-0031](docs/decisions/ADR-0031-linux-audio-capture.md)): `pulse.py` loads `libpulse.so.0` with cffi in ABI mode and runs its threaded main loop; it serves PulseAudio and PipeWire's `pipewire-pulse`. `default` records the default sink's monitor, an output's name (its description) that sink's monitor, and `in:<name>` a source. Float 48 kHz in the device's channel count, in 10 ms packets, drained on every wake. It follows the default sink through server events plus a check every 10 s, waits for a missing device, and reconnects to a lost server. App capture is ignored, with "App capture needs Windows". Without libpulse the input says so; it never autospawns a server. `tests/test_linux_capture.py` runs it on a fake server everywhere, and `tests/test_pulse_capture.py` against null sinks of a real PulseAudio server, which CI's Ubuntu job starts (`FOLO_PULSE_TESTS=1` makes a missing server fail rather than skip).
   - **Sources** (config `audio`):
     - an output's loopback (`device`: `default` or a name)
     - an input (`in:` + name)

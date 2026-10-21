@@ -6,16 +6,26 @@ hands every batch of new audio on. Also keeps the input meter and capture
 stats.
 """
 
-import math
 import os
 import sys
-import threading
 import time
 from typing import Any
 
 import numpy as np
 
 from folo_source.inputs.audio.analyzer import channel_peaks
+from folo_source.inputs.audio.common import (
+    CHECK_EVERY,
+    GAP,
+    LOST_RETRY,
+    OPEN_RETRY,
+    POLL_EVERY,
+    RATE,
+    WAIT_RETRY,
+    CaptureBase,
+    Waiting,
+    find_device,
+)
 
 # Capture needs Windows. Elsewhere the module still imports (tests, the
 # frozen build's smoke test), lists no sources and reports an error.
@@ -25,16 +35,6 @@ else:
     wasapi = None
 UNSUPPORTED = 'Audio capture needs Windows'
 
-RATE = 48000
-OPEN_RETRY = 2.0  # seconds before retrying a source that failed to open
-LOST_RETRY = 0.5  # ... one that was unplugged
-WAIT_RETRY = 1.5  # ... an app that isn't running yet
-CHECK_EVERY = 1.0  # seconds between checks of the default output and the app's process
-POLL_EVERY = 10  # checks between asking Windows for the default output anyway
-GAP = 0.1  # no audio for this long: the next batch starts fresh (outputs send nothing in silence)
-METER_FALL = 24.0  # dB per second the input meter falls
-METER_FLOOR = -90.0
-CLIP_HOLD = 2.0  # seconds the clip light stays on
 # Never offered as apps: the audio engine itself and the studio
 HIDDEN_APPS = {'audiodg.exe'}
 
@@ -70,75 +70,10 @@ def sources() -> dict[str, Any]:
     return {'default': default, 'devices': devices, 'apps': ordered}
 
 
-class Waiting(Exception):
-    """The source can't be opened yet (its app isn't running)."""
-
-
-class Capture:
-    """
-    Runs the capture thread. `settings()` returns the audio input's settings
-    (`device`, `app`, `app_mode`, ...). `on_audio(frames, peaks, fresh)` gets every
-    batch of new audio (frames x channels float32 at RATE) with each
-    channel's peak; `fresh` is True after a gap, when older samples no longer
-    belong to what's playing.
-    """
-
-    def __init__(self, settings, on_audio):
-        self.settings = settings
-        self.on_audio = on_audio
-        self.running = False
-        self.thread: threading.Thread | None = None
-        self.state: str = 'starting'  # ok, waiting, error, starting
-        self.label: str = ''  # what is being captured, for the UI
-        self.kind: str = ''  # output, input, only, except
-        self.message: str = ''
-        self.format: tuple[int, int, bool] = (0, 0, False)  # rate, channels, event driven
-        self.packets: float = 0.0  # packets per second
-        self.delay: float = 0.0  # ms from WASAPI's capture time to the engine (median)
-        self.glitches: int = 0  # lost audio (data discontinuities) since the source opened
-        self._meter = [(METER_FLOOR, 0.0), (METER_FLOOR, 0.0)]
-        self._clip_until = 0.0
-
-    def start(self):
-        self.running = True
-        self.thread = threading.Thread(target=self._loop, name='audio-input')
-        self.thread.daemon = True
-        self.thread.start()
-
-    def stop(self):
-        self.running = False
-
-    # -------------------------------------------------------------- status
-
-    def meter(self) -> tuple[list[float], bool]:
-        """Peak level of the first two channels (dBFS, falling) and the clip light."""
-        now = time.perf_counter()
-        levels = [round(max(METER_FLOOR, db - METER_FALL * (now - t)), 1) for db, t in self._meter]
-        return levels, now < self._clip_until
-
-    def status(self):
-        levels, clip = self.meter()
-        rate, channels, event = self.format
-        return {
-            'state': self.state,
-            'label': self.label,
-            'kind': self.kind,
-            'message': self.message,
-            'rate': rate,
-            'channels': channels,
-            'event': event,
-            'packets': round(self.packets),
-            'delay': round(self.delay, 1),
-            'glitches': self.glitches,
-            'peak': levels,
-            'clip': clip,
-        }
+class Capture(CaptureBase):
+    """The capture thread on WASAPI (see CaptureBase)."""
 
     # -------------------------------------------------------------- sources
-
-    def _wanted(self):
-        audio = self.settings()
-        return (audio['device'], audio['app'], audio['app_mode'])
 
     def _open(self, wanted):
         """Opens the wanted source: (stream, check), check() is False once it should be reopened."""
@@ -170,7 +105,7 @@ class Capture:
             self.label = match['name']
             stream = wasapi.open_endpoint(match['id'], loopback=True, rate=RATE)
             return stream, _default_unchanged(default_id)
-        match = _find_device(found, device)
+        match = find_device(found, device)
         if match is None:
             raise Waiting(
                 '{} is not connected'.format(device[3:] if device.startswith('in:') else device)
@@ -218,18 +153,6 @@ class Capture:
             wasapi.stop_device_changes()
             wasapi.unboost(boost)
 
-    def _set_state(self, state, message=''):
-        self.state = state
-        self.message = message
-        if state != 'ok':
-            self.packets = 0.0
-
-    def _sleep(self, seconds, wanted):
-        """Sleeps, but wakes up early when the source in the config changes."""
-        end = time.perf_counter() + seconds
-        while self.running and time.perf_counter() < end and self._wanted() == wanted:
-            time.sleep(0.1)
-
     def _run(self, stream, wanted, check):
         self.format = (stream.rate, stream.channels, stream.event_driven)
         self.glitches = 0
@@ -269,20 +192,6 @@ class Capture:
                 if not check():
                     return
 
-    def _update_meter(self, peaks, now):
-        if not len(peaks):
-            return
-        if peaks.max() >= 0.999:
-            self._clip_until = now + CLIP_HOLD
-        pair = peaks[:2] if len(peaks) >= 2 else np.repeat(peaks[:1], 2)
-        meter = list(self._meter)
-        for i, peak in enumerate(pair):
-            db = 20.0 * math.log10(max(float(peak), 1e-9))
-            current = meter[i][0] - METER_FALL * (now - meter[i][1])
-            if db >= current:
-                meter[i] = (db, now)
-        self._meter = meter
-
 
 def _default_unchanged(default_id):
     """
@@ -303,25 +212,3 @@ def _default_unchanged(default_id):
         return wasapi.default_output_id() == default_id
 
     return check
-
-
-def _find_device(found, wanted):
-    """
-    A device by name: 'in:<name>' is an input, a plain name an output (then
-    an input of that name). Exact names first, then a case-insensitive part.
-    """
-    inputs_only = wanted.startswith('in:')
-    name = wanted[3:] if inputs_only else wanted
-    candidates = (
-        [d for d in found if not d['output']]
-        if inputs_only
-        else sorted(found, key=lambda d: not d['output'])
-    )
-    for d in candidates:
-        if d['name'] == name:
-            return d
-    lowered = name.lower()
-    for d in candidates:
-        if lowered in d['name'].lower():
-            return d
-    return None

@@ -14,8 +14,9 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "numpy>=2.5",
   "pydantic>=2.14",     # the models generated from specs/schema (folo_source/contracts)
-  # The WASAPI capture (folo_source/inputs/audio/windows); elsewhere capture is unavailable
-  "cffi>=2.1; sys_platform == 'win32'",
+  # Audio capture through cffi: WASAPI (folo_source/inputs/audio/windows) and the
+  # PulseAudio client library (folo_source/inputs/audio/linux, ADR-0031)
+  "cffi>=2.1; sys_platform == 'win32' or sys_platform == 'linux'",
   # Now playing: Windows' media sessions (folo_source/inputs/media/windows.py)
   "winrt-runtime>=3.2; sys_platform == 'win32'",
   "winrt-Windows.Foundation>=3.2; sys_platform == 'win32'",
@@ -72,6 +73,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "studio.py" = ["E402"]  # the package imports follow the sys.path setup
 "source/folo_source/inputs/audio/windows/wasapi.py" = ["E501"]  # C declarations for cffi, one per line
+"source/folo_source/inputs/audio/linux/pulse.py" = ["E501"]  # the same
 
 [tool.ruff.format]
 quote-style = "single"
@@ -94,6 +96,7 @@ strict = [
   "source/folo_source/core.py",
   "source/folo_source/inputs/base.py",
   "source/folo_source/inputs/audio/input.py",
+  "source/folo_source/inputs/audio/capture.py",
   "source/folo_source/inputs/media/input.py",
   "source/folo_source/inputs/generator.py",
   "source/folo_source/inputs/screen.py",

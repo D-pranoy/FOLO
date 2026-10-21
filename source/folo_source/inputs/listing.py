@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from folo_source.inputs.audio.windows import audio_input
+from folo_source.inputs.audio import capture
 
 
 def list_inputs(media: bool) -> dict[str, Any]:
     """`media`: whether the media input can read now playing here."""
-    sources = audio_input.sources()
+    sources = capture.sources()
     devices = sources['devices']
     return {
         'default_output': sources['default'],

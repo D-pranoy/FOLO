@@ -17,7 +17,7 @@ import numpy.typing as npt
 
 from folo_source.core import now_us
 from folo_source.inputs.audio.analyzer import SAMPLERATE, Analyzer, AutoLevel, Spectrum
-from folo_source.inputs.audio.windows.audio_input import Capture
+from folo_source.inputs.audio.capture import Capture
 from folo_source.inputs.base import InputKind, InputState
 
 MAX_DT = 0.1  # longest step a packet stands for after a gap in the audio
@@ -41,7 +41,8 @@ class AudioInput:
     Captures the source in `settings()` (the audio input settings of
     sources.json: `device`, `app`, `app_mode`, `gain`, `auto_level`) and
     hands every analysed packet to `on_packet`, on the capture thread.
-    Outside Windows capture is unavailable and its state says so.
+    On Linux app capture is unavailable (ADR-0031), and outside Windows and
+    Linux capture is; its state and message say so.
     """
 
     def __init__(

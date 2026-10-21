@@ -10,9 +10,9 @@ from typing import Any
 
 import numpy as np
 
+from folo_source.inputs.audio import capture
 from folo_source.inputs.audio.analyzer import SAMPLERATE, Spectrum
 from folo_source.inputs.audio.input import MAX_DT, AudioInput, AudioPacket
-from folo_source.inputs.audio.windows import audio_input
 from folo_source.inputs.media import windows as now_playing
 from folo_source.legacy.hyperion import HyperionSender
 from folo_source.legacy.renderer import Renderer, shown_levels
@@ -31,9 +31,9 @@ IDLE_FPS = 30
 def audio_sources():
     """
     The default output, the devices and the apps playing audio (see
-    audio_input.sources).
+    capture.sources).
     """
-    return audio_input.sources()
+    return capture.sources()
 
 
 class StudioEngine:

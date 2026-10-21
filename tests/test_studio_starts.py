@@ -1,7 +1,8 @@
 """
 The studio starts on every platform (RB-01 step 5): `studio.py` serves the
-page, the state and the stream with Hyperion output off. Outside Windows it
-runs without an audio source, and capture says so instead of failing.
+page, the state and the stream with Hyperion output off. On Linux it captures
+through libpulse where an audio server answers (ADR-0031); without one, and
+outside Windows and Linux, capture says why instead of failing.
 
 The test config points Hyperion at a closed local port, so the studio never
 talks to a real Hyperion.
@@ -86,12 +87,13 @@ def test_studio_starts(tmp_path: Path) -> None:
             # About three seconds of the stream: the input thread sets its state meanwhile
             messages = _stream_messages(f'{base}/api/stream', 90)
             assert all(len(m['leds']) == 6 * m['led_count'] for m in messages)
-            if sys.platform != 'win32':
+            inputs = {
+                (m['status']['input']['state'], m['status']['input']['message']) for m in messages
+            }
+            if sys.platform == 'linux':
+                assert {state for state, _ in inputs} & {'ok', 'waiting', 'error'}, inputs
+            elif sys.platform != 'win32':
                 assert state['devices'] == []
-                inputs = {
-                    (m['status']['input']['state'], m['status']['input']['message'])
-                    for m in messages
-                }
                 assert ('error', 'Audio capture needs Windows') in inputs, inputs
         finally:
             proc.terminate()

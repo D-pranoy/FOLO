@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Partial (RB-03 done; RB-04 steps 1–6 done)
+Status: Accepted · Implementation: Partial (RB-03 done; RB-04 steps 1–6 done apart from step 2's Linux media input; Linux capture awaits its first CI run)
 
 ## RB-03: Effect engine restructure
 
