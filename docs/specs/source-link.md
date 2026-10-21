@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and the effect engine's side of the local link and frames) · Contract version: 1.2
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and the effect engine's side of the local link) · Contract version: 1.2
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -20,6 +20,14 @@ A node's own effect engine uses the same endpoint on loopback, `ws://127.0.0.1:<
 - **Heartbeat:** the engine sends `status` at least once a second; after 5 s without any message the node treats it as hung.
 - **Losing the node:** the engine reconnects with the backoff above, and exits after 30 s without its node.
 - **Refused:** a response other than `ok` ends the engine with a non-zero exit status. The node starts a new one with a new token.
+- **Exit status** of `folo-source`: 0 after a stop request or a restart the node asked for; 1 when the link was refused or the node lost; 2 when the environment lacks the link's URL or token.
+- **What the engine answers:**
+  - `config.apply`: clamped like any document the node sends, then `{}`.
+  - `inputs.list`: the input listing.
+  - `media.control`: `{}`, or the error `-32000` when no player took the action.
+  - `media.art`: the art shown now, or the error `-32000` when `art_id` isn't it any more.
+  - `restart {component: engine}`: `{}`, then it exits for the node to start it again. Other components get `-32602`.
+  - Every other method gets `-32601`; they belong to the node.
 
 ## Handshake
 
@@ -72,7 +80,7 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 | `activity {surface?, active: bool, level_db?, quiet_s}` | Activity for compositor switching and the zone's ambient light (silence uses the level without gain) | 10 times a second, and when `active` changes |
 | `media {state, app, title, artist, album, art_id, colors}` | Now playing | When it changes |
 | `input {format, packets_per_s, delay_ms, glitches, peaks, clip, gain_db, auto_gain_db, state}` | Audio input status | At most 10 times a second |
-| `metrics {render_ms, publish_fps, dropped}` | Performance | Once a second |
+| `metrics {render_ms, publish_fps, dropped}` | Performance since the last one: the mean render time of a step, surface frames sent per second per published surface, and frames dropped (steps merged to keep up, and frames replaced before they were sent) | Once a second |
 | `update.available / progress / result` | Updates | As they happen |
 
 ## Surface frames

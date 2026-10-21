@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Partial (RB-03 done; RB-04 steps 1–6 done, and step 7's frames and local link)
+Status: Accepted · Implementation: Partial (RB-03 done; RB-04 done on Windows, with Linux audio capture and MPRIS still to come in step 2)
 
 ## RB-03: Effect engine restructure
 

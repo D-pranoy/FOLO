@@ -308,6 +308,10 @@ class LocalLink:
             error = task.exception()
             if error is not None and not isinstance(error, ConnectionClosed):
                 raise error
+        if self._halt.is_set():
+            # Stopping: what is still waiting goes out first, the last status and replies
+            with contextlib.suppress(ConnectionClosed):
+                await self._flush(ws)
 
     async def _receive(self, ws: ClientConnection) -> None:
         assert self._wake is not None
@@ -325,13 +329,17 @@ class LocalLink:
         while True:
             await self._wake.wait()
             self._wake.clear()
-            with self._lock:
-                messages = [*self._replies, *self._slots.values()]
-                self._replies.clear()
-                self._slots = {}
-                self._woken = False
-            for message in messages:
-                await ws.send(message)
+            await self._flush(ws)
+
+    async def _flush(self, ws: ClientConnection) -> None:
+        """Sends the replies, then whatever waits in the slots."""
+        with self._lock:
+            messages = [*self._replies, *self._slots.values()]
+            self._replies.clear()
+            self._slots = {}
+            self._woken = False
+        for message in messages:
+            await ws.send(message)
 
     def _answer(self, message: bytes) -> bytes | None:
         """The reply to a message from the node, if it needs one."""
