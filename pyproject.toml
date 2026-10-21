@@ -14,6 +14,9 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "numpy>=2.5",
   "pydantic>=2.14",     # the models generated from specs/schema (folo_source/contracts)
+  # The local link to the node (folo_source/publish, ADR-0032)
+  "websockets>=15",
+  "lz4>=4.4",
   # The WASAPI capture (folo_source/inputs/audio/windows); elsewhere capture is unavailable
   "cffi>=2.1; sys_platform == 'win32'",
   # Now playing: Windows' media sessions (folo_source/inputs/media/windows.py)
@@ -101,6 +104,7 @@ strict = [
   "source/folo_source/effects/base.py",
   "source/folo_source/effects/post.py",
   "source/folo_source/surfaces",
+  "source/folo_source/publish",
   "source/folo_source/legacy/renderer.py",
 ]
 

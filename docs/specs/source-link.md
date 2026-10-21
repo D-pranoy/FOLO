@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) · Contract version: 1.2
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and the effect engine's side of the local link and frames) · Contract version: 1.2
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -15,10 +15,11 @@ The connection between a source node and a controller. Decided in [ADR-0008](../
 
 A node's own effect engine uses the same endpoint on loopback, `ws://127.0.0.1:<port>/api/v1/source-link`, without Noise ([ADR-0032](../decisions/ADR-0032-local-source-link.md)):
 - **Launch:** the node starts the engine with the link's URL and a random 256-bit launch token (base64url) in its environment, `FOLO_SOURCE_LINK` and `FOLO_SOURCE_TOKEN`, never on its command line.
-- **Handshake:** the first message each way is the handshake payload as JSON. The engine's purpose is `local`, with the token. The node compares it in constant time, accepts one engine connection at a time and closes any other.
+- **Handshake:** the first message each way is the handshake payload as JSON, in a WebSocket text message. The engine's purpose is `local`, with the token. The node compares it in constant time, accepts one engine connection at a time and closes any other.
 - **Messages:** each WebSocket binary message after that is one message, as below, without the Noise layer. `config.apply` follows the node's response, and the engine renders nothing before it.
 - **Heartbeat:** the engine sends `status` at least once a second; after 5 s without any message the node treats it as hung.
 - **Losing the node:** the engine reconnects with the backoff above, and exits after 30 s without its node.
+- **Refused:** a response other than `ok` ends the engine with a non-zero exit status. The node starts a new one with a new token.
 
 ## Handshake
 
@@ -47,6 +48,8 @@ Each message starts with one byte for its type:
 - `0x02`: surface frame (binary)
 - `0x03`: signal frame (binary)
 
+A source answers a method it doesn't implement with the JSON-RPC error `-32601` (method not found), and params it can't take with `-32602` (invalid params). It logs and drops messages it can't read, which have no id to answer.
+
 ### Controller → source (JSON-RPC methods)
 
 | Method | Purpose |
@@ -63,14 +66,14 @@ Each message starts with one byte for its type:
 
 ### Source → controller (notifications)
 
-| Notification | Purpose |
-|---|---|
-| `status {state, workers, inputs, errors}` | Health |
-| `activity {surface?, active: bool, level_db?, quiet_s}` | Activity for compositor switching and the zone's ambient light (silence uses the level without gain) |
-| `media {state, app, title, artist, album, art_id, colors}` | Now playing, sent when it changes |
-| `input {format, packets_per_s, delay_ms, glitches, peaks, clip, gain_db, auto_gain_db, state}` | Audio input status, at most 10 Hz |
-| `metrics {render_ms, publish_fps, dropped}` | Performance |
-| `update.available / progress / result` | Updates |
+| Notification | Purpose | Sent |
+|---|---|---|
+| `status {state, workers, inputs, errors}` | Health | Once a second, and when it changes (the local link's heartbeat) |
+| `activity {surface?, active: bool, level_db?, quiet_s}` | Activity for compositor switching and the zone's ambient light (silence uses the level without gain) | 10 times a second, and when `active` changes |
+| `media {state, app, title, artist, album, art_id, colors}` | Now playing | When it changes |
+| `input {format, packets_per_s, delay_ms, glitches, peaks, clip, gain_db, auto_gain_db, state}` | Audio input status | At most 10 times a second |
+| `metrics {render_ms, publish_fps, dropped}` | Performance | Once a second |
+| `update.available / progress / result` | Updates | As they happen |
 
 ## Surface frames
 
@@ -91,6 +94,15 @@ All integers are little-endian:
 | 20 | 8 | Timestamp in µs (source monotonic clock; the controller tracks the offset) |
 | 28 | n | Payload: `width × height × channels × bytes per channel`, row-major |
 
+**Pixel formats:** the payload holds each cell's red, green and blue, in that order. The effect engine's values (0–255, [pipeline](../architecture/pipeline.md#frames-and-signals)) become:
+- `rgb8`: each value truncated toward zero, as today's engine does, so parity mode gives today's bytes
+- `rgb16`: `⌊value × 257⌋` (255 → 65,535), unsigned little-endian
+- `rgbf32`: the values as they are, float32 little-endian
+
+**Sequence and key frames:**
+- A surface's sequence number counts the frames sent for it, from 0 when the source starts, wrapping at 2³². It doesn't start over when the link reconnects.
+- Format version 1 has no delta frames: every frame is complete and has the key frame bit set.
+
 **Delivery semantics:**
 - **Newest wins.** The controller keeps only the latest frame per surface and drops late or duplicate sequence numbers.
 - A surface whose source sends nothing for its staleness timeout (default 500 ms) counts as inactive.
@@ -110,6 +122,8 @@ All integers are little-endian:
 | 12 | 4 | Sequence number |
 | 16 | 8 | Timestamp in µs (source monotonic clock) |
 | 24 | 4 × count | Values, float32 |
+
+A signal's sequence number counts the frames sent for it, as for surfaces.
 
 The same newest-wins delivery applies. Used for:
 - **The beat signal:** `[bpm, confidence, locked, phase, bar_beat]`, sent with every analysed packet while the beat tracker runs. Clients show it.

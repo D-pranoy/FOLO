@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Partial (RB-03 done; RB-04 steps 1–6 done)
+Status: Accepted · Implementation: Partial (RB-03 done; RB-04 steps 1–6 done, and step 7's frames and local link)
 
 ## RB-03: Effect engine restructure
 

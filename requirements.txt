@@ -2,6 +2,9 @@
 numpy
 # The models generated from specs/schema (app/contracts)
 pydantic
+# The local link to the node (folo_source/publish)
+websockets
+lz4
 # FOLO studio: the WASAPI capture (app/wasapi.py)
 cffi; sys_platform == "win32"
 # FOLO studio: now playing (Windows media sessions)
