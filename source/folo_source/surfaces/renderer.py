@@ -1,8 +1,9 @@
 """
-Surfaces (RB-04 step 5): a strip or a canvas with its layer stack. Each
-layer's effect draws a line; the line fills the layer's region, along the
-layer's axis on a canvas. The stack is blended bottom first over the
-background, then `master` scales the result and it's clipped to 0-255
+Surfaces (RB-04 steps 5 and 6): a strip or a canvas with its layer stack.
+Each layer's effect draws a line; the line fills the layer's region, along
+the layer's axis on a canvas. Post-processing layers change what is below
+them instead. The stack is worked bottom first over the background, then
+`master` scales the result and it's clipped to 0-255
 (docs/architecture/pipeline.md#surfaces-and-layer-stacks).
 """
 
@@ -18,15 +19,16 @@ import numpy.typing as npt
 
 from folo_source.core import Frame, to_rgbf32
 from folo_source.effects import base
+from folo_source.effects import post as _post  # registers the post-processing effects
 from folo_source.effects import visualizers as _visualizers  # registers the audio visualizer
-from folo_source.effects.base import Effect, LayerSpec, Levels, Line
+from folo_source.effects.base import Effect, LayerSpec, Levels, Line, PostEffect
 from folo_source.effects.colors import hex_to_rgb
 from folo_source.inputs.audio.analyzer import Analyzer, Spectrum
 
 Values = npt.NDArray[np.float64]
 Indices = npt.NDArray[np.intp]
 
-_ = _visualizers
+_ = (_post, _visualizers)
 
 
 def strip_cells(region: Mapping[str, Any], size: int) -> tuple[int, int]:
@@ -112,6 +114,7 @@ class _Entry:
     cols: slice
     rows: slice | None = None  # canvases only
     index: Indices | None = None  # canvases: the line cell of every cell
+    post: bool = False  # a post-processing layer: it changes what is below it
 
 
 class SurfaceRenderer:
@@ -125,7 +128,7 @@ class SurfaceRenderer:
     def __init__(self, analyzer: Analyzer, rng: np.random.Generator | None = None) -> None:
         self.analyzer = analyzer
         self._rng = np.random.default_rng() if rng is None else rng
-        self.effects: dict[str, Effect] = {}
+        self.effects: dict[str, Effect | PostEffect] = {}
         self._surface: object = None
         self._layers: object = None
         self._colors: tuple[str, ...] = ()
@@ -188,12 +191,15 @@ class SurfaceRenderer:
                     index,
                 )
             )
-            specs.append(
-                LayerSpec(
-                    str(layer.get('id', '')), layer.get('params', {}), max(0, length), visible
-                )
+            spec = LayerSpec(
+                str(layer.get('id', '')),
+                layer.get('params', {}),
+                max(0, length),
+                visible,
+                str(layer.get('axis', 'linear_x')),
             )
-        effects: dict[str, Effect] = {}
+            specs.append(spec)
+        effects: dict[str, Effect | PostEffect] = {}
         for effect_id, specs in grouped.items():
             effect = self.effects.get(effect_id) or base.create(effect_id, self.analyzer, self._rng)
             if effect is None:  # an effect this engine doesn't have draws nothing
@@ -202,6 +208,7 @@ class SurfaceRenderer:
             effects[effect_id] = effect
         for entry in entries:
             entry.visible = entry.visible and entry.effect_id in effects
+            entry.post = isinstance(effects.get(entry.effect_id), PostEffect)
         self.effects = effects
         self._entries = entries
         self._surface, self._layers, self._colors = surface, layers, colors
@@ -226,10 +233,18 @@ class SurfaceRenderer:
         levels: Levels = {}
         lines: dict[str, list[Line | None]] = {}
         for effect_id, effect in self.effects.items():
+            if isinstance(effect, PostEffect):
+                continue
             lines[effect_id], effect_levels = effect.render(spectrum, dt, beat)
             levels.update(effect_levels)
         for entry in self._entries:
             if not entry.visible:
+                continue
+            if entry.post:
+                effect = self.effects[entry.effect_id]
+                assert isinstance(effect, PostEffect)
+                below = out[entry.cols] if entry.rows is None else out[entry.rows, entry.cols]
+                effect.apply(entry.position, below, dt)
                 continue
             line = lines[entry.effect_id][entry.position]
             if line is None:
