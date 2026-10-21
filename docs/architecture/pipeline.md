@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and the beat signal)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer effect and surfaces)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -63,13 +63,30 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
   - **Screen:** turns a captured frame into a canvas, with colour, saturation, smoothing and video/game profiles.
   - **Post-processing:** brightness and saturation, mirror, blur, trail.
 - **1D effects on canvases** use axis modes: `linear_x`, `linear_y`, `radial` and `angular`. Every visualizer therefore works on 2D surfaces and in any zone.
+  - The effect renders a line of `L` cells. Each cell of the layer's rectangle takes the line's cell `min(L − 1, ⌊t × L⌋)`, where `t` (0–1) is the position of the cell's centre along the axis:
+    - `linear_x`: across the columns; `L` is the rectangle's width.
+    - `linear_y`: down the rows, from row 0; `L` is its height.
+    - `radial`: the distance from the rectangle's centre, 1 at its corners; `L` is half its diagonal, rounded.
+    - `angular`: the angle around the centre, clockwise from the side of row 0; `L` is its perimeter.
+  - On a strip, the line is the layer's region itself.
 - Effects run in-process in the effect engine. An out-of-process host is reserved for future plugins.
 
 ## Surfaces and layer stacks
 
 - A surface has a kind (strip or canvas), a resolution, a background and a master level.
 - Its layers form an ordered stack. The default blend is **max**, which reproduces today's behaviour; other blend modes are available per layer.
-- A layer covers a **region** of the surface: a cell range on a strip, a rectangle on a canvas.
+- A layer covers a **region** of the surface: a cell range on a strip, a rectangle on a canvas. On a strip of `N` cells:
+  - `cells`: `start` to `end`, both included, as today's segments.
+  - `relative`: cells `⌊start × N⌋` to `⌈end × N⌉ − 1`, at least one.
+  - `rect`: as `relative` from `x` to `x + width`.
+  - On a `W × H` canvas, a `rect` covers columns `⌊x × W⌋` to `⌈(x + width) × W⌉ − 1` and rows likewise, at least one of each. `cells` and `relative` regions select columns, over every row.
+  - A region is clipped to the surface. A layer whose region is empty draws nothing.
+- **Rendering a stack:** the surface starts as its background colour. Its enabled layers are blended in order, bottom first; when any enabled layer is solo, only solo layers draw. The result is multiplied by `master` and clipped to 0–255.
+- **Blend modes,** on the 0–255 scale, per channel and only inside the layer's region:
+  - `max`: the larger of the layer and what is below (today's behaviour)
+  - `add`: their sum, at most 255
+  - `multiply`: below × layer / 255
+  - `alpha`: the layer over what is below, with its brightest channel / 255 as its opacity: layer + below × (1 − opacity). Black is transparent and a full colour opaque.
 
 ## Publishing
 

@@ -1,23 +1,28 @@
 """
-The audio visualizer: turns the spectrum into LED colors according to the
-segments (Renderer), with the per-segment state of the moving modes and
-the beat trigger.
+The audio-visualizer effect (RB-04 step 4): turns the spectrum into colours
+along each layer's line, with today's segment semantics (band, trigger,
+shaping, smoothing and the modes), the state of the moving modes and the
+beat trigger. The surface blends the lines into its stack.
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from folo_source.effects.colors import cover_palette, hex_to_rgb, palette_colors
+from folo_source.contracts import clamp
+from folo_source.effects.base import EffectInfo, LayerSpec, Levels, Line, register
+from folo_source.effects.colors import cover_palette, palette_colors
 from folo_source.inputs.audio.analyzer import Spectrum, smoothing
-from folo_source.legacy.ambient import Ambient
+
+EFFECT_ID = 'audio-visualizer'
+VERSION = '1.0.0'
 
 AVERAGE_MS = 1000  # "recent average" that hits are measured against
 PEAK_HOLD = 0.5  # seconds the peak marker of fill mode holds
-PEAK_FALL = 0.8  # peak marker fall speed in segment lengths/second
+PEAK_FALL = 0.8  # peak marker fall speed in line lengths/second
 
 # Moving modes ported from LedFx effects. They draw colors per step
 # themselves; drops and wipe fire on hits (the level jumping past HIT_ON
@@ -25,27 +30,18 @@ PEAK_FALL = 0.8  # peak marker fall speed in segment lengths/second
 MOTION_MODES = ('scroll', 'drops', 'scan', 'wipe', 'flow', 'fire')
 HIT_ON = 0.5
 HIT_OFF = 0.25
-HIT_GAP = 0.06  # shortest time between two hits of a segment
+HIT_GAP = 0.06  # shortest time between two hits of a layer
 MAX_DROPS = 32
 
-# Beat trigger: a segment flashes on the beats of beat_tracker, as bright as
+# Beat trigger: a layer flashes on the beats of its BeatTracker, as bright as
 # its band has been lately (its level, holding its peaks for about a beat)
 BEAT_PULSE = 0.04  # seconds a beat holds full brightness at least, so a frame sent shows it
 BEAT_HOLD_FALL = 12.0  # dB per second the held level falls
 
 
-def shown_levels(levels: dict[str, tuple[float, float, float]]) -> dict[str, list[float]]:
-    """
-    Renderer.render's segment levels as the web UI gets them:
-    {segment id: [level dB, value, recent average dB]}, rounded.
-    """
-    return {
-        seg_id: [round(level, 1), round(value, 3), round(average, 1)]
-        for seg_id, (level, value, average) in levels.items()
-    }
+class LayerState:
+    """What a layer keeps from frame to frame."""
 
-
-class SegmentState:
     def __init__(self):
         self.value = 0.0
         self.peak = 0.0
@@ -70,7 +66,7 @@ class SegmentState:
 
 class _Part:
     """
-    What the renderer works out once per config for a segment.
+    What the effect works out once per configuration for a layer.
     """
 
     __slots__ = (
@@ -81,25 +77,23 @@ class _Part:
         'hits',
         'id',
         'index',
+        'length',
         'pos',
         'seg',
-        'start',
         'steps',
-        'stop',
         'visible',
     )
 
-    def __init__(self, seg, index):
-        self.seg = seg
-        self.id = seg['id']
-        self.index = index  # in the full window's levels
+    def __init__(self, seg, layer_id, index):
+        self.seg = seg  # its parameters
+        self.id = layer_id
+        self.index = index  # in the full window's levels, and in the lines returned
         self.hits = seg['trigger'] == 'hits'
         # beat trigger: every this many beats
         self.beats = seg['beats'] if seg['trigger'] == 'beat' else 0.0
         self.fast_index: int | None = None  # in the short window's levels (hits)
         self.visible: bool = False
-        self.start: int = 0  # leds start:stop
-        self.stop: int = 0
+        self.length: int = 0  # cells in its line
         self.pos: npt.NDArray[np.int_] | None = None
         self.steps: int = 0
         # static gradient of fill, pulse and spectrum
@@ -107,51 +101,46 @@ class _Part:
         self.bands: Any = None  # band plan of spectrum mode
 
 
-class Renderer:
+class AudioVisualizer:
     """
-    Turns the spectrum into led colors according to the segments, and blends
-    in the ambient light.
+    The audio-visualizer layers of one surface. Every layer's band comes
+    from one read of each analysis window per frame.
     """
 
     def __init__(self, analyzer, rng=None):
         self.analyzer = analyzer
-        self.ambient = Ambient()
         self.states = {}
         # Drops and fire are random; tests pass a seeded generator
         self.rng = np.random.default_rng() if rng is None else rng
         self._layouts = {}
         self._gradients = {}
-        self._config: dict[str, Any] | None = None
-        self._colors: tuple[str, ...] = ()
-        self._plan: Any = None
+        self._plan: Any = ([], None, None)
 
-    def _prepare(self, config: dict[str, Any], colors: tuple[str, ...] = ()) -> Any:
+    @property
+    def info(self) -> EffectInfo:
+        return INFO
+
+    def prepare(self, layers: Sequence[LayerSpec], colors: tuple[str, ...] = ()) -> None:
         """
-        The parts of rendering that only change with the config: band plans,
-        layouts and colors. The store replaces the config on every change and
-        never edits it, so it's worked out again when the config is a new one,
-        or when `colors` (the album art's, replacing the palettes) change.
+        The parts of rendering that only change with the configuration: band
+        plans, layouts and colours. `colors` (the album art's) replace the
+        palettes.
         """
-        if config is self._config and colors == self._colors:
-            return self._plan
-        count = config['led_count']
-        segments = config['segments']
-        if colors:
-            segments = [dict(seg, palette=cover_palette(seg, colors)) for seg in segments]
-        solo = any(s['solo'] and s['enabled'] for s in segments)
         parts = []
+        params = []
         fast_bands = []
-        for index, seg in enumerate(segments):
-            part = _Part(seg, index)
+        for index, layer in enumerate(layers):
+            seg = layer.params
+            if colors:
+                seg = dict(seg, palette=cover_palette(seg, colors))
+            params.append(seg)
+            part = _Part(seg, layer.id, index)
             if part.hits:
                 part.fast_index = len(fast_bands)
                 fast_bands.append((seg['freq_lo'], seg['freq_hi']))
-            start = seg['start']
-            end = min(seg['end'], count - 1)
-            part.visible = seg['enabled'] and (seg['solo'] or not solo) and end >= start
+            part.visible = layer.visible and layer.length > 0
             if part.visible:
-                size = end - start + 1
-                part.start, part.stop = start, end + 1
+                size = part.length = layer.length
                 pos, steps = self.layout(size, seg['direction'])
                 part.pos, part.steps = pos, steps
                 mode = seg['mode']
@@ -162,22 +151,17 @@ class Renderer:
                     edges = np.geomspace(seg['freq_lo'], seg['freq_hi'], part.steps + 1)
                     part.bands = self.analyzer.band_plan(edges, fast=part.hits)
             parts.append(part)
-        background = np.array(hex_to_rgb(config['background']), dtype=np.float64)
-        base = np.tile(background, (count, 1))
         full = (
-            self.analyzer.bands_plan([(s['freq_lo'], s['freq_hi']) for s in segments])
-            if segments
+            self.analyzer.bands_plan([(s['freq_lo'], s['freq_hi']) for s in params])
+            if params
             else None
         )
         fast = self.analyzer.bands_plan(fast_bands, fast=True) if fast_bands else None
-        self._config = config
-        self._colors = colors
-        self._plan = (base, parts, full, fast)
-        return self._plan
+        self._plan = (parts, full, fast)
 
     def layout(self, size, direction):
         """
-        Step index of every led of a segment along its direction, and the
+        Step index of every cell of a layer's line along its direction, and the
         number of steps (mirrored directions have half as many).
         """
         key = (size, direction)
@@ -333,7 +317,7 @@ class Renderer:
     def _scroll(self, state, seg, steps, dt):
         """
         LedFx Scroll: the color of the moment streams away from the start
-        and fades out over `width` percent of the segment.
+        and fades out over `width` percent of the line.
         """
         trail = self._buffer(state, (steps, 3))
         moved = min(steps, self._advance(state, seg['speed'], dt))
@@ -443,7 +427,7 @@ class Renderer:
 
     def _fire(self, state, seg, steps, dt):
         """
-        LedFx Fire: sparks at the start heat up the segment, the heat rises
+        LedFx Fire: sparks at the start heat up the line, the heat rises
         at `speed` and cools on the way. The louder the band, the higher the
         flames reach. Colors go from the first (cool) to the last (hot).
         """
@@ -456,7 +440,7 @@ class Renderer:
             heat[:moved] = 0.0
         if steps > 2:
             heat[1:-1] = heat[1:-1] * 0.5 + (heat[:-2] + heat[2:]) * 0.25
-        # Cooling, uneven along the segment so the flames form tongues
+        # Cooling, uneven along the line so the flames form tongues
         k = np.arange(steps) / float(steps)
         swirl = np.sin(2 * np.pi * (k / 0.23 - state.pos * 1.3)) * np.sin(
             2 * np.pi * (k / 0.11 + state.pos * 0.7)
@@ -488,26 +472,19 @@ class Renderer:
         return self._fire(state, seg, steps, dt)
 
     def render(
-        self,
-        config: dict[str, Any],
-        spectrum: Spectrum,
-        dt: float,
-        beat: Any = None,
-        colors: Sequence[str] = (),
-        paused: bool = False,
-    ) -> tuple[bytes, dict[str, tuple[float, float, float]]]:
+        self, spectrum: Spectrum, dt: float, beat: Any = None
+    ) -> tuple[list[Line | None], Levels]:
         """
-        Returns the led colors as bytes and
-        {segment id: (level dB, value, recent average dB)}, unrounded (see
-        shown_levels). Hits segments react to the short window but report the
+        Returns each layer's line (None when it isn't visible), in the order
+        prepare() got them, and {layer id: (level dB, value, recent average
+        dB)}, unrounded. Hits layers react to the short window but report the
         level of the long one, which is what the UI's spectrum shows.
-        `beat`: a beat_tracker.BeatTracker pushed with the same audio (beat
-        triggers stay dark without one). `colors`: the album art's colors,
-        used instead of the palettes. `paused`: the player is paused.
+        `beat`: the zone's BeatTracker, pushed with the same audio (beat
+        triggers stay dark without one).
         """
-        base, parts, full_plan, fast_plan = self._prepare(config, tuple(colors))
-        out = base.copy()
-        # Every segment's band at once: the long window for all of them (what
+        parts, full_plan, fast_plan = self._plan
+        lines: list[Line | None] = [None] * len(parts)
+        # Every layer's band at once: the long window for all of them (what
         # the UI shows, and what level triggers use), the short one for hits
         full = self.analyzer.planned_levels(spectrum, full_plan).tolist() if full_plan else []
         fast = self.analyzer.planned_levels(spectrum, fast_plan).tolist() if fast_plan else []
@@ -519,7 +496,7 @@ class Renderer:
             seg = part.seg
             state = states.get(part.id)
             if state is None:
-                state = states[part.id] = SegmentState()
+                state = states[part.id] = LayerState()
             shown = full[part.index]
             raw = fast[part.fast_index] if part.hits else shown
             if state.average is None:
@@ -544,20 +521,20 @@ class Renderer:
 
             if not part.visible:
                 continue
-            leds = out[part.start : part.stop]
             mode = seg['mode']
             if mode in MOTION_MODES:
-                rgb = self._motion(mode, state, seg, part.steps, dt, hit, target)[part.pos]
-                np.maximum(leds, rgb, out=leds)
+                motion = self._motion(mode, state, seg, part.steps, dt, hit, target)
+                lines[part.index] = motion[part.pos]
                 continue
 
             floor = seg['floor']
             if mode == 'pulse':
-                np.maximum(leds, part.colors * (floor + (1.0 - floor) * state.value), out=leds)
+                lines[part.index] = part.colors * (floor + (1.0 - floor) * state.value)
                 continue
             if mode == 'shift':
                 color = self.color_at(seg['palette'], state.value)
-                np.maximum(leds, color * (floor + (1.0 - floor) * state.value), out=leds)
+                shifted = color * (floor + (1.0 - floor) * state.value)
+                lines[part.index] = np.broadcast_to(shifted, (part.length, 3))
                 continue
             pos, steps = part.pos, part.steps
             if mode == 'spectrum':
@@ -567,16 +544,29 @@ class Renderer:
                 if seg['peak'] and state.peak > 0.01:
                     bright[pos == min(steps - 1, int(state.peak * steps))] = 1.0
             bright = floor + (1.0 - floor) * bright
-            np.maximum(leds, part.colors * bright[:, None], out=leds)
+            lines[part.index] = part.colors * bright[:, None]
 
         if len(states) > len(levels):
             for seg_id in [s for s in states if s not in levels]:
                 del states[seg_id]
 
-        out = self.ambient.blend(out, config, spectrum, dt, paused)
-        if config['master'] != 1.0:
-            out *= config['master']
-        # np.clip's own overhead is twice that of these two
-        np.maximum(out, 0.0, out=out)
-        np.minimum(out, 255.0, out=out)
-        return out.astype(np.uint8).tobytes(), levels
+        return lines, levels
+
+
+def _params_schema() -> Mapping[str, Any]:
+    try:
+        return clamp.definition('AudioVisualizerParams')
+    except OSError:  # a build without the bundled schemas
+        return {}
+
+
+INFO = EffectInfo(
+    id=EFFECT_ID,
+    version=VERSION,
+    name='Audio visualizer',
+    description='A frequency band of the audio, shaped and smoothed, in one of ten modes.',
+    inputs=('audio', 'beat', 'media'),
+    params_schema=_params_schema(),
+    min_elements=1,
+)
+register(EFFECT_ID, AudioVisualizer)

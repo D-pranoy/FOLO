@@ -27,7 +27,6 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from folo_source.effects.visualizers import Renderer, shown_levels
 from folo_source.inputs.audio.analyzer import (
     SAMPLERATE,
     Analyzer,
@@ -36,6 +35,7 @@ from folo_source.inputs.audio.analyzer import (
     channel_peaks,
 )
 from folo_source.legacy import v1 as studio_config
+from folo_source.legacy.renderer import Renderer, shown_levels
 from folo_source.runtime.engine import IDLE_AFTER, IDLE_FPS, MAX_DT, StudioEngine
 from folo_source.signals.beat import ONSET_DELAY, BeatTracker
 from tests import synth
