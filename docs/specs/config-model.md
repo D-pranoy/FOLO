@@ -1,6 +1,6 @@
 # Configuration model
 
-Status: Draft · Implementation: Partial (JSON Schemas, generated types and clampers; nothing reads the documents yet)
+Status: Draft · Implementation: Partial (JSON Schemas, generated types, clampers and the v1 migration; nothing reads the documents yet)
 
 The controller's persistent model. Validation **clamps values to their limits and never rejects** a document, except for structural errors. Hand-written or stale input therefore always results in a working configuration, matching today's `sanitize_config()` behaviour.
 
@@ -181,17 +181,21 @@ Performed by the effect engine's migration tool (RB-05):
 
 | v1 | v2 |
 |---|---|
-| `led_count`, `segments[]` | Zone "Default", type `custom`; strip surface "Main strip" with resolution = `led_count`; each segment becomes an audio-visualizer layer with region = [start, end] |
-| `hyperion {host, port, priority, fps}` | Hyperion provider instance (`enabled` carried over), plus a line target with `led_count` elements and a manual 1:1 mapping, identity adapters |
+| `led_count`, `segments[]` | Zone "Default" (id `default`), type `custom`; strip surface `main` (role `strip.main`) with resolution = `led_count`, fed by the local source; each segment becomes an audio-visualizer layer with region = [start, end], in the active scene `current` |
+| `hyperion {host, port, priority, fps}` | Hyperion provider instance `hyperion` (`enabled` carried over, `fps` as `rate_hz`, the default origin), plus a line target `strip` with `led_count` elements and a manual 1:1 mapping `main-strip`, identity adapters |
 | `master`, `background` | Surface `master` and `background` |
-| `audio.device`, `audio.app`, `audio.app_mode`, `audio.gain`, `audio.auto_level` | Local source audio input settings |
+| `audio.device`, `audio.app`, `audio.app_mode`, `audio.gain`, `audio.auto_level` | Local source (`local`, owner) audio input settings |
 | `reactive`, `ambient.{color, style, level, idle_after}` | Zone "Default" `reactive` and `ambient` |
 | `beat.offset` | Zone "Default" `beat_offset_ms` |
 | `now_playing.enabled` | Local source `media.enabled` |
 | `now_playing.cover_colors` | Zone "Default" `album_colors` |
 | `now_playing.pause_ambient` | Zone "Default" `ambient.on_pause` |
 | Segment `trigger` `beat`, `beats` | Layer parameters, unchanged |
-| `presets[]` | Scenes in the local "My presets" pack, keeping their `led_count` for scaling |
-| `default_preset` | Default scene id; built-in ids resolve through the alias table |
+| `presets[]` | Scene items in the local "My presets" pack, with the preset's id, name and tags and its `led_count` for scaling. `desc` has no place in a scene and isn't carried over. |
+| `default_preset` | `default_scene`: a saved preset's id (its scene's id in "My presets"); a built-in id (`fx:*`, `genre:*`) as it is, for the alias table; anything else, none |
 
-The migration keeps a backup (`studio.json.v1.bak`) and can be run more than once with the same result.
+The migration keeps a backup (`studio.json.v1.bak`) and can be run more than once with the same result:
+- **Input:** the file is read as `sanitize_config()` reads it. A file that isn't JSON is refused. The ids `sanitize_config()` has to make for missing or repeated ones come from the file's contents, so they are the same every time.
+- **Output:** `zones.json`, `show.json`, `providers.json` and `sources.json` in the output folder, and the pack in `library/local/my-presets/` (`folo-pack.json` and `scenes/preset-NNN.json`, in the presets' order). Each is clamped, written atomically as indented UTF-8 JSON, with `revision` 0. Scene files of presets that are gone are removed.
+- **Backup:** the first run copies the file beside it; later runs leave that copy alone.
+- **Safety:** the zone's flash limiter stays on, as for any zone ([ADR-0007](../decisions/ADR-0007-capabilities-adapters-and-flash-limiter.md)).

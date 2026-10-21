@@ -2441,6 +2441,14 @@ class SceneItem(BaseModel):
         'layers_by_role': {},
         'macros': [],
     }
+    led_count: Annotated[
+        int,
+        Field(
+            description='The strip length its cells regions were made for, so they can be scaled to another; 0 when it has none.',
+            ge=0,
+            le=2000,
+        ),
+    ] = 0
     fallbacks: Annotated[dict[str, FallbacksAdditionalProperty], Field(description='Role: the role to use when the zone has no surface for it.')] = {
 
     }

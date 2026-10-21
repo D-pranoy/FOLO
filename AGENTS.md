@@ -31,12 +31,14 @@ py -3.13 -m venv .venv
 
 | Task | Command |
 |---|---|
+| The effect engine for a node (RB-04; the node starts it with `FOLO_SOURCE_LINK` and `FOLO_SOURCE_TOKEN` in its environment) | `uv run folo-source [--seed N]` or `python -m folo_source` |
+| Migrate a v1 `studio.json` to the v2 documents (RB-05; keeps `studio.json.v1.bak`) | `uv run folo-source migrate-v1 <studio.json> <out-dir>` |
 | Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json] [--seed N]` |
 | List audio sources (outputs, inputs, apps playing audio) | the studio's Audio input card, or `GET http://127.0.0.1:8777/api/sources` |
 | Tests (goldens, beat fixtures, `sanitize_config`, the studio starting, the clamper, contract drift and the conformance harness; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
 | Lint, format, types | `uv run ruff check .`, `uv run ruff format .`, `uv run pyright` |
 | Every pre-commit hook | `uv run pre-commit run --all-files` (`uv run pre-commit install` once to run them on commit) |
-| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp]` |
+| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp,migration]` |
 | Contract tools (once, needs Node.js 22) | `npm ci` in `ui\` |
 | Regenerate the schema bundle and the Python, Rust and TypeScript types (after changing `specs/`) | `uv run python scripts/contracts.py generate` |
 | Validate the contracts and fail on drift (what CI runs) | `uv run python scripts/contracts.py check`, then `npm run check:types` in `ui\` |
@@ -144,8 +146,10 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
 - `effects/post.py`: the post-processing effects `brightness`, `mirror`, `blur` and `trail`
 - `effects/visualizers.py`: the `audio-visualizer` effect (`AudioVisualizer`, `LayerState`): today's segment logic, the modes and the beat targets, drawing each layer's line; `effects/colors.py`: palettes and album colors
 - `surfaces/renderer.py`: `SurfaceRenderer`, a surface's layer stack: regions, axis modes, blend modes, background and master, as `docs/architecture/pipeline.md` defines them
-- `runtime/engine.py`: `StudioEngine`, which wires them together and renders silence while idle; `runtime/lifecycle.py`: shutdown, thread joins, the seeded random generator; `runtime/logs.py`: JSON-line logging
-- `legacy/`: what the controller takes over later: `v1.py` (the config), `renderer.py` (the v1 `Renderer`: a config's segments as audio-visualizer layers on one strip surface, plus the ambient light), `ambient.py` (the ambient light, RB-08), `hyperion.py` and `json_client.py` (the Hyperion output, RB-10)
+- `runtime/executor.py`: `Executor`, which renders the surfaces of a node's `config.apply` step by step (beat and activity first, then each stack) and publishes them; `runtime/source.py`: `SourceEngine`, the engine as its node runs it: the inputs, the render thread (merging packets that came during a slow frame, idle rendering), the notifications and the answers to the node's requests; `cli.py`: the `folo-source` command
+- `runtime/engine.py`: `StudioEngine`, which wires them together for the legacy studio and renders silence while idle; `runtime/lifecycle.py`: shutdown, thread joins, the seeded random generator; `runtime/logs.py`: JSON-line logging
+- `legacy/`: what the controller takes over later: `v1.py` (the config), `migrate.py` (the v1 migration, RB-05: the v2 documents and the "My presets" pack, the same bytes on every run), `renderer.py` (the v1 `Renderer`: a config's segments as audio-visualizer layers on one strip surface, plus the ambient light), `ambient.py` (the ambient light, RB-08), `hyperion.py` and `json_client.py` (the Hyperion output, RB-10)
+- `publish/`: publishing to the node (RB-04 step 7): `frames.py` (surface and signal frames: resampling by area, quantising to rgb8, rgb16 or rgbf32, LZ4, and decoding for tests), `publisher.py` (`Publisher`: each surface at its requested rate and resolution, sequence numbers, the signals asked for) and `link.py` (`LocalLink`: the local link of ADR-0032 on its own asyncio thread, with the launch token, newest-wins sending, JSON-RPC answers, reconnecting, and giving up after 30 s). `tests/fake_node.py` is the node it's tested against.
 - `contracts/`: the generated models and the clamper (RB-02)
 
 - **Audio input (`inputs/audio/windows/audio_input.py` on `wasapi.py`):** the studio's own WASAPI capture through cffi. On Linux `inputs/audio/linux/` captures instead (see below). Elsewhere `wasapi` isn't imported, so the code still imports: there are no sources, and the input reports "Audio capture needs Windows".

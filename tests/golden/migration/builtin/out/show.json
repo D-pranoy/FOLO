@@ -1,0 +1,390 @@
+{
+  "schema_version": 2,
+  "revision": 0,
+  "server_id": "",
+  "active": {
+    "default": "current"
+  },
+  "default_scene": "genre:edm",
+  "scenes": [
+    {
+      "id": "current",
+      "name": "From the studio",
+      "tags": [],
+      "layers_by_role": {
+        "strip.main": [
+          {
+            "id": "00000001",
+            "name": "Kick 1",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 45.0,
+              "freq_hi": 110.0,
+              "trigger": "hits",
+              "beats": 1,
+              "threshold": 4.0,
+              "ceiling": 12.0,
+              "gain": 1.0,
+              "curve": 1.6,
+              "attack": 0.0,
+              "release": 90.0,
+              "floor": 0.0,
+              "mode": "pulse",
+              "direction": "center",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#0033CC",
+                "#000080",
+                "#4B00FF"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 0,
+              "end": 15
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000002",
+            "name": "Synths 1",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 500.0,
+              "freq_hi": 4000.0,
+              "trigger": "level",
+              "beats": 1,
+              "threshold": -55.0,
+              "ceiling": -28.0,
+              "gain": 1.0,
+              "curve": 1.0,
+              "attack": 15.0,
+              "release": 250.0,
+              "floor": 0.0,
+              "mode": "spectrum",
+              "direction": "center",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#FF3399",
+                "#FF00FF",
+                "#800080"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 16,
+              "end": 31
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000003",
+            "name": "Hats 1",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 8000.0,
+              "freq_hi": 16000.0,
+              "trigger": "hits",
+              "beats": 1,
+              "threshold": 5.0,
+              "ceiling": 15.0,
+              "gain": 1.0,
+              "curve": 1.4,
+              "attack": 0.0,
+              "release": 120.0,
+              "floor": 0.0,
+              "mode": "spectrum",
+              "direction": "forward",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#800080",
+                "#8F00FF",
+                "#4B0082"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 32,
+              "end": 47
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000004",
+            "name": "Kick 2",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 45.0,
+              "freq_hi": 110.0,
+              "trigger": "hits",
+              "beats": 1,
+              "threshold": 4.0,
+              "ceiling": 12.0,
+              "gain": 1.0,
+              "curve": 1.6,
+              "attack": 0.0,
+              "release": 90.0,
+              "floor": 0.0,
+              "mode": "pulse",
+              "direction": "center",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#0033CC",
+                "#000080",
+                "#4B00FF"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 48,
+              "end": 63
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000005",
+            "name": "Synths 2",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 500.0,
+              "freq_hi": 4000.0,
+              "trigger": "level",
+              "beats": 1,
+              "threshold": -55.0,
+              "ceiling": -28.0,
+              "gain": 1.0,
+              "curve": 1.0,
+              "attack": 15.0,
+              "release": 250.0,
+              "floor": 0.0,
+              "mode": "spectrum",
+              "direction": "center",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#FF3399",
+                "#FF00FF",
+                "#800080"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 64,
+              "end": 79
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000006",
+            "name": "Hats 2",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 8000.0,
+              "freq_hi": 16000.0,
+              "trigger": "hits",
+              "beats": 1,
+              "threshold": 5.0,
+              "ceiling": 15.0,
+              "gain": 1.0,
+              "curve": 1.4,
+              "attack": 0.0,
+              "release": 120.0,
+              "floor": 0.0,
+              "mode": "spectrum",
+              "direction": "forward",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#800080",
+                "#8F00FF",
+                "#4B0082"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 80,
+              "end": 95
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000007",
+            "name": "Kick 3",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 45.0,
+              "freq_hi": 110.0,
+              "trigger": "hits",
+              "beats": 1,
+              "threshold": 4.0,
+              "ceiling": 12.0,
+              "gain": 1.0,
+              "curve": 1.6,
+              "attack": 0.0,
+              "release": 90.0,
+              "floor": 0.0,
+              "mode": "pulse",
+              "direction": "center",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#0033CC",
+                "#000080",
+                "#4B00FF"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 96,
+              "end": 111
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000008",
+            "name": "Synths 3",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 500.0,
+              "freq_hi": 4000.0,
+              "trigger": "level",
+              "beats": 1,
+              "threshold": -55.0,
+              "ceiling": -28.0,
+              "gain": 1.0,
+              "curve": 1.0,
+              "attack": 15.0,
+              "release": 250.0,
+              "floor": 0.0,
+              "mode": "spectrum",
+              "direction": "center",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#FF3399",
+                "#FF00FF",
+                "#800080"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 112,
+              "end": 127
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          },
+          {
+            "id": "00000009",
+            "name": "Hats 3",
+            "effect": {
+              "id": "audio-visualizer",
+              "version": "1.0.0"
+            },
+            "params": {
+              "freq_lo": 8000.0,
+              "freq_hi": 16000.0,
+              "trigger": "hits",
+              "beats": 1,
+              "threshold": 5.0,
+              "ceiling": 15.0,
+              "gain": 1.0,
+              "curve": 1.4,
+              "attack": 0.0,
+              "release": 120.0,
+              "floor": 0.0,
+              "mode": "spectrum",
+              "direction": "forward",
+              "speed": 120.0,
+              "width": 20.0,
+              "peak": false,
+              "palette": [
+                "#800080",
+                "#8F00FF",
+                "#4B0082"
+              ]
+            },
+            "region": {
+              "kind": "cells",
+              "start": 128,
+              "end": 143
+            },
+            "blend": "max",
+            "axis": "linear_x",
+            "enabled": true,
+            "solo": false,
+            "lane": -1
+          }
+        ]
+      },
+      "macros": []
+    }
+  ]
+}

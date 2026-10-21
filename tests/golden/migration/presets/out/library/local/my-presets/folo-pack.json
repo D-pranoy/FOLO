@@ -1,0 +1,26 @@
+{
+  "id": "local/my-presets",
+  "version": "1.0.0",
+  "folo": ">=1.0 <2",
+  "name": "My presets",
+  "description": "Presets saved in the FOLO studio",
+  "license": "MIT",
+  "authors": [],
+  "tags": [],
+  "requires": {},
+  "contents": {
+    "palettes": [],
+    "reactions": [],
+    "looks": [],
+    "scenes": [
+      "chill1",
+      "party"
+    ],
+    "zone_templates": []
+  },
+  "files": {
+    "scenes/preset-001.json": "f93c5cab32d82b95f2e7dcf0afea7a75fd0c606472b96e063a453f197719453d",
+    "scenes/preset-002.json": "c9591784b07f498e01e8081a19a1b616e82e181084b4b7ac5b8d1703c53144ab"
+  },
+  "previews": {}
+}

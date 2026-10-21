@@ -7,8 +7,11 @@ Writes the golden files that pin today's engine (RB-01 steps 6 to 8):
 - tests/golden/beat/: what the beat tracker does on the fixtures
 - tests/corpus/sanitize_config.json: sanitize_config inputs and outputs
 - tests/corpus/clamp_v2.json: the v2 clamper's inputs and outputs (RB-02)
+- tests/golden/migration/: sample v1 files and the documents they migrate to (RB-05)
 
-    uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp]
+    uv run python scripts/make_golden.py [--export-builtins] [--only PART,...]
+
+The parts are renderer, beat, corpus, clamp and migration.
 
 Regenerate only when behaviour is meant to change, and say why in the pull
 request (docs/process/testing-policy.md#golden-files).
@@ -27,9 +30,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tests import beat_fixtures, clamp_corpus, golden_cases, sanitize_corpus  # noqa: E402
+from tests import (  # noqa: E402
+    beat_fixtures,
+    clamp_corpus,
+    golden_cases,
+    migration_cases,
+    sanitize_corpus,
+)
 
-PARTS = ('renderer', 'beat', 'corpus', 'clamp')
+PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration')
 
 
 def export_builtins() -> None:
@@ -104,6 +113,13 @@ def write_clamp_corpus() -> None:
     print(f'wrote {len(entries)} entries to {clamp_corpus.CORPUS.relative_to(ROOT)}')
 
 
+def write_migration() -> None:
+    for name in migration_cases.SAMPLES:
+        migration_cases.write(name)
+    out = migration_cases.MIGRATION_DIR.relative_to(ROOT)
+    print(f'wrote {len(migration_cases.SAMPLES)} migration samples to {out}')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -133,6 +149,8 @@ def main() -> None:
         write_corpus()
     if 'clamp' in parts:
         write_clamp_corpus()
+    if 'migration' in parts:
+        write_migration()
 
 
 if __name__ == '__main__':

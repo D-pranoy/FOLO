@@ -93,6 +93,7 @@
         "id": {"$ref": "common.json#/$defs/Id", "default": ""},
         "schema_version": {"$ref": "common.json#/$defs/SchemaVersion", "default": 2},
         "scene": {"$ref": "show.json#/$defs/Scene", "default": {}},
+        "led_count": {"description": "The strip length its cells regions were made for, so they can be scaled to another; 0 when it has none.", "type": "integer", "minimum": 0, "maximum": 2000, "default": 0},
         "fallbacks": {
           "description": "Role: the role to use when the zone has no surface for it.",
           "type": "object",

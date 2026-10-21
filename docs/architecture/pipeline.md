@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer and post-processing effects, and surfaces)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher, the local link and the executor)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -96,7 +96,25 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 
 - The engine renders at the input rate: about 100 Hz for audio, the capture rate for screen.
 - It publishes at the rate and resolution the controller requests per zone. Canvases default to 64×36 and are capped at 128×72 on the network; LZ4 compression is optional.
+- **Rate:** a surface's newest frame is sent once its next send is due. Sends fall due every `1 / rate_hz` seconds, counted from the first, so a 60 Hz surface fed 100 frames a second still sends 60. After a pause longer than one period the count starts again. Frames aren't interpolated, and a surface rendering slower than its rate sends every frame.
+- **Resolution:** a surface rendered at another resolution than requested is resampled by area: each requested cell is the average of the rendered cells under it, weighted by how much of each it covers, across the columns and then down the rows. At the same resolution the frame is sent as it is.
+- **Quantisation** to the requested pixel format follows the [source link](../specs/source-link.md#surface-frames).
+- **Signals** the engine publishes when `config.apply` asks for them by name:
+  - `beat`: `[bpm, confidence, locked, phase, bar_beat]` of the first surface's zone, while the beat tracker runs
+  - `activity`: `[active (0 or 1), level_db, quiet_s]`, as the activity notification below
 - The link and framing are in the [source link specification](../specs/source-link.md).
+
+## The executor
+
+The effect engine's executor renders the surfaces `config.apply` assigns and publishes them. Nothing is captured or rendered before the first `config.apply`; it starts the inputs.
+- **Steps, in dependency order:** every analysed packet goes to the beat tracker and the activity; then each surface's layer stack is rendered, bottom first; then its frames and the signals are published.
+- **Double-buffered surfaces:** a step renders into new frames and swaps them in as a whole, so the publisher never reads a half-rendered surface.
+- **Timing:** each step times every surface and every effect in it (an effect draws all its layers of a surface in one go). The metrics notification carries the mean step time, and a step over the budget logs its slowest effect.
+- **Budget:** rendering runs on a thread of its own. Packets that arrive while a frame renders become one step: each still reaches the beat tracker and the activity, and only the newest is rendered, with their time added up (at most 0.1 s). A slow frame therefore skips frames instead of queueing them.
+- **Idle rendering:** after 0.1 s without an audio packet the executor renders silence at 30 fps, so releases, moving modes and the controller's ambient light keep time.
+- **Beat tracker:** it runs while an enabled layer uses the `beat` trigger or the `beat` signal is published; a new song from the media input makes it find the tempo afresh. Each beat offset among the assigned surfaces has its tracker.
+- **Activity:** the audio is active while its loudest bin, without the input gain, reaches −70 dB. `quiet_s` adds up the seconds since it last was, as the ambient light counts them. It describes the whole source, so the notification leaves out `surface`.
+- **Layer state** (smoothing, moving modes, trails) is kept per surface index across `config.apply` calls.
 
 ## Controller stages
 

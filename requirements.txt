@@ -2,6 +2,9 @@
 numpy
 # The models generated from specs/schema (folo_source/contracts)
 pydantic
+# The local link to the node (folo_source/publish)
+websockets
+lz4
 # Audio capture: WASAPI on Windows, the PulseAudio client library on Linux
 cffi; sys_platform == "win32" or sys_platform == "linux"
 # FOLO studio: now playing (Windows media sessions)

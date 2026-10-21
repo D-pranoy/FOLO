@@ -22,7 +22,7 @@ Once a machine-readable form exists, it and this prose must agree. A change to e
 |---|---|
 | [Configuration model](config-model.md) | Partial (JSON Schemas, generated types and clampers; nothing reads the documents yet) |
 | [Client API](client-api.md) | Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; no server yet) |
-| [Source link](source-link.md) | Partial (the AsyncAPI contract, message fixtures and the conformance harness; no implementation yet) |
+| [Source link](source-link.md) | Partial (the AsyncAPI contract, message fixtures, the conformance harness, and the effect engine's side of the local link) |
 | [Pairing and connect](pairing-and-connect.md) | Not started |
 | [Pack format](pack-format.md) | Partial (JSON Schemas for the manifest and the items; nothing reads packs yet) |
 | [UI parity checklist](ui-parity-checklist.md) | Not started |
