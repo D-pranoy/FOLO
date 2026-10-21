@@ -125,27 +125,29 @@ def cover_colors(pixels):
 
 class NowPlaying:
     """
-    Runs a thread that follows Windows' media sessions. Prefers a session
-    that is playing, and among those the app the studio listens to (config
-    audio.app). `track` counts the songs seen, so others can tell when a
+    Runs a thread that follows Windows' media sessions while `enabled()`.
+    Prefers a session that is playing, and among those the app the audio
+    input captures (`audio()`: the audio input settings, `app` and
+    `app_mode`). `track` counts the songs seen, so others can tell when a
     new one starts.
     """
 
-    def __init__(self, store):
-        self.store = store
+    def __init__(self, enabled, audio):
+        self.enabled = enabled
+        self.audio = audio
         self.running = False
-        self.thread = None
+        self.thread: threading.Thread | None = None
         self._wake = threading.Event()
-        self.state = 'starting'  # off, unavailable, none, playing, paused, stopped, error
-        self.message = ''
+        self.state: str = 'starting'  # off, unavailable, none, playing, paused, stopped, error
+        self.message: str = ''
         self.app = ''
-        self.title = ''
-        self.artist = ''
-        self.album = ''
-        self.track = 0
-        self.art = None  # (bytes, content type)
-        self.art_id = 0
-        self.colors = ()
+        self.title: str = ''
+        self.artist: str = ''
+        self.album: str = ''
+        self.track: int = 0
+        self.art: tuple[bytes, str] | None = None  # (bytes, content type)
+        self.art_id: int = 0
+        self.colors: tuple[str, ...] = ()
         self._manager = None
         self._session = None
         self._session_id = None
@@ -157,7 +159,7 @@ class NowPlaying:
         self._key = None
 
     @property
-    def paused(self):
+    def paused(self) -> bool:
         """A session is open but nothing plays: paused or stopped."""
         return self.state in ('paused', 'stopped')
 
@@ -183,7 +185,7 @@ class NowPlaying:
             'colors': list(self.colors),
         }
 
-    def control(self, action):
+    def control(self, action: object) -> bool:
         """Play/pause, next or previous on the session shown. True if the player took it."""
         session = self._session
         if session is None or action not in ACTIONS:
@@ -204,7 +206,7 @@ class NowPlaying:
 
     def _loop(self):
         while self.running:
-            if not self.store.config['now_playing']['enabled']:
+            if not self.enabled():
                 self._release()
                 self._clear('off')
             elif SessionManager is None:
@@ -261,7 +263,7 @@ class NowPlaying:
         if not sessions:
             return None
         current = manager.get_current_session()
-        audio = self.store.config['audio']
+        audio = self.audio()
         wanted = audio['app'][:-4] if audio['app'].endswith('.exe') else audio['app']
 
         def rank(session):

@@ -2527,6 +2527,17 @@ class AssignedSurface(BaseModel):
         str, Field(description='The scene id whose layers it renders.', max_length=64)
     ]
     role: Annotated[str, Field(max_length=64)]
+    beat_offset_ms: Annotated[
+        int,
+        Field(
+            description="Its zone's beat timing offset: beats fire earlier when positive.",
+            ge=-200,
+            le=200,
+        ),
+    ] = 0
+    album_colors: Annotated[
+        bool, Field(description='Its zone takes colours from the album art.')
+    ] = False
 
 
 class CapabilityDescriptor(BaseModel):

@@ -290,7 +290,9 @@ class Analyzer:
             levels[empty] = np.interp(centers, self.fast_freqs if fast else self.freqs, padded[:-1])
         return levels
 
-    def band_levels(self, spectrum, edges, fast=False):
+    def band_levels(
+        self, spectrum: Spectrum, edges: npt.ArrayLike, fast: bool = False
+    ) -> npt.NDArray[np.float64]:
         """
         Loudest bin between each pair of edges (Hz), from the short window if
         `fast`. Bands narrower than the FFT resolution are interpolated.

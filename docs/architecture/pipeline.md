@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and the beat signal)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -10,6 +10,7 @@ The first half runs in a **source** (the effect engine and capture agent). The s
 
 - **Frame:** an array of linear RGB values, shape `(N, 3)` for a strip or `(H, W, 3)` for a canvas, with metadata:
   - pixel format: `rgbf32` inside a process; `rgb8` or `rgb16` on the wire; a video format reserved
+  - `rgbf32` values in the effect engine are on today's 0–255 scale. They are rounded toward zero from the renderer's 64-bit values, so truncating them to `rgb8` gives today's bytes ([parity mode](#parity-mode)).
   - timestamp in monotonic microseconds
   - sequence number
 - **Signal:** a named scalar or vector at a rate. Examples: band levels, an activity flag, external data.

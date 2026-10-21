@@ -33,7 +33,7 @@ HITS_MAX_DB = 40.0
 MAX_BEAT_OFFSET = 200.0  # ms the beats can be moved earlier (+) or later (-)
 # Audio reactiveness. on: the segments follow the audio. off: the leds show
 # the ambient light. auto: reactive while sound plays, the ambient light after
-# `idle_after` seconds of silence (see studio_engine.Ambient).
+# `idle_after` seconds of silence (see legacy/ambient.py).
 REACTIVE_MODES = ('on', 'auto', 'off')
 AMBIENT_STYLES = ('solid', 'breathe')
 MAX_IDLE_AFTER = 600.0
