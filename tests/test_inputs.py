@@ -78,7 +78,7 @@ def test_inputs_report_in_the_contracts_shapes() -> None:
     models.InputStatus.model_validate(audio.status())
     media = MediaInput(lambda: True, lambda: audio_settings())
     models.MediaState.model_validate(media.status())
-    if sys.platform != 'win32':
+    if sys.platform not in ('win32', 'linux'):  # Linux reads MPRIS
         assert media.status()['state'] == 'unavailable'
         assert media.health() == 'error'
         assert not media.available

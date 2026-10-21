@@ -49,15 +49,17 @@ jobs:
           uv run ruff format --check .
       - name: Pyright
         run: uv run pyright
-      - name: PulseAudio server for the Linux capture tests (ADR-0031)
+      - name: PulseAudio server and dbus-daemon for the Linux capture and MPRIS tests
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils
+          sudo apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils dbus
           pulseaudio --daemonize=yes --exit-idle-time=-1
           pactl info
+          dbus-daemon --version
           echo "FOLO_PULSE_TESTS=1" >> "$GITHUB_ENV"
-      - name: Tests (goldens, beat fixtures, sanitize_config, the studio starting, Linux capture)
+          echo "FOLO_DBUS_TESTS=1" >> "$GITHUB_ENV"
+      - name: Tests (goldens, beat fixtures, sanitize_config, the studio starting, Linux capture and MPRIS)
         run: uv run pytest --cov --cov-report=xml --cov-report=term-missing:skip-covered
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

@@ -1,8 +1,8 @@
 """
 The media input (RB-04 step 2): what's playing, its album art and colours,
-and the player controls. Windows reads its media sessions (windows.py).
-Linux reads MPRIS through dbus-fast, which isn't implemented yet; until then
-the input reports itself unavailable there.
+and the player controls. Windows reads its media sessions (windows.py) and
+Linux the MPRIS players on the session D-Bus (linux.py). Elsewhere the
+input reports itself unavailable.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from folo_source.inputs.base import InputKind, InputState
-from folo_source.inputs.media.windows import NowPlaying
+from folo_source.inputs.media import linux, windows
 
-NOT_YET = 'Now playing on Linux reads MPRIS, which is not implemented yet'
+UNSUPPORTED = 'Now playing needs Windows or Linux'
 
 # The media states as the source's status notification names them
 _HEALTH: dict[str, InputState] = {
@@ -36,9 +36,11 @@ class MediaInput:
     """
 
     def __init__(self, enabled: Callable[[], bool], audio: Callable[[], Mapping[str, Any]]) -> None:
-        self.session: NowPlaying | None = (
-            NowPlaying(enabled, audio) if sys.platform == 'win32' else None
-        )
+        self.session: windows.NowPlaying | linux.NowPlaying | None = None
+        if sys.platform == 'win32':
+            self.session = windows.NowPlaying(enabled, audio)
+        elif sys.platform == 'linux':
+            self.session = linux.NowPlaying(enabled, audio)
 
     @property
     def kind(self) -> InputKind:
@@ -88,7 +90,7 @@ class MediaInput:
     @property
     def message(self) -> str:
         """Why it's unavailable or failed, if it is."""
-        return self.session.message if self.session is not None else NOT_YET
+        return self.session.message if self.session is not None else UNSUPPORTED
 
     def status(self) -> dict[str, Any]:
         """Now playing, as the media notification sends it (api.json's MediaState)."""

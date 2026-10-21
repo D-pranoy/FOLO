@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher, the local link and the executor)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher, the local link and the executor)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -21,7 +21,7 @@ The first half runs in a **source** (the effect engine and capture agent). The s
 | Input | Description |
 |---|---|
 | Audio | See [Audio inputs](#audio-inputs) below. Captured in about 10 ms packets and analysed with 4096- and 2048-point Hann-windowed FFTs, as today ([current system](current-system.md)). |
-| Media session | Now playing: title, artist, album art, cover colours, play state; player controls. Windows media sessions or Linux MPRIS ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). |
+| Media session | Now playing: title, artist, album art, cover colours, play state; player controls. Windows media sessions or Linux MPRIS ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). On Linux, art is read when the player names a local file (`file://`); art a player only has on the web isn't fetched. |
 | Screen | One selected screen per source in v1, captured on demand by the capture agent ([display capture](../integrations/display-capture.md)) |
 | Generator | Time, LFO, noise; for idle and ambient effects |
 | Local ingest | Signals or frames pushed by local programs over loopback ([source link](../specs/source-link.md#local-ingest)) |

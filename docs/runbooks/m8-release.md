@@ -105,7 +105,7 @@ Status: Accepted · Implementation: Not started
 
 1. **`build.yml`** (reusable and manual), on a matrix of `windows-latest` (x64), `ubuntu-22.04` (x64) and `ubuntu-22.04-arm` (arm64):
    1. Build the UI.
-   2. Freeze the effect engine (PyInstaller one-dir), including cffi, the `winrt` packages on Windows and `dbus-fast` on Linux.
+   2. Freeze the effect engine (PyInstaller one-dir), including cffi, the `winrt` packages on Windows and `dbus-fast` and Pillow on Linux.
    3. Build the node and the capture agent.
    4. Bundle them into the Tauri app.
    5. `tauri build` (Windows: NSIS; Linux: deb, rpm, AppImage) with updater artifacts.
