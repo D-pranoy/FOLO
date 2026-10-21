@@ -11988,6 +11988,9 @@ pub struct SceneItem {
     >,
     #[serde(default = "defaults::scene_item_id")]
     pub id: Id,
+    ///The strip length its cells regions were made for, so they can be scaled to another; 0 when it has none.
+    #[serde(default)]
+    pub led_count: i64,
     #[serde(default = "defaults::scene_item_scene")]
     pub scene: Scene,
     #[serde(default = "defaults::scene_item_schema_version")]
@@ -11998,6 +12001,7 @@ impl ::std::default::Default for SceneItem {
         Self {
             fallbacks: Default::default(),
             id: defaults::scene_item_id(),
+            led_count: Default::default(),
             scene: defaults::scene_item_scene(),
             schema_version: defaults::scene_item_schema_version(),
         }

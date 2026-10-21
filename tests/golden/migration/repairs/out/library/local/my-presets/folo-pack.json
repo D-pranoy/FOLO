@@ -1,0 +1,24 @@
+{
+  "id": "local/my-presets",
+  "version": "1.0.0",
+  "folo": ">=1.0 <2",
+  "name": "My presets",
+  "description": "Presets saved in the FOLO studio",
+  "license": "MIT",
+  "authors": [],
+  "tags": [],
+  "requires": {},
+  "contents": {
+    "palettes": [],
+    "reactions": [],
+    "looks": [],
+    "scenes": [
+      "111f8c6a"
+    ],
+    "zone_templates": []
+  },
+  "files": {
+    "scenes/preset-001.json": "d88e4d1e2d87aa2bf6c42598e15d3fbb8a8c1a2a59c6d9dfda949c203c7ce514"
+  },
+  "previews": {}
+}

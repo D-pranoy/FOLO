@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "led_count": 150,
+  "audio": {
+    "device": "default",
+    "app": "",
+    "app_mode": "only",
+    "gain": 0.0,
+    "auto_level": false
+  },
+  "hyperion": {
+    "enabled": true,
+    "host": "localhost",
+    "port": 19444,
+    "priority": 100,
+    "fps": 40
+  },
+  "master": 1.0,
+  "background": "#000000",
+  "reactive": "on",
+  "ambient": {
+    "color": "#4B00FF",
+    "style": "solid",
+    "level": 0.35,
+    "idle_after": 5.0
+  },
+  "beat": {
+    "offset": 0
+  },
+  "now_playing": {
+    "enabled": true,
+    "cover_colors": false,
+    "pause_ambient": true
+  },
+  "segments": [
+    {
+      "id": "seg1",
+      "name": "Bass",
+      "enabled": true,
+      "solo": false,
+      "start": 0,
+      "end": 49,
+      "freq_lo": 25.0,
+      "freq_hi": 160.0,
+      "trigger": "level",
+      "beats": 1.0,
+      "threshold": -50.0,
+      "ceiling": -15.0,
+      "gain": 1.0,
+      "curve": 1.0,
+      "attack": 10.0,
+      "release": 250.0,
+      "floor": 0.0,
+      "mode": "fill",
+      "direction": "center",
+      "peak": true,
+      "speed": 120.0,
+      "width": 20.0,
+      "palette": [
+        "#0033CC",
+        "#000080",
+        "#4B00FF"
+      ],
+      "lane": -1
+    },
+    {
+      "id": "seg2",
+      "name": "Mids",
+      "enabled": true,
+      "solo": false,
+      "start": 50,
+      "end": 99,
+      "freq_lo": 160.0,
+      "freq_hi": 2000.0,
+      "trigger": "level",
+      "beats": 1.0,
+      "threshold": -55.0,
+      "ceiling": -25.0,
+      "gain": 1.0,
+      "curve": 1.0,
+      "attack": 20.0,
+      "release": 300.0,
+      "floor": 0.0,
+      "mode": "pulse",
+      "direction": "forward",
+      "peak": false,
+      "speed": 120.0,
+      "width": 20.0,
+      "palette": [
+        "#FF3399",
+        "#FF00FF",
+        "#800080"
+      ],
+      "lane": -1
+    },
+    {
+      "id": "seg3",
+      "name": "Highs",
+      "enabled": true,
+      "solo": false,
+      "start": 100,
+      "end": 149,
+      "freq_lo": 2000.0,
+      "freq_hi": 16000.0,
+      "trigger": "level",
+      "beats": 1.0,
+      "threshold": -72.0,
+      "ceiling": -40.0,
+      "gain": 1.0,
+      "curve": 1.0,
+      "attack": 5.0,
+      "release": 180.0,
+      "floor": 0.0,
+      "mode": "spectrum",
+      "direction": "forward",
+      "peak": false,
+      "speed": 120.0,
+      "width": 20.0,
+      "palette": [
+        "#800080",
+        "#8F00FF",
+        "#4B0082"
+      ],
+      "lane": -1
+    }
+  ],
+  "presets": [],
+  "default_preset": ""
+}

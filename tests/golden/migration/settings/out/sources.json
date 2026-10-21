@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "revision": 0,
+  "server_id": "",
+  "sources": [
+    {
+      "id": "local",
+      "name": "This computer",
+      "role": "owner",
+      "public_key": "",
+      "surfaces": [
+        "main"
+      ],
+      "inputs": {
+        "audio": {
+          "device": "in:Line In",
+          "app": "spotify.exe",
+          "app_mode": "except",
+          "gain": -6.5,
+          "auto_level": true
+        },
+        "media": {
+          "enabled": false
+        },
+        "screens": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "local/my-presets",
+  "version": "1.0.0",
+  "folo": ">=1.0 <2",
+  "name": "My presets",
+  "description": "Presets saved in the FOLO studio",
+  "license": "MIT",
+  "authors": [],
+  "tags": [],
+  "requires": {},
+  "contents": {
+    "palettes": [],
+    "reactions": [],
+    "looks": [],
+    "scenes": [],
+    "zone_templates": []
+  },
+  "files": {},
+  "previews": {}
+}

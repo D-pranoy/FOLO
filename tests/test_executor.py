@@ -78,7 +78,8 @@ def make(
     return executor, sent
 
 
-@pytest.mark.parametrize('name', ORDER)
+# Every case runs through the migration too (test_migration.py): a sample here
+@pytest.mark.parametrize('name', ORDER[::8])
 def test_published_frames_match_the_goldens(name: str) -> None:
     case = CASES[name]
     executor, sent = make(case.config, tuple(case.colors))

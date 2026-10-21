@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "revision": 0,
+  "server_id": "",
+  "providers": [
+    {
+      "id": "hyperion",
+      "kind": "hyperion",
+      "name": "Hyperion",
+      "enabled": false,
+      "rate_hz": 60,
+      "settings": {
+        "kind": "hyperion",
+        "host": "hyperion.local",
+        "port": 19445,
+        "priority": 50,
+        "origin": "FOLO"
+      },
+      "output": "element"
+    }
+  ]
+}

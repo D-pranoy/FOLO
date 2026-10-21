@@ -2819,6 +2819,11 @@ export interface components {
                     /** @default {} */
                     scene: components["schemas"]["Scene"];
                     /**
+                     * @description The strip length its cells regions were made for, so they can be scaled to another; 0 when it has none.
+                     * @default 0
+                     */
+                    led_count: number;
+                    /**
                      * @description Role: the role to use when the zone has no surface for it.
                      * @default {}
                      */
