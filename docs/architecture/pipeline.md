@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer and post-processing effects, and surfaces)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows, the beat signal, the audio-visualizer and post-processing effects, surfaces, and the publisher's frames and local link)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -96,6 +96,9 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 
 - The engine renders at the input rate: about 100 Hz for audio, the capture rate for screen.
 - It publishes at the rate and resolution the controller requests per zone. Canvases default to 64×36 and are capped at 128×72 on the network; LZ4 compression is optional.
+- **Rate:** a surface's newest frame is sent once its next send is due. Sends fall due every `1 / rate_hz` seconds, counted from the first, so a 60 Hz surface fed 100 frames a second still sends 60. After a pause longer than one period the count starts again. Frames aren't interpolated, and a surface rendering slower than its rate sends every frame.
+- **Resolution:** a surface rendered at another resolution than requested is resampled by area: each requested cell is the average of the rendered cells under it, weighted by how much of each it covers, across the columns and then down the rows. At the same resolution the frame is sent as it is.
+- **Quantisation** to the requested pixel format follows the [source link](../specs/source-link.md#surface-frames).
 - The link and framing are in the [source link specification](../specs/source-link.md).
 
 ## Controller stages
