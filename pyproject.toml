@@ -28,6 +28,9 @@ dependencies = [
   "winrt-Windows.Graphics.Imaging>=3.2; sys_platform == 'win32'",
 ]
 
+[project.scripts]
+folo-source = "folo_source.cli:main"
+
 [dependency-groups]
 dev = [
   "pytest>=9.1",
@@ -105,6 +108,9 @@ strict = [
   "source/folo_source/effects/post.py",
   "source/folo_source/surfaces",
   "source/folo_source/publish",
+  "source/folo_source/cli.py",
+  "source/folo_source/runtime/executor.py",
+  "source/folo_source/runtime/source.py",
   "source/folo_source/legacy/renderer.py",
 ]
 

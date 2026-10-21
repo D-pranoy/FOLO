@@ -31,6 +31,7 @@ py -3.13 -m venv .venv
 
 | Task | Command |
 |---|---|
+| The effect engine for a node (RB-04; the node starts it with `FOLO_SOURCE_LINK` and `FOLO_SOURCE_TOKEN` in its environment) | `uv run folo-source [--seed N]` or `python -m folo_source` |
 | Run the studio (opens http://127.0.0.1:8777/) | `studio.bat` or `.venv\Scripts\python.exe studio.py [--port 8777] [--no-browser] [--config studio.json] [--seed N]` |
 | List audio sources (outputs, inputs, apps playing audio) | the studio's Audio input card, or `GET http://127.0.0.1:8777/api/sources` |
 | Tests (goldens, beat fixtures, `sanitize_config`, the studio starting, the clamper, contract drift and the conformance harness; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
@@ -142,7 +143,8 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
 - `effects/post.py`: the post-processing effects `brightness`, `mirror`, `blur` and `trail`
 - `effects/visualizers.py`: the `audio-visualizer` effect (`AudioVisualizer`, `LayerState`): today's segment logic, the modes and the beat targets, drawing each layer's line; `effects/colors.py`: palettes and album colors
 - `surfaces/renderer.py`: `SurfaceRenderer`, a surface's layer stack: regions, axis modes, blend modes, background and master, as `docs/architecture/pipeline.md` defines them
-- `runtime/engine.py`: `StudioEngine`, which wires them together and renders silence while idle; `runtime/lifecycle.py`: shutdown, thread joins, the seeded random generator; `runtime/logs.py`: JSON-line logging
+- `runtime/executor.py`: `Executor`, which renders the surfaces of a node's `config.apply` step by step (beat and activity first, then each stack) and publishes them; `runtime/source.py`: `SourceEngine`, the engine as its node runs it: the inputs, the render thread (merging packets that came during a slow frame, idle rendering), the notifications and the answers to the node's requests; `cli.py`: the `folo-source` command
+- `runtime/engine.py`: `StudioEngine`, which wires them together for the legacy studio and renders silence while idle; `runtime/lifecycle.py`: shutdown, thread joins, the seeded random generator; `runtime/logs.py`: JSON-line logging
 - `legacy/`: what the controller takes over later: `v1.py` (the config), `renderer.py` (the v1 `Renderer`: a config's segments as audio-visualizer layers on one strip surface, plus the ambient light), `ambient.py` (the ambient light, RB-08), `hyperion.py` and `json_client.py` (the Hyperion output, RB-10)
 - `publish/`: publishing to the node (RB-04 step 7): `frames.py` (surface and signal frames: resampling by area, quantising to rgb8, rgb16 or rgbf32, LZ4, and decoding for tests), `publisher.py` (`Publisher`: each surface at its requested rate and resolution, sequence numbers, the signals asked for) and `link.py` (`LocalLink`: the local link of ADR-0032 on its own asyncio thread, with the launch token, newest-wins sending, JSON-RPC answers, reconnecting, and giving up after 30 s). `tests/fake_node.py` is the node it's tested against.
 - `contracts/`: the generated models and the clamper (RB-02)

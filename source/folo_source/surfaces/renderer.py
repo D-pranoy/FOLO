@@ -10,6 +10,7 @@ them instead. The stack is worked bottom first over the background, then
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -134,6 +135,8 @@ class SurfaceRenderer:
         self._colors: tuple[str, ...] = ()
         self._base: Values = np.zeros((0, 3))
         self._entries: list[_Entry] = []
+        # Seconds each effect took in the last compose(), all its layers together
+        self.timings: dict[str, float] = {}
 
     @property
     def rng(self) -> np.random.Generator:
@@ -232,10 +235,13 @@ class SurfaceRenderer:
         out = self._base.copy()
         levels: Levels = {}
         lines: dict[str, list[Line | None]] = {}
+        timings = dict.fromkeys(self.effects, 0.0)
         for effect_id, effect in self.effects.items():
             if isinstance(effect, PostEffect):
                 continue
+            started = time.perf_counter()
             lines[effect_id], effect_levels = effect.render(spectrum, dt, beat)
+            timings[effect_id] = time.perf_counter() - started
             levels.update(effect_levels)
         for entry in self._entries:
             if not entry.visible:
@@ -244,7 +250,9 @@ class SurfaceRenderer:
                 effect = self.effects[entry.effect_id]
                 assert isinstance(effect, PostEffect)
                 below = out[entry.cols] if entry.rows is None else out[entry.rows, entry.cols]
+                started = time.perf_counter()
                 effect.apply(entry.position, below, dt)
+                timings[entry.effect_id] += time.perf_counter() - started
                 continue
             line = lines[entry.effect_id][entry.position]
             if line is None:
@@ -253,6 +261,7 @@ class SurfaceRenderer:
                 blend(entry.blend, out[entry.cols], line)
             else:
                 blend(entry.blend, out[entry.rows, entry.cols], line[entry.index])
+        self.timings = timings
         return out, levels
 
     @staticmethod
