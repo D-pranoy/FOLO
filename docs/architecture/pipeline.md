@@ -37,6 +37,8 @@ A source **lists every input available to it**. Each input is configured and ena
 | An input (microphone, line-in) | WASAPI capture | PulseAudio/PipeWire source |
 | Only one app / everything except one app | Process loopback on the app's top process (Windows 10 2004+). Waits while the app isn't running; re-attaches when it restarts. | Later (PipeWire stream targets) |
 
+On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAudio server also serves ([ADR-0031](../decisions/ADR-0031-linux-audio-capture.md)).
+
 - **Every wake drains all queued packets**, so analysis runs on the newest audio. After a gap of more than 0.1 s the analysis window is cleared.
 - **Stats** published with the input: packets/s, median delay, glitches, falling peak meters with a clip flag.
 - **Gain and auto level:**

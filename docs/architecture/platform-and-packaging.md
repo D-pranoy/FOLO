@@ -66,8 +66,8 @@ Decided in [ADR-0017](../decisions/ADR-0017-desktop-app-tray-autostart-and-servi
   - The node and its workers go to `/usr/lib/folo/`.
   - `postinst` runs `systemctl daemon-reload` only (Debian policy: no interactive prompts).
   - The app's first run asks about the background service and start at sign-in.
-  - Runtime dependencies: `libpipewire-0.3`, `xdg-desktop-portal` (plus the KDE or GNOME backend), `libwebkit2gtk-4.1`, `libayatana-appindicator3`.
-- **Arch / AUR:** `packaging/arch/PKGBUILD` for `folo-bin`. It repackages the signed release tarball, ships the same units and depends on `pipewire`, `xdg-desktop-portal`, `webkit2gtk-4.1` and `libayatana-appindicator`. CI validates it with `makepkg` in an Arch container.
+  - Runtime dependencies: `libpipewire-0.3`, `libpulse0` (audio capture, [ADR-0031](../decisions/ADR-0031-linux-audio-capture.md); `pulseaudio-libs` in the rpm), `xdg-desktop-portal` (plus the KDE or GNOME backend), `libwebkit2gtk-4.1`, `libayatana-appindicator3`.
+- **Arch / AUR:** `packaging/arch/PKGBUILD` for `folo-bin`. It repackages the signed release tarball, ships the same units and depends on `pipewire`, `libpulse`, `xdg-desktop-portal`, `webkit2gtk-4.1` and `libayatana-appindicator`. CI validates it with `makepkg` in an Arch container.
 - **AppImage:** start at sign-in uses an XDG entry with the `$APPIMAGE` path, with a warning if the file moves. It links the system's libpipewire.
 - Desktop builds are compiled on Ubuntu 22.04 runners for a low glibc baseline.
 
