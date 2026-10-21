@@ -1,6 +1,6 @@
 # ADR-0031: Linux audio capture in the effect engine
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-15
 
 ## Context
