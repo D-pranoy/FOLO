@@ -83,12 +83,12 @@ pub(crate) async fn serve<S: LinkSocket>(shared: &Shared, mut socket: S) {
     };
     let welcome = json!({"version": version, "result": "ok"});
     if !socket.send(Message::Text(welcome.to_string())).await {
-        shared.release();
+        shared.release(engine);
         return;
     }
     log::info!("the effect engine linked (source link {version})");
     let ended = session(shared, &mut socket, &mut generation, engine).await;
-    shared.release();
+    shared.release(engine);
     let _ = shared.events.send((engine, ended));
 }
 
@@ -164,8 +164,8 @@ async fn session<S: LinkSocket>(
                     params["revision"] = json!(revision);
                     let request = rpc(next_id, "config.apply", &params);
                     next_id += 1;
-                    if !socket.send(Message::Binary(request)).await {
-                        return Event::Unlinked;
+                    if let Some(ended) = send(socket, Message::Binary(request)).await {
+                        return ended;
                     }
                     log::debug!("sent configuration {revision} to the effect engine");
                 }
@@ -176,8 +176,8 @@ async fn session<S: LinkSocket>(
                 };
                 let message = rpc(next_id, "restart", &json!({"component": "engine"}));
                 next_id += 1;
-                if !socket.send(Message::Binary(message)).await {
-                    return Event::Unlinked;
+                if let Some(ended) = send(socket, Message::Binary(message)).await {
+                    return ended;
                 }
             }
             _ = generation.changed() => {
@@ -191,6 +191,23 @@ async fn session<S: LinkSocket>(
                 );
                 return Event::Hung;
             }
+        }
+    }
+}
+
+/// Sends a message in the session: `None` once sent, or why the session
+/// ends. An engine that stops reading counts as hung, as one that stops
+/// sending does.
+async fn send<S: LinkSocket>(socket: &mut S, message: Message) -> Option<Event> {
+    match timeout(HEARTBEAT_TIMEOUT, socket.send(message)).await {
+        Ok(true) => None,
+        Ok(false) => Some(Event::Unlinked),
+        Err(_) => {
+            log::error!(
+                "the effect engine read nothing for {} s",
+                HEARTBEAT_TIMEOUT.as_secs()
+            );
+            Some(Event::Hung)
         }
     }
 }

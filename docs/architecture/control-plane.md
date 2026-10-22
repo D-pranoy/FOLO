@@ -142,7 +142,7 @@ A usage error exits with status 2. Until their run books land, `token`, `pair` a
 - **Starting the engine** ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D9):
   - The node runs `folo-source` from its own executable's folder, or else from the `PATH`, with its own environment minus the `FOLO_*` variables, plus the link's URL and launch token.
   - It runs in the controller role while `local_source.enabled` is on. In the source role it always runs, and it gets no configuration until the node's owner controller sends one (RB-16).
-  - **Restarts:** when it exits without being asked to, or is hung (5 s without a message), the node starts a new one after 1 s, doubling up to 60 s, each delay cut by up to 25% at random. The delay starts over once the engine has stayed linked for 60 s. A hung engine is killed first.
+  - **Restarts:** when it exits without being asked to, or is hung (5 s without a message or without reading one, or 30 s without linking after it starts or its link ends), the node starts a new one after 1 s, doubling up to 60 s, each delay cut by up to 25% at random. The delay starts over once the engine has stayed linked for 60 s. A hung engine is killed first.
   - **Stopping:** the node sends `restart {component: engine}`, which ends the engine with status 0, and kills it if it hasn't exited after 5 s.
 - **The engine's configuration** is the `config.apply` the node builds from its documents. It sends it after the handshake, and again when a document it comes from changes:
   - `inputs`: the inputs of the source `local` in `sources.json`, or the defaults when there is none

@@ -17,6 +17,9 @@ use serde_json::{Map, Value};
 const ROTATE_AT: u64 = 10 * 1024 * 1024;
 /// Older files kept: `folo.log.1` to `folo.log.4`.
 const KEEP: u32 = 4;
+/// After a rotation fails (another program holds the file open without
+/// sharing its deletion), the next try comes this much later.
+const RETRY_AFTER: u64 = 1024 * 1024;
 /// The logger name of engine lines that aren't JSON.
 const ENGINE_LOGGER: &str = "folo-source";
 
@@ -29,6 +32,8 @@ struct Rotating {
     path: PathBuf,
     file: File,
     size: u64,
+    /// The size at which it rotates next.
+    rotate_at: u64,
 }
 
 impl Rotating {
@@ -42,12 +47,13 @@ impl Rotating {
             path: path.to_path_buf(),
             file,
             size,
+            rotate_at: ROTATE_AT,
         })
     }
 
     fn write(&mut self, line: &str) -> io::Result<()> {
         let length = line.len() as u64 + 1;
-        if self.size > 0 && self.size + length > ROTATE_AT {
+        if self.size > 0 && self.size + length > self.rotate_at {
             self.rotate()?;
         }
         self.file.write_all(line.as_bytes())?;
@@ -62,7 +68,15 @@ impl Rotating {
         for n in (1..KEEP).rev() {
             let _ = fs::rename(numbered(n), numbered(n + 1));
         }
-        fs::rename(&self.path, numbered(1))?;
+        if let Err(error) = fs::rename(&self.path, numbered(1)) {
+            // Keep writing to the file as it is, and try again later
+            let _ = writeln!(
+                io::stderr().lock(),
+                "the log file can't be rotated: {error}"
+            );
+            self.rotate_at = self.size + RETRY_AFTER;
+            return Ok(());
+        }
         *self = Self::open(&self.path)?;
         Ok(())
     }

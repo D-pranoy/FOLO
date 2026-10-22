@@ -40,6 +40,9 @@ const JITTER: f64 = 0.25;
 const HEALTHY_AFTER: Duration = Duration::from_secs(60);
 /// How long a stopping engine has before it is killed.
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a started or unlinked engine has to link before it counts as
+/// hung: the engine itself gives up after 30 s without a link (ADR-0032).
+const LINK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Starts a process with a console of its own that has no window.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -172,11 +175,14 @@ impl Shared {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The linked engine is gone.
-    pub(crate) fn release(&self) {
+    /// The engine `generation` linked is gone. A session that ends after
+    /// the supervisor moved on to a newer engine leaves that one's link alone.
+    pub(crate) fn release(&self, generation: u64) {
         let mut state = self.lock();
-        state.linked = false;
-        state.requests = None;
+        if *self.generation.borrow() == generation {
+            state.linked = false;
+            state.requests = None;
+        }
     }
 
     fn take_events(&self) -> mpsc::UnboundedReceiver<(u64, Event)> {
@@ -308,6 +314,20 @@ impl Supervisor {
     }
 }
 
+/// Whether an environment variable is one of the node's `FOLO_*`
+/// variables. Windows ignores case in variable names, so there `folo_x`
+/// counts too.
+#[must_use]
+pub fn is_folo_variable(name: &std::ffi::OsStr) -> bool {
+    let name = name.to_string_lossy();
+    let prefix = name.get(..5).unwrap_or_default();
+    if cfg!(windows) {
+        prefix.eq_ignore_ascii_case("FOLO_")
+    } else {
+        prefix == "FOLO_"
+    }
+}
+
 /// A new launch token: 256 random bits, base64url (ADR-0032 D2).
 fn launch_token() -> String {
     let mut bytes = [0u8; 32];
@@ -338,6 +358,58 @@ enum Ending {
     Stop {
         shutdown: bool,
     },
+}
+
+/// Watches one run of the engine until it ends: whether it exited, hung
+/// or is to stop, and whether a link of it lasted [`HEALTHY_AFTER`].
+async fn watch_run(
+    shared: &Shared,
+    child: &mut Child,
+    pid: u32,
+    control: &mut watch::Receiver<Control>,
+    events: &mut mpsc::UnboundedReceiver<(u64, Event)>,
+) -> (Ending, bool) {
+    let mut linked_at: Option<Instant> = None;
+    // Whether a link lasted HEALTHY_AFTER, even if it ended before the run did
+    let mut healthy = false;
+    let mut link_by = Instant::now() + LINK_TIMEOUT;
+    let ending = loop {
+        tokio::select! {
+            status = child.wait() => break Ending::Exited(status),
+            () = tokio::time::sleep_until(link_by), if linked_at.is_none() => {
+                log::error!(
+                    "the effect engine didn't link within {} s",
+                    LINK_TIMEOUT.as_secs()
+                );
+                break Ending::Hung;
+            }
+            event = events.recv() => match event {
+                Some((generation, _)) if generation != *shared.generation.borrow() => {}
+                Some((_, Event::Linked)) => {
+                    linked_at = Some(Instant::now());
+                    shared.set_status(WorkerState::Running, pid);
+                }
+                Some((_, Event::Unlinked)) => {
+                    if let Some(since) = linked_at.take() {
+                        healthy |= since.elapsed() >= HEALTHY_AFTER;
+                        log::warn!("the effect engine's link ended after {:.1} s", since.elapsed().as_secs_f64());
+                    }
+                    link_by = Instant::now() + LINK_TIMEOUT;
+                    shared.set_status(WorkerState::Starting, pid);
+                }
+                Some((_, Event::Hung)) => break Ending::Hung,
+                None => break Ending::Stop { shutdown: true },
+            },
+            changed = control.changed() => {
+                let now = *control.borrow_and_update();
+                if changed.is_err() || now.shutdown || !now.wanted {
+                    break Ending::Stop { shutdown: changed.is_err() || now.shutdown };
+                }
+            }
+        }
+    };
+    healthy |= linked_at.is_some_and(|since| since.elapsed() >= HEALTHY_AFTER);
+    (ending, healthy)
 }
 
 async fn supervise(
@@ -384,34 +456,8 @@ async fn supervise(
         let pid = child.id().unwrap_or(0);
         shared.set_status(WorkerState::Starting, pid);
         log::info!("started the effect engine (process {pid})");
-        let mut linked_at: Option<Instant> = None;
-        let ending = loop {
-            tokio::select! {
-                status = child.wait() => break Ending::Exited(status),
-                event = events.recv() => match event {
-                    Some((generation, _)) if generation != *shared.generation.borrow() => {}
-                    Some((_, Event::Linked)) => {
-                        linked_at = Some(Instant::now());
-                        shared.set_status(WorkerState::Running, pid);
-                    }
-                    Some((_, Event::Unlinked)) => {
-                        if let Some(since) = linked_at.take() {
-                            log::warn!("the effect engine's link ended after {:.1} s", since.elapsed().as_secs_f64());
-                        }
-                        shared.set_status(WorkerState::Starting, pid);
-                    }
-                    Some((_, Event::Hung)) => break Ending::Hung,
-                    None => break Ending::Stop { shutdown: true },
-                },
-                changed = control.changed() => {
-                    let now = *control.borrow_and_update();
-                    if changed.is_err() || now.shutdown || !now.wanted {
-                        break Ending::Stop { shutdown: changed.is_err() || now.shutdown };
-                    }
-                }
-            }
-        };
-        let healthy = linked_at.is_some_and(|since| since.elapsed() >= HEALTHY_AFTER);
+        let (ending, healthy) =
+            watch_run(&shared, &mut child, pid, &mut control, &mut events).await;
         match ending {
             Ending::Stop { shutdown } => {
                 stop(&shared, &mut child).await;
@@ -443,7 +489,12 @@ async fn supervise(
 
 /// The engine is gone: its token stops working and its link ends.
 fn end_engine(shared: &Shared) {
-    shared.lock().token = None;
+    {
+        let mut state = shared.lock();
+        state.token = None;
+        state.linked = false;
+        state.requests = None;
+    }
     shared.generation.send_modify(|g| *g += 1);
 }
 
@@ -534,7 +585,7 @@ fn spawn(
     process.process_group(0);
     // The node's environment without its own variables (ADR-0034 D9).
     for (name, _) in std::env::vars_os() {
-        if name.to_string_lossy().starts_with("FOLO_") {
+        if is_folo_variable(&name) {
             process.env_remove(name);
         }
     }
@@ -546,13 +597,20 @@ fn spawn(
     Ok(child)
 }
 
-/// Forwards the engine's stderr, line by line, to the node's log.
+/// Forwards the engine's stderr, line by line, to the node's log. Bytes
+/// that aren't UTF-8 (a traceback in the ANSI code page) are replaced, so
+/// one such line doesn't end the log.
 async fn pump<R: AsyncRead + Unpin>(output: R, sink: Arc<dyn LogSink>) {
-    let mut lines = BufReader::new(output).lines();
+    let mut output = BufReader::new(output);
+    let mut line = Vec::new();
     loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => sink.engine_line(&line),
-            Ok(None) => return,
+        line.clear();
+        match output.read_until(b'\n', &mut line).await {
+            Ok(0) => return,
+            Ok(_) => {
+                let text = String::from_utf8_lossy(&line);
+                sink.engine_line(text.trim_end_matches(['\r', '\n']));
+            }
             Err(error) => {
                 log::debug!("reading the effect engine's output failed: {error}");
                 return;
@@ -576,6 +634,37 @@ mod tests {
             }
         }
         assert!(backoff(u32::MAX) <= BACKOFF_MAX);
+    }
+
+    #[test]
+    fn folo_variables_are_found_by_their_prefix() {
+        assert!(is_folo_variable(std::ffi::OsStr::new("FOLO_LOG_LEVEL")));
+        assert!(!is_folo_variable(std::ffi::OsStr::new("FOLOX")));
+        assert!(!is_folo_variable(std::ffi::OsStr::new("PATH")));
+        // Windows ignores case in variable names
+        assert_eq!(
+            is_folo_variable(std::ffi::OsStr::new("folo_log_level")),
+            cfg!(windows)
+        );
+    }
+
+    #[tokio::test]
+    async fn output_that_isnt_utf8_doesnt_end_the_log() {
+        struct Lines(Mutex<Vec<String>>);
+        impl LogSink for Lines {
+            fn engine_line(&self, line: &str) {
+                self.0.lock().unwrap().push(line.to_owned());
+            }
+        }
+        let lines = Arc::new(Lines(Mutex::new(Vec::new())));
+        // A path in the ANSI code page, then a JSON line, then no newline
+        let output: &[u8] = b"C:\\Users\\Jos\xe9\r\n{\"msg\": \"after\"}\nlast";
+        pump(output, Arc::clone(&lines) as Arc<dyn LogSink>).await;
+        let got = lines.0.lock().unwrap().clone();
+        assert_eq!(
+            got,
+            ["C:\\Users\\Jos\u{fffd}", "{\"msg\": \"after\"}", "last"]
+        );
     }
 
     #[test]

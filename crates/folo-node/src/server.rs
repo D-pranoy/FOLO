@@ -80,7 +80,8 @@ async fn guard(
             "the Host header isn't allowed",
         );
     }
-    if !peer.ip().is_loopback() {
+    // A dual-stack listener sees 127.0.0.1 as ::ffff:127.0.0.1
+    if !peer.ip().to_canonical().is_loopback() {
         return error(
             StatusCode::FORBIDDEN,
             "loopback_only",

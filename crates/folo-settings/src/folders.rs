@@ -133,8 +133,9 @@ pub fn home(location: &Location<'_>) -> Result<(Mode, PathBuf), FoldersError> {
     if location.service {
         let home = match location.platform {
             Platform::Windows => {
-                let base =
-                    (location.env)("ProgramData").unwrap_or_else(|| r"C:\ProgramData".into());
+                let base = (location.env)("ProgramData")
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or_else(|| r"C:\ProgramData".into());
                 PathBuf::from(base).join("FOLO")
             }
             Platform::Unix => PathBuf::from("/var/lib/folo"),

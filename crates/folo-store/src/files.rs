@@ -131,7 +131,16 @@ fn create(path: &Path, private: bool) -> io::Result<File> {
         use std::os::unix::fs::OpenOptionsExt as _;
         options.mode(0o600);
     }
-    #[cfg(not(unix))]
+    // The file starts with its folder's access list, and a handle opened
+    // before `restrict` replaces it would keep its access. Sharing nothing
+    // keeps everyone else out until then; changing the access list isn't
+    // subject to sharing.
+    #[cfg(windows)]
+    if private {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        options.share_mode(0);
+    }
+    #[cfg(not(any(unix, windows)))]
     let _ = private;
     options.open(path)
 }

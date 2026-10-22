@@ -84,7 +84,14 @@ impl Node {
         let found = {
             let mut settings = self.settings();
             let found = changes(&settings.json, &fresh.json);
-            *settings = fresh.clone();
+            // Settings that need a restart keep their running values until then
+            let mut kept = fresh.clone();
+            for path in &found.restart_required {
+                set_at(&mut kept.json, path, at(&settings.json, path).clone());
+            }
+            kept.settings = serde_json::from_value(kept.json.clone())
+                .map_err(|e| format!("{}: {e}", file_path.display()))?;
+            *settings = kept;
             found
         };
         for warning in &fresh.warnings {
@@ -107,6 +114,23 @@ impl Node {
         log::info!("reloaded: {result}");
         Ok(result)
     }
+}
+
+/// The value at a dotted settings path (`listen.port`), or null.
+fn at<'a>(value: &'a Value, path: &str) -> &'a Value {
+    path.split('.').fold(value, |value, key| &value[key])
+}
+
+/// Sets the value at a dotted settings path, making the objects on the way.
+fn set_at(value: &mut Value, path: &str, new: Value) {
+    let mut place = value;
+    for key in path.split('.') {
+        if !place.is_object() {
+            *place = json!({});
+        }
+        place = &mut place[key];
+    }
+    *place = new;
 }
 
 /// The engine's output goes into the node's log.
@@ -145,7 +169,7 @@ pub fn main(location: &LocationArgs, args: &RunArgs) -> u8 {
 fn drop_folo_variables() {
     let names: Vec<std::ffi::OsString> = std::env::vars_os()
         .map(|(name, _)| name)
-        .filter(|name| name.to_string_lossy().starts_with("FOLO_"))
+        .filter(|name| folo_supervisor::is_folo_variable(name))
         .collect();
     for name in names {
         // SAFETY: the process has only this thread yet, so nothing reads
@@ -300,8 +324,8 @@ fn ensure_identity(store: &Store) -> Result<Identity, Failure> {
 }
 
 /// Binds the node's port: loopback only while remote access is off
-/// (ADR-0034 D6); otherwise `listen.address`, plus loopback for the local
-/// link when that address isn't loopback or every address.
+/// (ADR-0034 D6); otherwise `listen.address`, plus `127.0.0.1` for the
+/// local link and the command line when that address doesn't take it.
 async fn bind(layered: &Layered) -> Result<(Vec<TcpListener>, SocketAddr), Failure> {
     let port = u16::try_from(layered.settings.listen.port.get()).unwrap_or(u16::MAX);
     let remote = layered.settings.remote_access.enabled;
@@ -316,7 +340,13 @@ async fn bind(layered: &Layered) -> Result<(Vec<TcpListener>, SocketAddr), Failu
             Failure::new(EXIT_FAILED, format!("listen.address {host} has no address"))
         })?;
         addresses.push(first);
-        if !first.ip().is_unspecified() && !first.ip().is_loopback() {
+        // 0.0.0.0 and 127.0.0.1 take it; so does :: on Linux, where it's
+        // dual-stack, but not on Windows, where it's IPv6 only
+        let takes_loopback = match first.ip() {
+            IpAddr::V4(ip) => ip.is_unspecified() || ip.is_loopback(),
+            IpAddr::V6(ip) => ip.is_unspecified() && !cfg!(windows),
+        };
+        if !takes_loopback {
             addresses.push(loopback);
         }
     } else {

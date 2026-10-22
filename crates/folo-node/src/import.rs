@@ -36,7 +36,7 @@ pub fn migrate(engine: &EngineCommand, studio: &Path, data: &Path) -> Result<(),
         .arg(data)
         .stdin(Stdio::null());
     for (name, _) in std::env::vars_os() {
-        if name.to_string_lossy().starts_with("FOLO_") {
+        if folo_supervisor::is_folo_variable(&name) {
             command.env_remove(name);
         }
     }

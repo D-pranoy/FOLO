@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 use folo_protocol::clamp::{ClampError, clamp};
 use serde_json::{Map, Value};
 
-/// How long a change waits before its document is written, as in the studio.
+/// How long a change waits before its document is written. Changes in the
+/// meantime join that write rather than postponing it, so a document being
+/// edited continuously is written at most this often.
 pub const SAVE_DELAY: Duration = Duration::from_millis(500);
 /// How long a failed write waits before it is tried again.
 const RETRY_DELAY: Duration = Duration::from_secs(5);
@@ -292,7 +294,10 @@ impl Store {
     ///
     /// [`StoreError::Structural`] or [`StoreError::Io`]; then no document changes.
     pub fn reload(&self) -> Result<Vec<Doc>, StoreError> {
-        self.flush()?;
+        // No write between flushing and reading, so every file holds what
+        // was in memory when it was read
+        let _writing = locked(&self.shared.writing);
+        write_pending(&self.shared, &self.dir)?;
         let mut fresh = Vec::with_capacity(Doc::ALL.len());
         for doc in Doc::ALL {
             fresh.push(read_document(&self.dir.join(doc.file()), doc.definition())?);
@@ -301,7 +306,8 @@ impl Store {
         let mut changed = Vec::new();
         for (doc, mut value) in Doc::ALL.into_iter().zip(fresh) {
             let current = &state.docs[index(doc)];
-            if content(&value) == content(current) {
+            // Replaced while the files were read: newer than its file
+            if state.dirty.contains(&doc) || content(&value) == content(current) {
                 continue;
             }
             let revision = revision_of(&value).max(revision_of(current) + 1);
@@ -404,6 +410,11 @@ fn write_when_due(shared: &Shared, dir: &Path) {
 
 fn write_dirty(shared: &Shared, dir: &Path) -> Result<(), StoreError> {
     let _writing = locked(&shared.writing);
+    write_pending(shared, dir)
+}
+
+/// [`write_dirty`] for a caller holding `shared.writing`.
+fn write_pending(shared: &Shared, dir: &Path) -> Result<(), StoreError> {
     let pending: Vec<(Doc, Arc<Value>)> = {
         let mut state = locked(&shared.state);
         state.due = None;
