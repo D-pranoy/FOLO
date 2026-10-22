@@ -342,6 +342,7 @@ dependencies = [
  "getrandom",
  "log",
  "serde_json",
+ "windows-sys",
 ]
 
 [[package]]

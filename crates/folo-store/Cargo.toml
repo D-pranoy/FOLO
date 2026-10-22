@@ -17,3 +17,7 @@ folo-protocol = { path = "../folo-protocol" }
 getrandom = { version = "0.3", features = ["std"] }
 log = "0.4"
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+
+[target.'cfg(windows)'.dependencies]
+# The owner-only access list of secrets.json
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization"] }

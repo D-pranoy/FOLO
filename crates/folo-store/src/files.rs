@@ -6,8 +6,8 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
 /// Writes `data` to `path` atomically. A `private` file can only be read by
-/// its owner: POSIX mode 0600, or on Windows an access list granting the
-/// owner alone, without inherited entries.
+/// its owner: POSIX mode 0600, or on Windows a protected access list whose
+/// one entry gives the file's owner full control.
 ///
 /// # Errors
 ///
@@ -47,21 +47,61 @@ pub fn restrict(path: &Path) -> io::Result<()> {
     }
     #[cfg(windows)]
     {
-        // OWNER RIGHTS (S-1-3-4) as the only entry: whoever owns the file
-        // has full control, and nobody else has any access.
-        let output = std::process::Command::new("icacls")
-            .arg(path)
-            .args(["/inheritance:r", "/grant:r", "*S-1-3-4:F", "/Q"])
-            .output()?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(io::Error::other(format!(
-                "icacls failed: {}",
-                String::from_utf8_lossy(&output.stdout).trim()
-            )))
-        }
+        owner_only(path)
     }
+}
+
+/// Replaces the file's whole access list with OWNER RIGHTS (S-1-3-4) as
+/// its one entry, protected from inheritance: whoever owns the file has
+/// full control, and nobody else has any access. (`icacls /inheritance:r`
+/// would leave explicit entries, which a file gets from its creator's
+/// defaults where its folder passes nothing on.)
+#[cfg(windows)]
+#[allow(unsafe_code)] // three Win32 calls; see the SAFETY notes
+fn owner_only(path: &Path) -> io::Result<()> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows_sys::Win32::Security::{
+        DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+        SetFileSecurityW,
+    };
+
+    /// A protected list (`P`) allowing (`A`) all file access (`FA`) to the owner (`OW`)
+    const OWNER_ONLY: &str = "D:P(A;;FA;;;OW)";
+    let wide = |text: &OsStr| text.encode_wide().chain([0]).collect::<Vec<u16>>();
+    let sddl = wide(OsStr::new(OWNER_ONLY));
+    let file = wide(path.as_os_str());
+    let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+    // SAFETY: `sddl` ends with a NUL; on success the call allocates the
+    // descriptor, which is freed below.
+    let made = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl.as_ptr(),
+            SDDL_REVISION_1,
+            &raw mut descriptor,
+            std::ptr::null_mut(),
+        )
+    };
+    if made == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `file` ends with a NUL, and `descriptor` is valid until freed.
+    let set = unsafe {
+        SetFileSecurityW(
+            file.as_ptr(),
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            descriptor,
+        )
+    };
+    let error = io::Error::last_os_error();
+    // SAFETY: allocated by ConvertStringSecurityDescriptorToSecurityDescriptorW
+    // above, and freed once.
+    unsafe { LocalFree(descriptor) };
+    if set == 0 { Err(error) } else { Ok(()) }
 }
 
 fn temporary_beside(path: &Path) -> io::Result<PathBuf> {
@@ -104,4 +144,69 @@ fn sync_dir(dir: &Path) {
     }
     #[cfg(not(unix))]
     let _ = dir;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The access list's entries, as `icacls` lists them.
+    #[cfg(windows)]
+    fn entries(path: &Path) -> Vec<String> {
+        let output = std::process::Command::new("icacls")
+            .arg(path)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| line.contains(":("))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Explicit entries go as well as inherited ones: a file created where
+    /// nothing is inherited gets its creator's default entries as explicit
+    /// ones, as on CI's Windows runners.
+    #[cfg(windows)]
+    #[test]
+    fn restricting_leaves_the_owner_alone() {
+        let mut bytes = [0u8; 4];
+        getrandom::fill(&mut bytes).unwrap();
+        let dir = std::env::temp_dir().join(format!("folo-files-{}", hex(&bytes)));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("secret");
+        fs::write(&path, b"one").unwrap();
+        let granted = std::process::Command::new("icacls")
+            .arg(&path)
+            .args(["/grant", "*S-1-5-32-545:(R)", "/Q"]) // BUILTIN\Users, explicit
+            .status()
+            .unwrap();
+        assert!(granted.success());
+        assert!(entries(&path).len() > 1);
+
+        restrict(&path).unwrap();
+        let left = entries(&path);
+        assert_eq!(left.len(), 1, "{left:?}");
+        assert!(left[0].ends_with("(F)"), "{left:?}");
+        fs::write(&path, b"two").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"two");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restricting_leaves_the_owner_alone() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mut bytes = [0u8; 4];
+        getrandom::fill(&mut bytes).unwrap();
+        let dir = std::env::temp_dir().join(format!("folo-files-{}", hex(&bytes)));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("secret");
+        fs::write(&path, b"one").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        restrict(&path).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
