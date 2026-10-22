@@ -47,4 +47,4 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0031](ADR-0031-linux-audio-capture.md) | Linux audio capture in the effect engine | Accepted |
 | [0032](ADR-0032-local-source-link.md) | The effect engine's link to its node | Accepted |
 | [0033](ADR-0033-flash-limiter-off-by-default.md) | The flash limiter is off by default, with epilepsy warnings | Accepted |
-| [0034](ADR-0034-the-node-process.md) | The node process: folders, launches and its command line | Proposed |
+| [0034](ADR-0034-the-node-process.md) | The node process: folders, launches and its command line | Accepted |
