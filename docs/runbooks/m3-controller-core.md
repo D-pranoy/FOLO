@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 awaits its first CI run)
+Status: Accepted · Implementation: Partial (RB-06 done)
 
 ## RB-06: Node core
 
