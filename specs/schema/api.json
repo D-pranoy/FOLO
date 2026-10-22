@@ -340,6 +340,80 @@
       "required": ["installed", "running"],
       "additionalProperties": false
     },
+    "NodeStatus": {
+      "description": "What `folo status --json` prints (docs/architecture/control-plane.md#status-and-health). Loopback only.",
+      "type": "object",
+      "properties": {
+        "running": {"description": "Whether a node runs on this home: always true from the API, false when `folo status` reports from the files.", "type": "boolean"},
+        "id": {"description": "The node id (docs/specs/pairing-and-connect.md#identity); empty until the node first ran.", "type": "string", "maxLength": 64},
+        "version": {"type": "string", "maxLength": 32},
+        "role": {"enum": ["controller", "source"]},
+        "launch": {"description": "managed: started by the desktop app.", "enum": ["managed", "foreground"]},
+        "mode": {"description": "The launch that chose the folders (docs/architecture/control-plane.md#folders): custom for --home or FOLO_HOME.", "enum": ["custom", "portable", "service", "user"]},
+        "home": {"description": "The folder holding node.toml.", "type": "string", "maxLength": 4096},
+        "data": {"description": "The folder holding the documents.", "type": "string", "maxLength": 4096},
+        "log": {"description": "The log file.", "type": "string", "maxLength": 4096},
+        "listen": {"description": "The address and port the node listens on, or would listen on.", "$ref": "node.json#/$defs/Listen"},
+        "overrides": {"description": "The deployment overrides, with their sources.", "type": "array", "items": {"$ref": "#/$defs/NodeOverride"}, "maxItems": 64},
+        "pairing": {"$ref": "#/$defs/PairingStatus"},
+        "workers": {"description": "Worker name (folo-source, folo-capture): its state.", "type": "object", "additionalProperties": {"$ref": "#/$defs/WorkerStatus"}},
+        "providers": {"type": "array", "items": {"$ref": "#/$defs/ProviderStatus"}, "maxItems": 256}
+      },
+      "required": ["running", "id", "version", "role", "launch", "mode", "home", "data", "log", "listen", "overrides", "pairing", "workers", "providers"],
+      "additionalProperties": false
+    },
+    "NodeOverride": {
+      "description": "A setting given by a FOLO_* variable or a flag (docs/architecture/control-plane.md#settings-layering).",
+      "type": "object",
+      "properties": {
+        "setting": {"description": "The setting's path in node.toml, for example listen.port.", "type": "string", "maxLength": 64},
+        "source": {"enum": ["environment", "flag"]},
+        "name": {"description": "The variable or the flag, for example FOLO_LISTEN_PORT or --port.", "type": "string", "maxLength": 64},
+        "value": {"description": "The value it gives the setting."}
+      },
+      "required": ["setting", "source", "name", "value"],
+      "additionalProperties": false
+    },
+    "PairingStatus": {
+      "type": "object",
+      "properties": {
+        "owner": {"description": "In the source role, the owner controller's id; empty while unpaired and in the controller role.", "type": "string", "maxLength": 64},
+        "sources": {"description": "In the controller role, the paired sources besides the local one.", "type": "integer", "minimum": 0}
+      },
+      "required": ["owner", "sources"],
+      "additionalProperties": false
+    },
+    "WorkerStatus": {
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["starting", "running", "stopped", "failed"]},
+        "pid": {"description": "Its process id; 0 while it isn't running.", "type": "integer", "minimum": 0},
+        "restarts": {"description": "How often it was started again since the node started.", "type": "integer", "minimum": 0}
+      },
+      "required": ["state", "pid", "restarts"],
+      "additionalProperties": false
+    },
+    "ProviderStatus": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 64},
+        "kind": {"enum": ["hyperion", "wled", "hue"]},
+        "enabled": {"type": "boolean"},
+        "state": {"enum": ["stopped", "connecting", "connected", "error"]}
+      },
+      "required": ["id", "kind", "enabled", "state"],
+      "additionalProperties": false
+    },
+    "ReloadResult": {
+      "description": "What `folo reload` applied (docs/architecture/control-plane.md#settings-layering).",
+      "type": "object",
+      "properties": {
+        "applied": {"description": "Settings and documents applied while running.", "type": "array", "items": {"type": "string", "maxLength": 64}},
+        "restart_required": {"description": "Changed settings that take effect after a restart.", "type": "array", "items": {"type": "string", "maxLength": 64}}
+      },
+      "required": ["applied", "restart_required"],
+      "additionalProperties": false
+    },
     "LogLines": {
       "type": "object",
       "properties": {

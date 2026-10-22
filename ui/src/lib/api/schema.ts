@@ -671,6 +671,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The node's status, as `folo status --json` prints it; loopback only
+         * @description Answers loopback requests only, which need no key (ADR-0034 D5).
+         */
+        get: operations["getNodeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-read node.toml and the documents, as `folo reload` does; loopback only
+         * @description Answers loopback requests only, which need no key (ADR-0034 D5).
+         */
+        post: operations["reloadNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/logs": {
         parameters: {
             query?: never;
@@ -2889,6 +2929,88 @@ export interface components {
              */
             mode: "notify" | "approve" | "automatic";
         };
+        Listen: {
+            /** @default 0.0.0.0 */
+            address: string;
+            /** @default 8777 */
+            port: number;
+        };
+        /** @description A setting given by a FOLO_* variable or a flag (docs/architecture/control-plane.md#settings-layering). */
+        NodeOverride: {
+            /** @description The setting's path in node.toml, for example listen.port. */
+            setting: string;
+            /** @enum {unknown} */
+            source: "environment" | "flag";
+            /** @description The variable or the flag, for example FOLO_LISTEN_PORT or --port. */
+            name: string;
+            /** @description The value it gives the setting. */
+            value: unknown;
+        };
+        PairingStatus: {
+            /** @description In the source role, the owner controller's id; empty while unpaired and in the controller role. */
+            owner: string;
+            /** @description In the controller role, the paired sources besides the local one. */
+            sources: number;
+        };
+        WorkerStatus: {
+            /** @enum {unknown} */
+            state: "starting" | "running" | "stopped" | "failed";
+            /** @description Its process id; 0 while it isn't running. */
+            pid: number;
+            /** @description How often it was started again since the node started. */
+            restarts: number;
+        };
+        ProviderStatus: {
+            id: string;
+            /** @enum {unknown} */
+            kind: "hyperion" | "wled" | "hue";
+            enabled: boolean;
+            /** @enum {unknown} */
+            state: "stopped" | "connecting" | "connected" | "error";
+        };
+        /** @description What `folo status --json` prints (docs/architecture/control-plane.md#status-and-health). Loopback only. */
+        NodeStatus: {
+            /** @description Whether a node runs on this home: always true from the API, false when `folo status` reports from the files. */
+            running: boolean;
+            /** @description The node id (docs/specs/pairing-and-connect.md#identity); empty until the node first ran. */
+            id: string;
+            version: string;
+            /** @enum {unknown} */
+            role: "controller" | "source";
+            /**
+             * @description managed: started by the desktop app.
+             * @enum {unknown}
+             */
+            launch: "managed" | "foreground";
+            /**
+             * @description The launch that chose the folders (docs/architecture/control-plane.md#folders): custom for --home or FOLO_HOME.
+             * @enum {unknown}
+             */
+            mode: "custom" | "portable" | "service" | "user";
+            /** @description The folder holding node.toml. */
+            home: string;
+            /** @description The folder holding the documents. */
+            data: string;
+            /** @description The log file. */
+            log: string;
+            /** @description The address and port the node listens on, or would listen on. */
+            listen: components["schemas"]["Listen"];
+            /** @description The deployment overrides, with their sources. */
+            overrides: components["schemas"]["NodeOverride"][];
+            pairing: components["schemas"]["PairingStatus"];
+            /** @description Worker name (folo-source, folo-capture): its state. */
+            workers: {
+                [key: string]: components["schemas"]["WorkerStatus"];
+            };
+            providers: components["schemas"]["ProviderStatus"][];
+        };
+        /** @description What `folo reload` applied (docs/architecture/control-plane.md#settings-layering). */
+        ReloadResult: {
+            /** @description Settings and documents applied while running. */
+            applied: string[];
+            /** @description Changed settings that take effect after a restart. */
+            restart_required: string[];
+        };
         LogLine: {
             /** @description Unix milliseconds. */
             time_ms: number;
@@ -4089,6 +4211,52 @@ export interface operations {
         };
         responses: {
             200: components["responses"]["System"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getNodeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    reloadNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description What was applied, and what needs a restart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReloadResult"];
+                };
+            };
             default: components["responses"]["Error"];
         };
     };

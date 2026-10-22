@@ -7703,6 +7703,181 @@ impl<'de> ::serde::Deserialize<'de> for Name {
 pub struct NoPlacement {
     pub kind: ::serde_json::Value,
 }
+///A setting given by a FOLO_* variable or a flag (docs/architecture/control-plane.md#settings-layering).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct NodeOverride {
+    ///The variable or the flag, for example FOLO_LISTEN_PORT or --port.
+    pub name: NodeOverrideName,
+    ///The setting's path in node.toml, for example listen.port.
+    pub setting: NodeOverrideSetting,
+    pub source: NodeOverrideSource,
+    ///The value it gives the setting.
+    pub value: ::serde_json::Value,
+}
+///The variable or the flag, for example FOLO_LISTEN_PORT or --port.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeOverrideName(::std::string::String);
+impl ::std::ops::Deref for NodeOverrideName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeOverrideName> for ::std::string::String {
+    fn from(value: NodeOverrideName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeOverrideName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeOverrideName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeOverrideName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeOverrideName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The setting's path in node.toml, for example listen.port.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeOverrideSetting(::std::string::String);
+impl ::std::ops::Deref for NodeOverrideSetting {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeOverrideSetting> for ::std::string::String {
+    fn from(value: NodeOverrideSetting) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeOverrideSetting {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeOverrideSetting {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeOverrideSetting {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeOverrideSetting {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`NodeOverrideSource`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum NodeOverrideSource {
+    #[serde(rename = "environment")]
+    Environment,
+    #[serde(rename = "flag")]
+    Flag,
+}
+impl ::std::fmt::Display for NodeOverrideSource {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Environment => f.write_str("environment"),
+            Self::Flag => f.write_str("flag"),
+        }
+    }
+}
+impl ::std::str::FromStr for NodeOverrideSource {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "environment" => Ok(Self::Environment),
+            "flag" => Ok(Self::Flag),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeOverrideSource {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeOverrideSource {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///node.toml's settings, as they look after parsing. Overridable by FOLO_* variables and CLI flags (docs/architecture/control-plane.md#settings-layering).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -7922,6 +8097,478 @@ impl ::std::convert::TryFrom<::std::string::String> for NodeSettingsRole {
 impl ::std::default::Default for NodeSettingsRole {
     fn default() -> Self {
         NodeSettingsRole::Controller
+    }
+}
+///What `folo status --json` prints (docs/architecture/control-plane.md#status-and-health). Loopback only.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct NodeStatus {
+    ///The folder holding the documents.
+    pub data: NodeStatusData,
+    ///The folder holding node.toml.
+    pub home: NodeStatusHome,
+    ///The node id (docs/specs/pairing-and-connect.md#identity); empty until the node first ran.
+    pub id: NodeStatusId,
+    ///managed: started by the desktop app.
+    pub launch: NodeStatusLaunch,
+    ///The address and port the node listens on, or would listen on.
+    pub listen: Listen,
+    ///The log file.
+    pub log: NodeStatusLog,
+    ///The launch that chose the folders (docs/architecture/control-plane.md#folders): custom for --home or FOLO_HOME.
+    pub mode: NodeStatusMode,
+    ///The deployment overrides, with their sources.
+    pub overrides: ::std::vec::Vec<NodeOverride>,
+    pub pairing: PairingStatus,
+    pub providers: ::std::vec::Vec<ProviderStatus>,
+    pub role: NodeStatusRole,
+    ///Whether a node runs on this home: always true from the API, false when `folo status` reports from the files.
+    pub running: bool,
+    pub version: NodeStatusVersion,
+    ///Worker name (folo-source, folo-capture): its state.
+    pub workers: ::std::collections::HashMap<::std::string::String, WorkerStatus>,
+}
+///The folder holding the documents.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeStatusData(::std::string::String);
+impl ::std::ops::Deref for NodeStatusData {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeStatusData> for ::std::string::String {
+    fn from(value: NodeStatusData) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeStatusData {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4096usize {
+            return Err("longer than 4096 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusData {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusData {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeStatusData {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The folder holding node.toml.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeStatusHome(::std::string::String);
+impl ::std::ops::Deref for NodeStatusHome {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeStatusHome> for ::std::string::String {
+    fn from(value: NodeStatusHome) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeStatusHome {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4096usize {
+            return Err("longer than 4096 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusHome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusHome {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeStatusHome {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The node id (docs/specs/pairing-and-connect.md#identity); empty until the node first ran.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeStatusId(::std::string::String);
+impl ::std::ops::Deref for NodeStatusId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeStatusId> for ::std::string::String {
+    fn from(value: NodeStatusId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeStatusId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeStatusId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///managed: started by the desktop app.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum NodeStatusLaunch {
+    #[serde(rename = "managed")]
+    Managed,
+    #[serde(rename = "foreground")]
+    Foreground,
+}
+impl ::std::fmt::Display for NodeStatusLaunch {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Managed => f.write_str("managed"),
+            Self::Foreground => f.write_str("foreground"),
+        }
+    }
+}
+impl ::std::str::FromStr for NodeStatusLaunch {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "managed" => Ok(Self::Managed),
+            "foreground" => Ok(Self::Foreground),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusLaunch {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusLaunch {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///The log file.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeStatusLog(::std::string::String);
+impl ::std::ops::Deref for NodeStatusLog {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeStatusLog> for ::std::string::String {
+    fn from(value: NodeStatusLog) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeStatusLog {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4096usize {
+            return Err("longer than 4096 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusLog {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusLog {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeStatusLog {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The launch that chose the folders (docs/architecture/control-plane.md#folders): custom for --home or FOLO_HOME.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum NodeStatusMode {
+    #[serde(rename = "custom")]
+    Custom,
+    #[serde(rename = "portable")]
+    Portable,
+    #[serde(rename = "service")]
+    Service,
+    #[serde(rename = "user")]
+    User,
+}
+impl ::std::fmt::Display for NodeStatusMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Custom => f.write_str("custom"),
+            Self::Portable => f.write_str("portable"),
+            Self::Service => f.write_str("service"),
+            Self::User => f.write_str("user"),
+        }
+    }
+}
+impl ::std::str::FromStr for NodeStatusMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "custom" => Ok(Self::Custom),
+            "portable" => Ok(Self::Portable),
+            "service" => Ok(Self::Service),
+            "user" => Ok(Self::User),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`NodeStatusRole`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum NodeStatusRole {
+    #[serde(rename = "controller")]
+    Controller,
+    #[serde(rename = "source")]
+    Source,
+}
+impl ::std::fmt::Display for NodeStatusRole {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Controller => f.write_str("controller"),
+            Self::Source => f.write_str("source"),
+        }
+    }
+}
+impl ::std::str::FromStr for NodeStatusRole {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "controller" => Ok(Self::Controller),
+            "source" => Ok(Self::Source),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`NodeStatusVersion`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct NodeStatusVersion(::std::string::String);
+impl ::std::ops::Deref for NodeStatusVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<NodeStatusVersion> for ::std::string::String {
+    fn from(value: NodeStatusVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for NodeStatusVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for NodeStatusVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for NodeStatusVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for NodeStatusVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`NodeSummary`
@@ -10053,6 +10700,69 @@ impl<'de> ::serde::Deserialize<'de> for PairWithParamsInvite {
             })
     }
 }
+///`PairingStatus`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PairingStatus {
+    ///In the source role, the owner controller's id; empty while unpaired and in the controller role.
+    pub owner: PairingStatusOwner,
+    ///In the controller role, the paired sources besides the local one.
+    pub sources: u64,
+}
+///In the source role, the owner controller's id; empty while unpaired and in the controller role.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PairingStatusOwner(::std::string::String);
+impl ::std::ops::Deref for PairingStatusOwner {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PairingStatusOwner> for ::std::string::String {
+    fn from(value: PairingStatusOwner) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PairingStatusOwner {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PairingStatusOwner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PairingStatusOwner {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PairingStatusOwner {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`Palette`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(transparent)]
@@ -10991,6 +11701,191 @@ impl ::std::convert::From<HueSettings> for ProviderSettings {
         Self::HueSettings(value)
     }
 }
+///`ProviderStatus`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderStatus {
+    pub enabled: bool,
+    pub id: ProviderStatusId,
+    pub kind: ProviderStatusKind,
+    pub state: ProviderStatusState,
+}
+///`ProviderStatusId`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ProviderStatusId(::std::string::String);
+impl ::std::ops::Deref for ProviderStatusId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ProviderStatusId> for ::std::string::String {
+    fn from(value: ProviderStatusId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ProviderStatusId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ProviderStatusId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ProviderStatusId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ProviderStatusId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ProviderStatusKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ProviderStatusKind {
+    #[serde(rename = "hyperion")]
+    Hyperion,
+    #[serde(rename = "wled")]
+    Wled,
+    #[serde(rename = "hue")]
+    Hue,
+}
+impl ::std::fmt::Display for ProviderStatusKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Hyperion => f.write_str("hyperion"),
+            Self::Wled => f.write_str("wled"),
+            Self::Hue => f.write_str("hue"),
+        }
+    }
+}
+impl ::std::str::FromStr for ProviderStatusKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "hyperion" => Ok(Self::Hyperion),
+            "wled" => Ok(Self::Wled),
+            "hue" => Ok(Self::Hue),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ProviderStatusKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ProviderStatusKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ProviderStatusState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ProviderStatusState {
+    #[serde(rename = "stopped")]
+    Stopped,
+    #[serde(rename = "connecting")]
+    Connecting,
+    #[serde(rename = "connected")]
+    Connected,
+    #[serde(rename = "error")]
+    Error,
+}
+impl ::std::fmt::Display for ProviderStatusState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Stopped => f.write_str("stopped"),
+            Self::Connecting => f.write_str("connecting"),
+            Self::Connected => f.write_str("connected"),
+            Self::Error => f.write_str("error"),
+        }
+    }
+}
+impl ::std::str::FromStr for ProviderStatusState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "stopped" => Ok(Self::Stopped),
+            "connecting" => Ok(Self::Connecting),
+            "connected" => Ok(Self::Connected),
+            "error" => Ok(Self::Error),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ProviderStatusState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ProviderStatusState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///providers.json: provider instances and their settings (docs/specs/config-model.md, docs/integrations/).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -11502,6 +12397,123 @@ pub struct RelativeRegion {
     pub kind: ::serde_json::Value,
     #[serde(default = "defaults::relative_region_start")]
     pub start: f64,
+}
+///What `folo reload` applied (docs/architecture/control-plane.md#settings-layering).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ReloadResult {
+    ///Settings and documents applied while running.
+    pub applied: ::std::vec::Vec<ReloadResultAppliedItem>,
+    ///Changed settings that take effect after a restart.
+    pub restart_required: ::std::vec::Vec<ReloadResultRestartRequiredItem>,
+}
+///`ReloadResultAppliedItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReloadResultAppliedItem(::std::string::String);
+impl ::std::ops::Deref for ReloadResultAppliedItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReloadResultAppliedItem> for ::std::string::String {
+    fn from(value: ReloadResultAppliedItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReloadResultAppliedItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReloadResultAppliedItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReloadResultAppliedItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReloadResultAppliedItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ReloadResultRestartRequiredItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReloadResultRestartRequiredItem(::std::string::String);
+impl ::std::ops::Deref for ReloadResultRestartRequiredItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReloadResultRestartRequiredItem> for ::std::string::String {
+    fn from(value: ReloadResultRestartRequiredItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReloadResultRestartRequiredItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReloadResultRestartRequiredItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReloadResultRestartRequiredItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReloadResultRestartRequiredItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`RemoteAccess`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -15918,6 +16930,79 @@ impl ::std::convert::TryFrom<::std::string::String> for WledSettingsTransport {
 impl ::std::default::Default for WledSettingsTransport {
     fn default() -> Self {
         WledSettingsTransport::Ddp
+    }
+}
+///`WorkerStatus`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerStatus {
+    ///Its process id; 0 while it isn't running.
+    pub pid: u64,
+    ///How often it was started again since the node started.
+    pub restarts: u64,
+    pub state: WorkerStatusState,
+}
+///`WorkerStatusState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum WorkerStatusState {
+    #[serde(rename = "starting")]
+    Starting,
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "stopped")]
+    Stopped,
+    #[serde(rename = "failed")]
+    Failed,
+}
+impl ::std::fmt::Display for WorkerStatusState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Starting => f.write_str("starting"),
+            Self::Running => f.write_str("running"),
+            Self::Stopped => f.write_str("stopped"),
+            Self::Failed => f.write_str("failed"),
+        }
+    }
+}
+impl ::std::str::FromStr for WorkerStatusState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "starting" => Ok(Self::Starting),
+            "running" => Ok(Self::Running),
+            "stopped" => Ok(Self::Stopped),
+            "failed" => Ok(Self::Failed),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for WorkerStatusState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WorkerStatusState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`Xy`

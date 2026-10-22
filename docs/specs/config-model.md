@@ -10,6 +10,8 @@ The controller's persistent model. Validation **clamps values to their limits an
 
 Each document has `schema_version` (2), `revision` and `server_id`. Writes are atomic (temporary file, fsync, replace) and debounced.
 
+`node.toml` lives in the node's home, and the other documents in its data folder ([control plane](../architecture/control-plane.md#folders)). A document with a [structural error](#clamping-rules) stops the node from starting, with an error naming the file, which is left as it is. A missing document starts from its defaults ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D11).
+
 | Document | Contents | Schema |
 |---|---|---|
 | `node.toml` | Host settings: role, listen address and port, data paths, remote access, log level. Overridable by `FOLO_*` and CLI flags ([control plane](../architecture/control-plane.md#settings-layering)). | `node.json` |

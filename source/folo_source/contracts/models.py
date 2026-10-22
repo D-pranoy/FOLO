@@ -712,6 +712,32 @@ class NoPlacement(BaseModel):
     kind: Literal['none']
 
 
+class NodeOverride(BaseModel):
+    """
+    A setting given by a FOLO_* variable or a flag (docs/architecture/control-plane.md#settings-layering).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    setting: Annotated[
+        str,
+        Field(
+            description="The setting's path in node.toml, for example listen.port.",
+            max_length=64,
+        ),
+    ]
+    source: Literal['environment', 'flag']
+    name: Annotated[
+        str,
+        Field(
+            description='The variable or the flag, for example FOLO_LISTEN_PORT or --port.',
+            max_length=64,
+        ),
+    ]
+    value: Annotated[Any, Field(description='The value it gives the setting.')]
+
+
 class NodeSummary(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -852,6 +878,26 @@ class PairWithParams(BaseModel):
     invite: Annotated[str, Field(description='folo://join?...', max_length=2048)]
 
 
+class PairingStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    owner: Annotated[
+        str,
+        Field(
+            description="In the source role, the owner controller's id; empty while unpaired and in the controller role.",
+            max_length=64,
+        ),
+    ]
+    sources: Annotated[
+        int,
+        Field(
+            description='In the controller role, the paired sources besides the local one.',
+            ge=0,
+        ),
+    ]
+
+
 class PaletteColor(RootModel[str]):
     root: Annotated[
         str,
@@ -900,6 +946,16 @@ class ProviderSecrets(BaseModel):
     token: Annotated[
         str | None, Field(description='Hyperion API token.', max_length=128)
     ] = None
+
+
+class ProviderStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Annotated[str, Field(max_length=64)]
+    kind: Literal['hyperion', 'wled', 'hue']
+    enabled: bool
+    state: Literal['stopped', 'connecting', 'connected', 'error']
 
 
 class PublishSignal(BaseModel):
@@ -1002,6 +1058,32 @@ class RelativeRegion(BaseModel):
     kind: Literal['relative']
     start: Annotated[float, Field(ge=0.0, le=1.0)] = 0
     end: Annotated[float, Field(ge=0.0, le=1.0)] = 1
+
+
+class AppliedItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=64)]
+
+
+class RestartRequiredItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=64)]
+
+
+class ReloadResult(BaseModel):
+    """
+    What `folo reload` applied (docs/architecture/control-plane.md#settings-layering).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    applied: Annotated[
+        list[AppliedItem],
+        Field(description='Settings and documents applied while running.'),
+    ]
+    restart_required: Annotated[
+        list[RestartRequiredItem],
+        Field(description='Changed settings that take effect after a restart.'),
+    ]
 
 
 class AllowedHost(RootModel[str]):
@@ -1499,6 +1581,22 @@ class WledSettings(BaseModel):
     ] = 2
 
 
+class WorkerStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    state: Literal['starting', 'running', 'stopped', 'failed']
+    pid: Annotated[
+        int, Field(description="Its process id; 0 while it isn't running.", ge=0)
+    ]
+    restarts: Annotated[
+        int,
+        Field(
+            description='How often it was started again since the node started.', ge=0
+        ),
+    ]
+
+
 class XY(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1876,6 +1974,66 @@ class NodeSettings(BaseModel):
     local_source: Annotated[LocalSource, Field(validate_default=True)] = {
         'enabled': True
     }
+
+
+class NodeStatus(BaseModel):
+    """
+    What `folo status --json` prints (docs/architecture/control-plane.md#status-and-health). Loopback only.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    running: Annotated[
+        bool,
+        Field(
+            description='Whether a node runs on this home: always true from the API, false when `folo status` reports from the files.'
+        ),
+    ]
+    id: Annotated[
+        str,
+        Field(
+            description='The node id (docs/specs/pairing-and-connect.md#identity); empty until the node first ran.',
+            max_length=64,
+        ),
+    ]
+    version: Annotated[str, Field(max_length=32)]
+    role: Literal['controller', 'source']
+    launch: Annotated[
+        Literal['managed', 'foreground'],
+        Field(description='managed: started by the desktop app.'),
+    ]
+    mode: Annotated[
+        Literal['custom', 'portable', 'service', 'user'],
+        Field(
+            description='The launch that chose the folders (docs/architecture/control-plane.md#folders): custom for --home or FOLO_HOME.'
+        ),
+    ]
+    home: Annotated[
+        str, Field(description='The folder holding node.toml.', max_length=4096)
+    ]
+    data: Annotated[
+        str, Field(description='The folder holding the documents.', max_length=4096)
+    ]
+    log: Annotated[str, Field(description='The log file.', max_length=4096)]
+    listen: Annotated[
+        Listen,
+        Field(
+            description='The address and port the node listens on, or would listen on.'
+        ),
+    ]
+    overrides: Annotated[
+        list[NodeOverride],
+        Field(
+            description='The deployment overrides, with their sources.', max_length=64
+        ),
+    ]
+    pairing: PairingStatus
+    workers: Annotated[
+        dict[str, WorkerStatus],
+        Field(description='Worker name (folo-source, folo-capture): its state.'),
+    ]
+    providers: Annotated[list[ProviderStatus], Field(max_length=256)]
 
 
 class PackManifest(BaseModel):

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: FOLO client API
-  version: 1.0.0
+  version: 1.1.0
   summary: The controller's API for the UI, the desktop app, scripts and the Home Assistant client library.
   description: |
     Machine-readable form of docs/specs/client-api.md, which it must agree with.
@@ -611,6 +611,39 @@ paths:
             schema: {$ref: 'schema/api.json#/$defs/SystemSettings'}
       responses:
         '200': {$ref: '#/components/responses/System'}
+        default: {$ref: '#/components/responses/Error'}
+  /system/status:
+    get:
+      tags: [system]
+      operationId: getNodeStatus
+      summary: The node's status, as `folo status --json` prints it; loopback only
+      description: Answers loopback requests only, which need no key (ADR-0034 D5).
+      security: []
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/NodeStatus'}
+        default: {$ref: '#/components/responses/Error'}
+  /system/reload:
+    post:
+      tags: [system]
+      operationId: reloadNode
+      summary: Re-read node.toml and the documents, as `folo reload` does; loopback only
+      description: Answers loopback requests only, which need no key (ADR-0034 D5).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: false}
+      responses:
+        '200':
+          description: What was applied, and what needs a restart.
+          content:
+            application/json:
+              schema: {$ref: 'schema/api.json#/$defs/ReloadResult'}
         default: {$ref: '#/components/responses/Error'}
   /system/logs:
     get:
