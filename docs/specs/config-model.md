@@ -25,7 +25,7 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 
 **Ids** are strings of 1–64 characters. A missing, empty or duplicate id gets a new one: 8 lowercase hexadecimal characters, as today. **Names** are up to 64 characters (scene and layer names up to 40, as today).
 
-**Zone:** `id`, `name`, `type` (`music | screen | desk | room | custom`, default `custom`), `bounds {x, y, z}` in metres (0.1–1000, default 4 × 4 × 2.5), `reference {kind, position, orientation}`, `targets[]`, `surfaces[]`, `mappings[]`, `flash_limiter {enabled, exempt_reason?}`, `hue_sync {mode, configuration_id?}`, plus:
+**Zone:** `id`, `name`, `type` (`music | screen | desk | room | custom`, default `custom`), `bounds {x, y, z}` in metres (0.1–1000, default 4 × 4 × 2.5), `reference {kind, position, orientation}`, `targets[]`, `surfaces[]`, `mappings[]`, `flash_limiter {enabled}`, `hue_sync {mode, configuration_id?}`, plus:
 
 | Field | Range / values | Default |
 |---|---|---|
@@ -39,7 +39,7 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 | `album_colors` | boolean: layers take colours from the active source's album art | false |
 
 - `reference.kind`: `tv`, `listening`, `desk` or `none` (default); `position {x, y, z}` in metres (−1000…1000); `orientation {yaw, pitch, roll}` in degrees (−180…180).
-- `flash_limiter.enabled` defaults to true; `exempt_reason` (up to 200 characters) records why a zone opted out.
+- `flash_limiter.enabled` defaults to false ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)). Older files' `exempt_reason` is dropped.
 - `hue_sync.mode`: `off` (default), `managed` or `linked`.
 
 **Target:**
@@ -198,4 +198,4 @@ The migration keeps a backup (`studio.json.v1.bak`) and can be run more than onc
 - **Input:** the file is read as `sanitize_config()` reads it. A file that isn't JSON is refused. The ids `sanitize_config()` has to make for missing or repeated ones come from the file's contents, so they are the same every time.
 - **Output:** `zones.json`, `show.json`, `providers.json` and `sources.json` in the output folder, and the pack in `library/local/my-presets/` (`folo-pack.json` and `scenes/preset-NNN.json`, in the presets' order). Each is clamped, written atomically as indented UTF-8 JSON, with `revision` 0. Scene files of presets that are gone are removed.
 - **Backup:** the first run copies the file beside it; later runs leave that copy alone.
-- **Safety:** the zone's flash limiter stays on, as for any zone ([ADR-0007](../decisions/ADR-0007-capabilities-adapters-and-flash-limiter.md)).
+- **Flash limiter:** the zone's flash limiter is off, as for any zone, so it keeps today's look ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)).

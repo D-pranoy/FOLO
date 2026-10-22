@@ -73,7 +73,7 @@ FOLO drives real lights in people's homes. Device-facing work is built and teste
 
 1. **Never** test against someone's live configuration or devices without their consent. Use a separate configuration (or data folder) and a separate port.
 2. **Announce** what will change on a device or bridge before doing it.
-3. Start at **low brightness**, one target at a time, with the flash limiter on.
+3. Start at **low brightness**, one target at a time, with the flash limiter turned on (it is off by default).
 4. **Release** devices afterwards: stop streams, clear priorities, restore changed settings, and confirm the owner's configuration is untouched.
 5. **Hue:** stop Hue Sync or any other streaming app first, and never take over another app's stream without the owner's confirmation.
 6. Change bridges and controllers only while their owner can watch the result.

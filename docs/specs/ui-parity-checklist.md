@@ -38,6 +38,7 @@ In the new UI these live in the Home header on desktops and in Home cards on pho
 - [ ] Search: whitespace-separated terms, all required, matched against name, description, group, tags, range roles and reaction names.
 - [ ] Entry: a mini preview, name, source badge, ★ default, tempo dot; ▾ details with ranges (swatch, role, Hz, reaction), tags (hidden tags excluded) and the star toggle.
   - **Previews animate only while hovered or focused.** New: on touch, while pressed or when the entry is the active effect.
+  - **New:** a "Flashing" badge on built-ins that flash quickly ([photosensitivity](../architecture/ui.md#photosensitivity)).
 - [ ] Saved presets:
   - **Save current:** name of up to 40 characters; genre chips; extra tags, deduplicated case-insensitively.
   - **Edit:** save changes, cancel, delete (two-step; also clears the default).
@@ -194,6 +195,7 @@ Moves to Sources → source → inputs.
 ## 13. Settings
 
 - [ ] Output connection settings (generalised per provider), background colour, LED count, reload layout (generalised).
+- [ ] **New:** the photosensitivity warning and the flash limiter switch for all zones, off by default ([photosensitivity](../architecture/ui.md#photosensitivity)).
 
 ## 14. Shell behaviours
 

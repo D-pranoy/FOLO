@@ -9,6 +9,10 @@ FOLO
 
 The rebuild lands on the `v1` branch; `main` is the frozen legacy studio ([ADR-0030](docs/decisions/ADR-0030-rebuild-on-a-v1-branch.md)). The vision, roadmap, decisions and specifications live in [docs/](docs/README.md) and are the source of truth. The sections below describe the current studio. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md); report security problems privately as described in [SECURITY.md](SECURITY.md).
 
+> **Photosensitivity warning.** Lights driven by FOLO can flash quickly and in patterns. For a small number of people, flashing lights can trigger seizures, including in people with no history of epilepsy. Stop using FOLO and see a doctor if you or anyone watching feel dizzy, have altered vision, eye or face twitching, jerking or shaking, disorientation or loss of awareness. If you or anyone in your household has had a seizure or epilepsy, talk to a doctor before use, and turn on the flash limiter, which keeps large brightness changes to 3 a second or fewer.
+>
+> The current studio has no flash limiter. The rebuild adds one to every zone, off by default ([ADR-0033](docs/decisions/ADR-0033-flash-limiter-off-by-default.md)).
+
 **Primary contributors:** Pranoy Das, Sayak Brahmachari.
 
 A Windows / Python 3 fork of [RanzQ/hyperion-audio-effects](https://github.com/RanzQ/hyperion-audio-effects), with *Fear of lights out*: a live audio-reactive LED studio for Hyperion.NG. The upstream effect runner, ported to Python 3, is no longer on `v1`; it stays on `main` and in the `v0.9.0-legacy` tag ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)).

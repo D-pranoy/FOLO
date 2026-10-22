@@ -1281,12 +1281,7 @@
    "properties": {
     "enabled": {
      "type": "boolean",
-     "default": true
-    },
-    "exempt_reason": {
-     "type": "string",
-     "maxLength": 200,
-     "default": ""
+     "default": false
     }
    },
    "additionalProperties": false
@@ -5515,8 +5510,7 @@
     "flash_limiter": {
      "$ref": "#/$defs/FlashLimiter",
      "default": {
-      "enabled": true,
-      "exempt_reason": ""
+      "enabled": false
      }
     },
     "hue_sync": {
@@ -5648,8 +5642,7 @@
       "surfaces": [],
       "mappings": [],
       "flash_limiter": {
-       "enabled": true,
-       "exempt_reason": ""
+       "enabled": false
       },
       "hue_sync": {
        "mode": "off",

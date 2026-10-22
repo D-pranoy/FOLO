@@ -340,8 +340,7 @@ class FlashLimiter(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    enabled: bool = True
-    exempt_reason: Annotated[str, Field(max_length=200)] = ''
+    enabled: bool = False
 
 
 class Health(BaseModel):
@@ -2747,8 +2746,7 @@ class Zone(BaseModel):
         list[Mapping], Field(max_length=512, validate_default=True)
     ] = []
     flash_limiter: Annotated[FlashLimiter, Field(validate_default=True)] = {
-        'enabled': True,
-        'exempt_reason': '',
+        'enabled': False
     }
     hue_sync: Annotated[HueSync, Field(validate_default=True)] = {
         'mode': 'off',
@@ -2802,7 +2800,7 @@ class ZoneTemplateItem(BaseModel):
         'targets': [],
         'surfaces': [],
         'mappings': [],
-        'flash_limiter': {'enabled': True, 'exempt_reason': ''},
+        'flash_limiter': {'enabled': False},
         'hue_sync': {'mode': 'off', 'configuration_id': ''},
         'reactive': 'on',
         'ambient': {

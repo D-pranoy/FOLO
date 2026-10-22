@@ -3760,80 +3760,11 @@ impl<'de> ::serde::Deserialize<'de> for EventState {
     }
 }
 ///`FlashLimiter`
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct FlashLimiter {
-    #[serde(default = "defaults::default_bool::<true>")]
+    #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "defaults::flash_limiter_exempt_reason")]
-    pub exempt_reason: FlashLimiterExemptReason,
-}
-impl ::std::default::Default for FlashLimiter {
-    fn default() -> Self {
-        Self {
-            enabled: defaults::default_bool::<true>(),
-            exempt_reason: defaults::flash_limiter_exempt_reason(),
-        }
-    }
-}
-///`FlashLimiterExemptReason`
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct FlashLimiterExemptReason(::std::string::String);
-impl ::std::ops::Deref for FlashLimiterExemptReason {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<FlashLimiterExemptReason> for ::std::string::String {
-    fn from(value: FlashLimiterExemptReason) -> Self {
-        value.0
-    }
-}
-impl ::std::default::Default for FlashLimiterExemptReason {
-    fn default() -> Self {
-        FlashLimiterExemptReason("".to_string())
-    }
-}
-impl ::std::str::FromStr for FlashLimiterExemptReason {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 200usize {
-            return Err("longer than 200 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for FlashLimiterExemptReason {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for FlashLimiterExemptReason {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for FlashLimiterExemptReason {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
 }
 ///Primaries as CIE xy; the defaults are sRGB's.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -16666,9 +16597,6 @@ pub mod defaults {
     pub(super) fn effect_ref_version() -> super::EffectRefVersion {
         super::EffectRefVersion("1.0.0".to_string())
     }
-    pub(super) fn flash_limiter_exempt_reason() -> super::FlashLimiterExemptReason {
-        super::FlashLimiterExemptReason("".to_string())
-    }
     pub(super) fn gamut_blue() -> super::Xy {
         super::Xy {
             x: 0.15_f64,
@@ -17497,8 +17425,7 @@ pub mod defaults {
     }
     pub(super) fn zone_flash_limiter() -> super::FlashLimiter {
         super::FlashLimiter {
-            enabled: true,
-            exempt_reason: super::FlashLimiterExemptReason("".to_string()),
+            enabled: false,
         }
     }
     pub(super) fn zone_hue_sync() -> super::HueSync {
@@ -17557,8 +17484,7 @@ pub mod defaults {
                 z: 2.5_f64,
             },
             flash_limiter: super::FlashLimiter {
-                enabled: true,
-                exempt_reason: super::FlashLimiterExemptReason("".to_string()),
+                enabled: false,
             },
             hue_sync: super::HueSync {
                 configuration_id: super::HueSyncConfigurationId("".to_string()),

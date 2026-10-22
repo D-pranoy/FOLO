@@ -20,7 +20,7 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0004](ADR-0004-implementation-languages-and-contracts.md) | Implementation languages and contracts | Accepted |
 | [0005](ADR-0005-pipeline-and-data-model.md) | Pipeline and data model | Accepted |
 | [0006](ADR-0006-spatial-model-zones-and-projection.md) | Spatial model, zones and projection | Accepted |
-| [0007](ADR-0007-capabilities-adapters-and-flash-limiter.md) | Capabilities, adapters and the flash limiter | Accepted |
+| [0007](ADR-0007-capabilities-adapters-and-flash-limiter.md) | Capabilities, adapters and the flash limiter | Accepted · D4 superseded by [0033](ADR-0033-flash-limiter-off-by-default.md) |
 | [0008](ADR-0008-networking-pairing-and-encryption.md) | Networking, pairing and encryption | Accepted |
 | [0009](ADR-0009-client-access.md) | Client access | Accepted |
 | [0010](ADR-0010-settings-persistence-and-migration.md) | Settings, persistence and migration | Accepted |
@@ -46,3 +46,4 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0030](ADR-0030-rebuild-on-a-v1-branch.md) | The rebuild lands on a `v1` branch | Accepted |
 | [0031](ADR-0031-linux-audio-capture.md) | Linux audio capture in the effect engine | Accepted |
 | [0032](ADR-0032-local-source-link.md) | The effect engine's link to its node | Accepted |
+| [0033](ADR-0033-flash-limiter-off-by-default.md) | The flash limiter is off by default, with epilepsy warnings | Accepted |

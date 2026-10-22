@@ -22,7 +22,7 @@ Status: Accepted · Implementation: Not started
 | Malicious content pack | Data-only packs, validated and clamped; size limits; no code execution in v1 ([ADR-0021](../decisions/ADR-0021-content-packs.md)) |
 | Tampered update | Signatures verified against a public key built into FOLO; SHA-256 checks; approvals; provenance attestations ([updates](updates.md)) |
 | Compromised build pipeline | Pinned actions, least-privilege workflow permissions, release environment with a required reviewer, Dependabot, CodeQL, cargo-deny ([ADR-0019](../decisions/ADR-0019-ci-cd-versioning-and-releases.md)) |
-| Photosensitive harm | Flash limiter on by default ([capabilities](capabilities.md#flash-limiter)) |
+| Photosensitive harm | A per-zone flash limiter, off by default, and photosensitive epilepsy warnings on first run, in zone settings, in Settings and on fast-flashing effects ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md), [capabilities](capabilities.md#flash-limiter)) |
 | Privacy of captured media | Capture on demand only; visible indicator; full frames and raw audio never stored or sent ([display capture](../integrations/display-capture.md#latency-and-privacy)) |
 
 ## Rules

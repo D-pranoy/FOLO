@@ -27,7 +27,7 @@ It grew from an audio-reactive LED studio for Hyperion. It is being rebuilt as a
 - **Simple by default, full granularity on demand.** Progressive disclosure, never hidden capability.
 - **Local-first, LAN-only.** No cloud dependency. Remote access means the local network.
 - **Lighting data, not media.** Sources send lighting data (surfaces) to the controller. Raw audio and full video frames never leave the computer that captured them.
-- **Safe by default.** A flash limiter is on by default. Devices are released when FOLO stops. Updates install only after approval.
+- **Safe by default.** Photosensitive epilepsy warnings point to a flash limiter, one switch away. Devices are released when FOLO stops. Updates install only after approval.
 - **Touch-first.** Every screen works on a phone, a tablet and a desktop.
 - **Contracts first.** Interfaces between components are specified before they are built, and conformance is tested.
 

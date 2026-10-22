@@ -34,12 +34,12 @@ The full model is in [docs/architecture/security.md](docs/architecture/security.
 - UI traffic is plain HTTP by decision ([ADR-0009](docs/decisions/ADR-0009-client-access.md)), so a client key can be sniffed on the LAN: this is a known, documented limitation
 - source links between computers are Noise-encrypted, with keys pinned at pairing; invites are one-time and expire
 - updates are signature-checked against a key built into FOLO, and content packs are data only, validated and clamped
-- a flash limiter is on by default
+- a flash limiter can be turned on per zone (it is off by default), and photosensitive epilepsy warnings say so on first run and wherever it can be switched
 - screens and audio are captured on demand only; full frames and raw audio are never stored or sent
 
 ## In scope
 
-FOLO's own code: the studio server and UI, the effect engine, and, as they land, the node, its API, pairing, source links, updates, content packs and installers. A way around the flash limiter counts as a security problem.
+FOLO's own code: the studio server and UI, the effect engine, and, as they land, the node, its API, pairing, source links, updates, content packs and installers. The flash limiter failing to act while it's on, or turning off without the user, counts as a security problem.
 
 ## Out of scope
 

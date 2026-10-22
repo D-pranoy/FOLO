@@ -1291,10 +1291,8 @@ export interface components {
             ranges: components["schemas"]["ManualRange"][];
         };
         FlashLimiter: {
-            /** @default true */
+            /** @default false */
             enabled: boolean;
-            /** @default  */
-            exempt_reason: string;
         };
         HueSync: {
             /**
@@ -1440,10 +1438,8 @@ export interface components {
                     orientation: components["schemas"]["Orientation"];
                 };
                 FlashLimiter: {
-                    /** @default true */
+                    /** @default false */
                     enabled: boolean;
-                    /** @default  */
-                    exempt_reason: string;
                 };
                 HueSync: {
                     /**
