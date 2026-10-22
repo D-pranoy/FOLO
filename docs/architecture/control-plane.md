@@ -1,6 +1,6 @@
 # Control plane
 
-Status: Accepted · Implementation: Partial (the effect engine's logs and shutdown; no node yet)
+Status: Accepted · Implementation: Partial (the node's settings, folders, documents, identity, local link, supervision, logs and command line; no pairing, discovery or client API yet)
 
 Covers roles, ports, pairing, links, settings, supervision and status. Decided in [ADR-0003](../decisions/ADR-0003-system-roles.md), [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md), [ADR-0009](../decisions/ADR-0009-client-access.md) and [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md).
 

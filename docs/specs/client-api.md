@@ -1,6 +1,6 @@
 # Client API
 
-Status: Draft · Implementation: Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; no server yet)
+Status: Draft · Implementation: Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; the node serves `/system/status` and `/system/reload`)
 
 The controller's API for clients: the UI, the desktop app, the Android app later, the Home Assistant client library, and scripts. It is served on the controller's single port (default 8777). The machine-readable form is `specs/openapi.yaml` ([specifications](README.md)).
 

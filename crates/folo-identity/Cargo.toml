@@ -1,0 +1,19 @@
+[package]
+name = "folo-identity"
+description = "The node's identity: its static X25519 key pair, node id and fingerprint (RB-06 step 5)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+blake2 = "0.10"
+getrandom = { version = "0.3", features = ["std"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }

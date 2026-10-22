@@ -1,14 +1,14 @@
 # Pairing and connect codes
 
-Status: Draft · Implementation: Not started
+Status: Draft · Implementation: Partial (the node's identity)
 
 Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md) and [ADR-0009](../decisions/ADR-0009-client-access.md). Every code here works as a link, as a QR code, or as pasted text.
 
 ## Identity
 
 - Each node has a static **X25519** key pair (for Noise), stored in `secrets.json` with owner-only permissions.
-- **Node id:** the lowercase base32 encoding (no padding) of the first 10 bytes of `BLAKE2s(public_key)`, giving 16 characters.
-- **Fingerprint shown to users:** the node id in four groups of four, for example `k3x9-2mfa-q7tc-0pzr`.
+- **Node id:** the lowercase base32 encoding ([RFC 4648](https://www.rfc-editor.org/rfc/rfc4648#section-6): `a`–`z` and `2`–`7`, no padding) of the first 10 bytes of `BLAKE2s(public_key)` (BLAKE2s-256), giving 16 characters.
+- **Fingerprint shown to users:** the node id in four groups of four, for example `k3xq-2mfa-q7tc-4pzr`.
 
 ## Source invite
 

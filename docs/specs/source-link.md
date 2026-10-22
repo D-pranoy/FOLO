@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and the effect engine's side of the local link) · Contract version: 1.2
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and both sides of the local link) · Contract version: 1.2
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 

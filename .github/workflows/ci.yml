@@ -78,10 +78,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0 # hatch-vcs reads the effect engine's version from the tags
           persist-credentials: false
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: The effect engine on the PATH, for the node's end-to-end test (RB-06)
+        run: |
+          uv sync --locked
+          if [ "$RUNNER_OS" = Windows ]; then
+            cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          fi
+          echo "FOLO_E2E=1" >> "$GITHUB_ENV"
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
