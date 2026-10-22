@@ -1,0 +1,37 @@
+[package]
+name = "folo-node"
+description = "The FOLO node, binary `folo`: settings, store, identity, supervision and status (ADR-0003, RB-06)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "folo"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "ws"] }
+clap = { version = "4", features = ["derive"] }
+folo-identity = { path = "../folo-identity" }
+folo-protocol = { path = "../folo-protocol" }
+folo-settings = { path = "../folo-settings" }
+folo-store = { path = "../folo-store" }
+folo-supervisor = { path = "../folo-supervisor" }
+log = { version = "0.4", features = ["std"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+# Taking Ctrl+C back (node.rs), and the stop test's console helper
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
+[dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+tokio-tungstenite = "0.29"

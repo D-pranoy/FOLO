@@ -1,0 +1,25 @@
+[package]
+name = "folo-supervisor"
+description = "Supervises the node's effect engine over the local link (RB-06 step 6, ADR-0032, ADR-0034)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+folo-protocol = { path = "../folo-protocol" }
+getrandom = { version = "0.3", features = ["std"] }
+log = "0.4"
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+subtle = "2"
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

@@ -1,0 +1,18 @@
+[package]
+name = "folo-settings"
+description = "The node's settings layering and folders (RB-06 steps 2 and 3, ADR-0010, ADR-0034)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-protocol = { path = "../folo-protocol" }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+toml = "0.9"

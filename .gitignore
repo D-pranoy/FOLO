@@ -17,6 +17,7 @@ node_modules/
 # Per-machine state: the studio's live config (and copies of it), the
 # node's data folder, local agent notes and local editor launch settings
 /studio*.json
+/studio*.json.v1.bak
 /data/
 AGENTS.local.md
 CLAUDE.local.md

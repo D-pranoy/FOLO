@@ -1,6 +1,6 @@
 # Security
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (owner-only secrets, and the local link's launch token)
 
 ## Assets
 

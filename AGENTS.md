@@ -18,7 +18,7 @@ The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specificatio
 
 **FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The upstream effect runner (`main.py` + `effects/`), ported to Python 3, is gone from `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)); it stays on `main` and in the `v0.9.0-legacy` tag.
 
-No build step. Tests, lint and type checks run through uv, and CI runs them on Windows and Ubuntu (`.github/workflows/ci.yml`). The contracts of the rebuild (`specs/`) generate committed Python, Rust and TypeScript code; CI fails when it's out of date (see [Contracts](#contracts-specs-rb-02)).
+No build step for the studio. Tests, lint and type checks run through uv and cargo, and CI runs them on Windows and Ubuntu (`.github/workflows/ci.yml`). The contracts of the rebuild (`specs/`) generate committed Python, Rust and TypeScript code; CI fails when it's out of date (see [Contracts](#contracts-specs-rb-02)).
 
 ## Commands
 
@@ -43,7 +43,9 @@ py -3.13 -m venv .venv
 | Regenerate the schema bundle and the Python, Rust and TypeScript types (after changing `specs/`) | `uv run python scripts/contracts.py generate` |
 | Validate the contracts and fail on drift (what CI runs) | `uv run python scripts/contracts.py check`, then `npm run check:types` in `ui\` |
 | Conformance: an API, or captured WebSocket messages | `uv run python scripts/conformance.py api --url <base>/api/v1` (never a live setup) / `messages [DIR]` (default `specs/fixtures`) |
-| Rust | `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (toolchain pinned in `rust-toolchain.toml`) |
+| Rust | `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (toolchain pinned in `rust-toolchain.toml`; on Windows the MSVC host, which needs Visual Studio's C++ build tools). `FOLO_E2E=1` with `folo-source` on the `PATH` (an activated venv) adds the node's test with the real engine. |
+| Run the node (RB-06; it starts `folo-source` from beside itself or the `PATH`) | `cargo run -p folo-node -- --home <folder> --port 8778` (a home of its own beside a live setup); `folo --help` lists the flags. Run from the repository root, its first run imports the live `studio.json` ([ADR-0034](docs/decisions/ADR-0034-the-node-process.md) D10), read only, and leaves a `studio.json.v1.bak` copy beside it. |
+| The node's status, or apply `node.toml` and the documents to it | `cargo run -p folo-node -- status [--json] --home <folder>` / `reload --home <folder>` |
 | Frozen studio (PyInstaller one-dir) | `uv sync --group packaging`, then `uv run pyinstaller --noconfirm packaging/folo-studio.spec`; `dist\folo-studio\folo-studio.exe --help` |
 | Syntax check the UI | `node --check web\studio.js` |
 | Ask Hyperion for its LED layout | JSON API: send `{"command":"serverinfo","tan":1}\n` to `localhost:19444` (see `folo_source.legacy.json_client.fetch_server_info`) |
@@ -289,6 +291,12 @@ The machine-readable forms of the prose specifications in `docs/specs/`. Nothing
 - **Clampers (clamp, never reject):** `source/folo_source/contracts/clamp.py` and its port `crates/folo-protocol/src/clamp.rs` agree on `tests/corpus/clamp_v2.json`. `crates/folo-protocol/src/v1/` ports `sanitize_config` with Python's quirks (`str()` of junk values, rounding, truthiness) and matches `tests/corpus/sanitize_config.json`.
 - **Checks:** `tests/test_contract_drift.py` compares the spec tables with the schemas and `legacy/v1.py`'s limits; `scripts/contracts.py check` validates everything and regenerates into a temporary folder to catch drift; `scripts/conformance.py` drives a running API with schemathesis and checks message files, with one fixture per AsyncAPI message in `specs/fixtures/`.
 
+### Node (`crates/`, RB-06)
+The rebuild's Rust node, binary `folo`. It doesn't drive lights yet (that's RB-08 and RB-10); the studio still does. Its folders, launches, variables and flags, command line, log and first run follow [ADR-0034](docs/decisions/ADR-0034-the-node-process.md) and the [control plane](docs/architecture/control-plane.md).
+- **Crates:** `folo-settings` (the layering of `node.toml`, `FOLO_*` and flags; the folders), `folo-store` (the documents: clamped with `folo-protocol`, debounced atomic writes, `secrets.json` owner-only: mode 0600, or on Windows a protected access list whose one entry is the owner's), `folo-identity` (the X25519 key and node id), `folo-supervisor` (the engine's process and the node's end of the local link, written against a socket trait) and `folo-node` (the CLI, the run, the axum server, the logger, the home lock and the import).
+- **Port:** loopback only while remote access is off, serving `/api/v1/source-link` and the loopback-only `/api/v1/system/status` and `/api/v1/system/reload`.
+- **Tests:** `crates/folo-node/tests/node.rs` runs the node in-process with a fake engine, which is the test binary run again by the node (the `fake_engine_*` tests act as an engine only when the link's variables are set). `cli.rs` runs the built `folo` for its exit statuses and `folo status` without a node. `stops.rs` stops it with SIGTERM and SIGINT, or on Windows with Ctrl+C and Ctrl+Break, sent by the test binary run again as a helper that attaches to the node's console (the node takes Ctrl+C back when its parent had it off, as the engine does), and runs a managed launch with the user's folders moved into a test folder. The answers of `/system/status` and `/system/reload` are checked against the generated `NodeStatus` and `ReloadResult`. `real_engine.rs` needs `FOLO_E2E=1`; CI's Rust jobs set it up with uv.
+
 ## Changes from upstream (so far)
 
 - **The upstream effect runner** (`main.py`, `effects/`, `lib/`): ported to Python 3 and Windows (`soundcard` loopback with numpy instead of GStreamer, the layout from Hyperion.NG, palettes and a Deep Night color set), then removed on `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)). The port stays on `main` and in the `v0.9.0-legacy` tag.
@@ -316,7 +324,7 @@ The machine-readable forms of the prose specifications in `docs/specs/`. Nothing
 - **Docs:** `docs/` is the source of truth (see the top of this file). This file is the single agent guide to the current code (CLAUDE.md imports it). Update it, the README's FOLO studio section and the affected documents in `docs/` whenever features change.
 - **Machine-specific notes:** a particular setup's hardware, network, live state and owner preferences go in `AGENTS.local.md` (git-ignored, imported for Claude Code by `CLAUDE.local.md`). Read it when it exists.
 - **Files:** UTF-8 with LF line endings, except CRLF for `.bat` and `.cmd` (`.gitattributes`, `.editorconfig`). Four-space indents, two for JS, CSS, HTML, JSON, YAML and Markdown.
-- **Ignored files:** `studio*.json` and `data/` at the root, build outputs and the local agent notes. Other JSON files are tracked, so keep personal copies of configs outside the repository.
+- **Ignored files:** `studio*.json`, their `.v1.bak` copies and `data/` at the root, build outputs and the local agent notes. Other JSON files are tracked, so keep personal copies of configs outside the repository.
 
 ## Troubleshooting
 

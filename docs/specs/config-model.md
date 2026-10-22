@@ -1,6 +1,6 @@
 # Configuration model
 
-Status: Draft · Implementation: Partial (JSON Schemas, generated types, clampers and the v1 migration; nothing reads the documents yet)
+Status: Draft · Implementation: Partial (JSON Schemas, generated types, clampers and the v1 migration; the node reads and writes the documents)
 
 The controller's persistent model. Validation **clamps values to their limits and never rejects** a document, except for structural errors. Hand-written or stale input therefore always results in a working configuration, matching today's `sanitize_config()` behaviour.
 
