@@ -71,7 +71,7 @@ git tag -d v0.1 v1.0 v1.1.0                    # remove the ones already fetched
 
 FOLO drives real lights in people's homes. Device-facing work is built and tested against fakes first, and live tests follow the [live-device safety rules](docs/process/testing-policy.md#live-device-safety-rules):
 
-1. **Never** test against someone's live configuration or devices without their consent. Use a separate configuration (or data folder) and a separate port.
+1. **Never** test against someone's live configuration or devices without their consent. Use a separate configuration (or home folder) and a separate port.
 2. **Announce** what will change on a device or bridge before doing it.
 3. Start at **low brightness**, one target at a time, with the flash limiter turned on (it is off by default).
 4. **Release** devices afterwards: stop streams, clear priorities, restore changed settings, and confirm the owner's configuration is untouched.

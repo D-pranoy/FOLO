@@ -47,6 +47,8 @@ The controller's API for clients: the UI, the desktop app, the Android app later
 | `/updates/{node}/approve`, `/skip` | POST | Approvals |
 | `/updates/policy` | GET, PUT | The update policy |
 | `/system` | GET, PUT | Remote access, start at sign-in and service status (start at sign-in and service are loopback only) |
+| `/system/status` | GET | The node's status, `NodeStatus`, as `folo status --json` prints it ([control plane](../architecture/control-plane.md#status-and-health)); loopback only |
+| `/system/reload` | POST | Re-reads `node.toml` and the documents, as `folo reload` does, and lists what needs a restart; loopback only |
 | `/system/logs` | GET | Log viewer |
 | `/system/backup`, `/restore` | GET, POST | Backup and restore |
 | `/auth/login`, `/auth/logout` | POST | Browser sessions |

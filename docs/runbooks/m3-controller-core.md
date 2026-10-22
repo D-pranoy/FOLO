@@ -16,19 +16,23 @@ Status: Accepted · Implementation: Not started
    - deployment overrides reported with their source
    - list settings add up
    - `folo reload`
-3. **Paths:** user, service, portable and Docker folders ([ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md)).
+3. **Paths:** the home and data folders of user, service, portable and `--home` launches, the last also for Docker ([folders](../architecture/control-plane.md#folders), [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md), [ADR-0034](../decisions/ADR-0034-the-node-process.md)).
 4. **Store:**
    - versioned JSON documents with atomic, debounced writes; revision and server id
    - clamping validation from the generated schemas
    - `secrets.json` with owner-only permissions (POSIX mode 0600; Windows ACL)
+   - a document with a structural error stops the node from starting ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D11)
 5. **Identity:** X25519 static key and node id; `folo status --json`.
 6. **Supervision:**
-   - starts `folo-source` with the local link's URL and a launch token in its environment, sends its settings over that link and checks its heartbeat; restarts with backoff ([ADR-0032](../decisions/ADR-0032-local-source-link.md))
+   - serves the node's port with the loopback source-link endpoint, accepting only the launch token, and binds `127.0.0.1` while remote access is off ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D6)
+   - starts `folo-source` with the local link's URL and a launch token in its environment, sends its settings over that link and checks its heartbeat; restarts with backoff ([ADR-0032](../decisions/ADR-0032-local-source-link.md), [supervision](../architecture/control-plane.md#supervision))
    - collects its logs into the node's log
    - `local_source.enabled` and `role` handling
-7. **Lifecycle:** signals and service stop shut down cleanly (release outputs, stop workers, flush the store). Single instance.
-8. **CLI:** `folo run | status | reload | config import | token show|rotate | pair reset | join <code>`.
-9. **First run:** import a legacy `studio.json` if found (through RB-05).
+7. **Lifecycle:** signals and service stop shut down cleanly (release outputs, stop workers, flush the store). One node per home ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D4).
+8. **CLI:** `folo run | status | reload | config import | token show|rotate | pair reset | join <code>` per the [command line](../architecture/control-plane.md#command-line):
+   - `status` and `reload` through `GET /system/status` and `POST /system/reload` on loopback, served from this run book on
+   - `token` arrives with RB-15, and `pair reset` and `join` with RB-16; until then they say so
+9. **First run:** import a legacy `studio.json` found in the home or the working directory (through RB-05, [ADR-0034](../decisions/ADR-0034-the-node-process.md) D10).
 
 **Done when:** the node starts, supervises the engine, persists documents, and reports status. Unit and integration tests are green on Windows and Linux.
 
@@ -37,7 +41,7 @@ Status: Accepted · Implementation: Not started
 **Goal:** the client API over one port, conforming to the contracts.
 **Depends on:** RB-06.
 
-1. **Server:** axum with tower middleware, on the configured port (default 8777).
+1. **Server:** axum with tower middleware, on the configured port (default 8777), growing the server RB-06 starts.
 2. **Middleware:**
    - Host allowlist
    - client-IP policy: loopback always; private ranges only when remote access is on
@@ -48,7 +52,7 @@ Status: Accepted · Implementation: Not started
    - endpoints whose subsystems arrive later return `501` until their run book lands
 4. **Live WebSocket:** topic subscriptions; binary frames; 30 Hz per client by default; newest data wins under backpressure.
 5. **Static UI:** serve `ui/dist` (from RB-11), with hashed assets cacheable and `index.html` uncacheable.
-6. **Loopback source link endpoint** for the local source, accepting only its launch token ([the local link](../specs/source-link.md#the-local-link)). Encryption for remote sources arrives in RB-16.
+6. **Loopback source link endpoint** for the local source, accepting only its launch token ([the local link](../specs/source-link.md#the-local-link)): RB-06 serves it, and here it moves behind the middleware. Encryption for remote sources arrives in RB-16.
 7. **Conformance:** run the RB-02 harness (schemathesis and message fixtures) in CI.
 
 **Done when:** conformance tests pass and the live channel streams engine data.

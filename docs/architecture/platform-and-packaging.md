@@ -20,12 +20,14 @@ Decided in [ADR-0017](../decisions/ADR-0017-desktop-app-tray-autostart-and-servi
 - **Taskbar button** while the window is open. Closing the window hides to the tray (a setting, on by default). `--minimized` starts in the tray. Only one instance runs at a time.
 - **Start at sign-in** is opt-in. It is per-user (HKCU Run on Windows, XDG autostart on Linux), set explicitly rather than through the plugin's machine-wide default. It can be changed from the installer and from the UI through the app's local bridge.
 - **Node management:**
-  - If no node answers on loopback and none is installed as a service, the app starts its bundled node and restarts it if it crashes.
+  - If no node answers on loopback and none is installed as a service, the app starts its bundled node as a managed launch (`--managed`, [settings layering](control-plane.md#settings-layering)) and restarts it if it crashes.
   - The app stops the node when the app exits.
 - **Hosts:** a built-in screen for adding, listing and switching controllers. Client keys are stored in the operating system's credential store.
 - **Portable mode:** a `portable.ini` file next to the executable keeps all data in `.\data`, and the service option is hidden.
 
 ## Services
+
+Services start the node with `--service`, which picks the service folders ([folders](control-plane.md#folders)).
 
 - **Windows:** the node runs as a Windows service through the `windows-service` crate:
   - name `FOLO`, delayed automatic start
@@ -76,7 +78,7 @@ Decided in [ADR-0017](../decisions/ADR-0017-desktop-app-tray-autostart-and-servi
 - The controller-only node has no audio or capture dependencies. It is a static musl binary in a distroless image, run as a non-root user.
   - volume: `/data`
   - port: `8777`
-  - default `FOLO_ROLE=controller`, local source off
+  - default `FOLO_ROLE=controller`, local source off, and `FOLO_HOME=/data` ([folders](control-plane.md#folders))
   - health check on `/api/v1/health`
 - `compose.yaml` recommends host networking (mDNS, Hue and WLED discovery); a bridge-network variant uses manual addresses.
 - The first start logs the admin key and how to create invites.
