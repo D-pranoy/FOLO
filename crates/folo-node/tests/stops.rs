@@ -252,8 +252,20 @@ fn console_helper() {
                 1
             }
         };
+        // Long enough for the event to reach this process too, so the
+        // handler is always what keeps it alive, not luck
+        std::thread::sleep(Duration::from_millis(500));
         std::process::exit(code);
     }
+}
+
+/// The helper's console handler: it handles every event by ignoring it.
+/// Without a handler only Ctrl+C can be ignored, and the Ctrl+Break the
+/// helper sends would end it with `STATUS_CONTROL_C_EXIT` whenever the event
+/// arrives before it exits.
+#[cfg(windows)]
+extern "system" fn ignore_event(_event: u32) -> windows_sys::core::BOOL {
+    1
 }
 
 /// Attaches to the console of process `pid` and sends it `event`, which
@@ -265,14 +277,14 @@ fn console_event(pid: u32, event: u32) -> Result<(), String> {
         AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler,
     };
     let failed = |what: &str| format!("{what} failed: {}", std::io::Error::last_os_error());
-    // SAFETY: plain calls without pointers, changing only this helper
-    // process's console.
+    // SAFETY: plain calls, changing only this helper process's console;
+    // the handler is a function that lives as long as the process.
     unsafe {
         FreeConsole();
         if AttachConsole(pid) == 0 {
             return Err(failed("AttachConsole"));
         }
-        if SetConsoleCtrlHandler(None, 1) == 0 {
+        if SetConsoleCtrlHandler(Some(ignore_event), 1) == 0 {
             return Err(failed("SetConsoleCtrlHandler"));
         }
         if GenerateConsoleCtrlEvent(event, 0) == 0 {
