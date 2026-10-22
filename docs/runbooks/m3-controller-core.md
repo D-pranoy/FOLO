@@ -28,7 +28,7 @@ Status: Accepted · Implementation: Partial (RB-06 awaits its first CI run)
    - starts `folo-source` with the local link's URL and a launch token in its environment, sends its settings over that link and checks its heartbeat; restarts with backoff ([ADR-0032](../decisions/ADR-0032-local-source-link.md), [supervision](../architecture/control-plane.md#supervision))
    - collects its logs into the node's log
    - `local_source.enabled` and `role` handling
-7. **Lifecycle:** signals and service stop shut down cleanly (release outputs, stop workers, flush the store): SIGINT, SIGTERM (which systemd sends) and the Windows console's events here, and the Windows service's stop with the service in [RB-20](m8-release.md#rb-20-windows-service-and-installer). One node per home ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D4).
+7. **Lifecycle:** signals and service stop shut down cleanly (release outputs, stop workers, flush the store): SIGINT, SIGTERM (which systemd sends) and the Windows console's events in this run book, and the Windows service's stop with the service in [RB-20](m8-release.md#rb-20-windows-service-and-installer). One node per home ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D4).
 8. **CLI:** `folo run | status | reload | config import | token show|rotate | pair reset | join <code>` per the [command line](../architecture/control-plane.md#command-line):
    - `status` and `reload` through `GET /system/status` and `POST /system/reload` on loopback, served from this run book on
    - `token` arrives with RB-15, and `pair reset` and `join` with RB-16; until then they say so

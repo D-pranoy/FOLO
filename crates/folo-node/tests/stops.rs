@@ -1,15 +1,16 @@
-//! The `folo` binary stops cleanly on its signals (RB-06 step 7,
-//! docs/architecture/control-plane.md#supervision): SIGTERM and SIGINT on
-//! Unix; Ctrl+C and Ctrl+Break on Windows, where the node gets a console of
-//! its own and this test binary, run again as a helper, attaches to it to
-//! send the event. The node logs `stopped`, exits with 0 and frees its lock.
+//! The `folo` binary run as a process (RB-06 steps 2 and 7): it stops
+//! cleanly on its signals (docs/architecture/control-plane.md#supervision),
+//! SIGTERM and SIGINT on Unix, Ctrl+C and Ctrl+Break on Windows, where the
+//! node gets a console of its own and this test binary, run again as a
+//! helper, attaches to it to send the event. The node logs `stopped`, exits
+//! with 0 and frees its lock. A managed launch takes `node.toml` only.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use folo_node::client;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const FOLO: &str = env!("CARGO_BIN_EXE_folo");
 const START_TIMEOUT: Duration = Duration::from_secs(60);
@@ -18,10 +19,10 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 #[cfg(windows)]
 const HELPER_VARIABLE: &str = "FOLO_TEST_CONSOLE_EVENT";
 
-/// A fresh home, removed afterwards.
-struct Home(PathBuf);
+/// A fresh folder, removed afterwards.
+struct Folder(PathBuf);
 
-impl Home {
+impl Folder {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!("folo-stop-test-{}", folo_store::new_id()));
         std::fs::create_dir_all(&path).unwrap();
@@ -29,7 +30,7 @@ impl Home {
     }
 }
 
-impl Drop for Home {
+impl Drop for Folder {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
@@ -43,18 +44,15 @@ fn free_port() -> u16 {
         .port()
 }
 
-/// `folo --home <home> --port <port> --local-source off`, in the home,
-/// without the caller's `FOLO_*` variables; on Windows with a console of
-/// its own that has no window, and in a process group of its own, which
-/// starts it with Ctrl+C turned off as some parents do: the node must take
-/// it back.
-fn start(home: &Path, port: u16) -> Child {
+/// `folo <args>` in `dir`, without the caller's `FOLO_*` variables but
+/// with `env`. On Windows it gets a console of its own that has no window,
+/// in a process group of its own, which starts it with Ctrl+C turned off as
+/// some parents do: the node must take it back.
+fn start(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Child {
     let mut command = Command::new(FOLO);
     command
-        .arg("--home")
-        .arg(home)
-        .args(["--port", &port.to_string(), "--local-source", "off"])
-        .current_dir(home)
+        .args(args)
+        .current_dir(dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -63,6 +61,7 @@ fn start(home: &Path, port: u16) -> Child {
             command.env_remove(name);
         }
     }
+    command.envs(env.iter().copied());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt as _;
@@ -73,15 +72,13 @@ fn start(home: &Path, port: u16) -> Child {
     command.spawn().unwrap()
 }
 
-fn wait_until_serving(node: &mut Child, port: u16) {
+/// The node's status, once it answers on `port`.
+fn wait_until_serving(node: &mut Child, port: u16) -> Value {
     let deadline = Instant::now() + START_TIMEOUT;
     loop {
         assert!(node.try_wait().unwrap().is_none(), "the node ended early");
-        if matches!(
-            client::request(port, "GET", "/api/v1/system/status", None),
-            Ok((200, _))
-        ) {
-            return;
+        if let Ok((200, body)) = client::request(port, "GET", "/api/v1/system/status", None) {
+            return serde_json::from_str(&body).unwrap();
         }
         assert!(Instant::now() < deadline, "the node didn't start");
         std::thread::sleep(Duration::from_millis(100));
@@ -102,15 +99,12 @@ fn wait_for_exit(node: &mut Child) -> i32 {
     }
 }
 
-/// Starts a node, sends `stop` to it, and checks it stopped cleanly.
-fn stops_cleanly_on(stop: &str) {
-    let home = Home::new();
-    let port = free_port();
-    let mut node = start(&home.0, port);
-    wait_until_serving(&mut node, port);
+/// Sends `stop` to a running node and checks it stopped cleanly: status 0,
+/// `stopped` last in its log, and its home's lock free.
+fn stops_cleanly(node: &mut Child, status: &Value, stop: &str) {
     send(node.id(), stop);
-    assert_eq!(wait_for_exit(&mut node), 0, "{stop}");
-    let log = std::fs::read_to_string(home.0.join("logs").join("folo.log")).unwrap();
+    assert_eq!(wait_for_exit(node), 0, "{stop}");
+    let log = std::fs::read_to_string(status["log"].as_str().unwrap()).unwrap();
     let messages: Vec<String> = log
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("JSON lines"))
@@ -125,7 +119,67 @@ fn stops_cleanly_on(stop: &str) {
         Some("stopped"),
         "{stop}"
     );
-    assert_eq!(folo_node::lock::holder(&home.0.join("folo.lock")), None);
+    let home = Path::new(status["home"].as_str().unwrap());
+    assert_eq!(folo_node::lock::holder(&home.join("folo.lock")), None);
+}
+
+/// Starts a node on a home of its own, and stops it with `stop`.
+fn stops_cleanly_on(stop: &str) {
+    let home = Folder::new();
+    let port = free_port();
+    let home_arg = home.0.display().to_string();
+    let port_arg = port.to_string();
+    let args = [
+        "--home",
+        &home_arg,
+        "--port",
+        &port_arg,
+        "--local-source",
+        "off",
+    ];
+    let mut node = start(&home.0, &args, &[]);
+    let status = wait_until_serving(&mut node, port);
+    stops_cleanly(&mut node, &status, stop);
+}
+
+/// A managed launch takes the user's folders and their `node.toml`, and
+/// ignores every `FOLO_*` variable it inherits (ADR-0034 D1 and D2). The
+/// user's folders are moved into a folder of the test's own.
+#[test]
+fn a_managed_launch_takes_node_toml_only() {
+    let user = Folder::new();
+    let port = free_port();
+    let base = user.0.display().to_string();
+    let (home, mut env) = if cfg!(windows) {
+        (user.0.join("FOLO"), vec![("LOCALAPPDATA", base.as_str())])
+    } else {
+        let xdg = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"];
+        let mut env = vec![("HOME", base.as_str())];
+        env.extend(xdg.map(|name| (name, ""))); // empty: the XDG defaults
+        (user.0.join(".config").join("folo"), env)
+    };
+    std::fs::create_dir_all(&home).unwrap();
+    let settings = format!("[listen]\nport = {port}\n[local_source]\nenabled = false\n");
+    std::fs::write(home.join("node.toml"), settings).unwrap();
+    let elsewhere = user.0.join("elsewhere").display().to_string();
+    env.extend([
+        ("FOLO_HOME", elsewhere.as_str()),
+        ("FOLO_LISTEN_PORT", "1"),
+        ("FOLO_LOCAL_SOURCE_ENABLED", "on"),
+    ]);
+    let mut node = start(&user.0, &["--managed"], &env);
+    let status = wait_until_serving(&mut node, port);
+    assert_eq!(status["launch"], "managed");
+    assert_eq!(status["mode"], "user");
+    assert_eq!(status["home"], home.display().to_string());
+    assert_eq!(status["overrides"], json!([]));
+    assert_eq!(status["workers"]["folo-source"]["state"], "stopped");
+    assert!(!Path::new(&elsewhere).exists());
+    stops_cleanly(
+        &mut node,
+        &status,
+        if cfg!(windows) { "break" } else { "-TERM" },
+    );
 }
 
 #[cfg(unix)]

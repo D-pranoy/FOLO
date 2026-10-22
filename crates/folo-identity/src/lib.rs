@@ -141,18 +141,19 @@ mod tests {
 
     #[test]
     fn base32_follows_rfc_4648() {
-        // RFC 4648 section 10, lower-cased and without padding
-        let cases = [
-            ("", ""),
-            ("f", "my"),
-            ("fo", "mzxq"),
-            ("foo", "mzxw6"),
-            ("foob", "mzxw6yq"),
-            ("fooba", "mzxw6ytb"),
-            ("foobar", "mzxw6ytboi"),
+        // RFC 4648 section 10: the prefixes of "foobar", lower-cased and
+        // without padding
+        let outputs = [
+            "",
+            "my",
+            "mzxq",
+            "mzxw6",
+            "mzxw6yq",
+            "mzxw6ytb",
+            "mzxw6ytboi",
         ];
-        for (input, output) in cases {
-            assert_eq!(base32(input.as_bytes()), output);
+        for (length, output) in outputs.into_iter().enumerate() {
+            assert_eq!(base32(&b"foobar"[..length]), output);
         }
     }
 

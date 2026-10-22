@@ -121,6 +121,9 @@ impl LogSink for EngineLog {
 /// `folo run` from the command line: a Tokio runtime, stopped by signals.
 #[must_use]
 pub fn main(location: &LocationArgs, args: &RunArgs) -> u8 {
+    if args.managed {
+        drop_folo_variables();
+    }
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("folo")
@@ -133,6 +136,22 @@ pub fn main(location: &LocationArgs, args: &RunArgs) -> u8 {
         }
     };
     runtime.block_on(run(location, args, stop_signal()))
+}
+
+/// A managed launch removes the `FOLO_*` variables it inherited from its
+/// environment (ADR-0010 D1, ADR-0034 D2), before the runtime starts any
+/// thread.
+#[allow(unsafe_code)] // see the SAFETY note
+fn drop_folo_variables() {
+    let names: Vec<std::ffi::OsString> = std::env::vars_os()
+        .map(|(name, _)| name)
+        .filter(|name| name.to_string_lossy().starts_with("FOLO_"))
+        .collect();
+    for name in names {
+        // SAFETY: the process has only this thread yet, so nothing reads
+        // the environment while it changes.
+        unsafe { std::env::remove_var(name) };
+    }
 }
 
 /// Runs the node until `stop` completes; returns its exit status.

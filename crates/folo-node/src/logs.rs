@@ -180,13 +180,14 @@ pub fn format_line(level: Level, logger: &str, message: &str) -> String {
     Value::Object(record).to_string()
 }
 
+/// The record's `level`: the engine's format has no `trace`, so
+/// `log_level = "trace"` writes those records as `debug`.
 const fn level_name(level: Level) -> &'static str {
     match level {
         Level::Error => "error",
         Level::Warn => "warning",
         Level::Info => "info",
-        Level::Debug => "debug",
-        Level::Trace => "trace",
+        Level::Debug | Level::Trace => "debug",
     }
 }
 
@@ -263,6 +264,20 @@ mod tests {
         assert_eq!(record["logger"], "folo_node");
         assert_eq!(record["msg"], "hello \"there\"");
         assert!(record["ts"].as_str().unwrap().ends_with('Z'));
+    }
+
+    #[test]
+    fn levels_are_the_engines() {
+        // docs/architecture/control-plane.md#supervision
+        let names = [
+            Level::Error,
+            Level::Warn,
+            Level::Info,
+            Level::Debug,
+            Level::Trace,
+        ]
+        .map(level_name);
+        assert_eq!(names, ["error", "warning", "info", "debug", "debug"]);
     }
 
     #[test]

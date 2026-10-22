@@ -423,7 +423,11 @@ async fn the_routes_check_the_host_and_json() {
         answers[3]
     );
     assert!(answers[4].starts_with("HTTP/1.1 400"), "{}", answers[4]);
-    assert!(answers[4].contains("\"code\":\"bad_body\""), "{}", answers[4]);
+    assert!(
+        answers[4].contains("\"code\":\"bad_body\""),
+        "{}",
+        answers[4]
+    );
     // Methods a route doesn't take get 405 before the JSON rule
     for answer in &answers[5..] {
         assert!(answer.starts_with("HTTP/1.1 405"), "{answer}");
