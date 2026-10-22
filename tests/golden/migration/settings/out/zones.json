@@ -136,8 +136,7 @@
         }
       ],
       "flash_limiter": {
-        "enabled": true,
-        "exempt_reason": ""
+        "enabled": false
       },
       "hue_sync": {
         "mode": "off",

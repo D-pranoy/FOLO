@@ -63,11 +63,11 @@ The inspector is **generated from each effect's parameter schema**, so effects t
 
 ## Wizards
 
-- **First run on a controller:** Welcome → Role → Audio (live meter) → Find lights (discovery; the Hue link-button step) → Create zone → Pick a scene → Add a phone or source (QR) → Done.
+- **First run on a controller:** Welcome → Photosensitivity warning ([below](#photosensitivity)) → Role → Audio (live meter) → Find lights (discovery; the Hue link-button step) → Create zone → Pick a scene → Add a phone or source (QR) → Done.
 - **First run on a source:** join a controller (scan or paste an invite, or pick a discovered controller and approve there); check inputs.
 - **First run on a client:** scan or paste a controller's connect code.
 - **Task wizards:** add WLED, pair Hue, add a source, create a zone, add a device, enable screen sync. The screen-sync wizard includes picking the screen, the operating system's consent step, a black-bar preview, and turning on start at sign-in.
-- **Rules:** one decision per screen; large primary buttons; every wizard can be skipped and resumed.
+- **Rules:** one decision per screen; large primary buttons; every wizard can be skipped and resumed. The photosensitivity warning is shown even when the rest of the first run is skipped.
 
 ## Responsive and touch rules
 
@@ -89,6 +89,14 @@ The inspector is **generated from each effect's parameter schema**, so effects t
 - A keyboard path for every edit: numeric fields and lane up/down replace canvas drags.
 - Focus management when views rebuild; `aria-controls` on disclosure buttons.
 - WCAG 2.2 AA contrast and target sizes outside the canvases.
+
+## Photosensitivity
+
+The flash limiter is off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)), so the UI makes sure people know it exists. Wherever the warning appears in full, it uses ADR-0033's text.
+- **First run:** the full warning, before any light is driven, with a primary button "Turn on the flash limiter for all zones" and a secondary "Continue without it".
+- **Zone settings:** the flash limiter switch, with a short warning and a link to the full text beside it while it's off.
+- **Settings:** the full warning and a switch that turns the limiter on or off for all zones.
+- **Effects menu:** a "Flashing" badge on built-in effects that flash quickly: the beat trigger on half beats or every beat, Strobe, Bar and similar. The badge links to the warning.
 
 ## Visual design
 

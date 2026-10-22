@@ -42,10 +42,12 @@ Every target declares what it can do. Providers discover this where possible; th
 5. **Latency offset:** a per-output delay line, so faster outputs can wait for slower ones (for example, WLED waiting for Hue).
 6. **Flash limiter:** see below.
 
-**Parity mode** uses an identity chain: no gamma, no colour conversion, no limiter. This keeps byte equality with the current engine ([pipeline](pipeline.md#parity-mode)).
+**Parity mode** uses an identity chain: no gamma, no colour conversion, no limiter. This keeps byte equality with the current engine ([pipeline](pipeline.md#parity-mode)). Migrated zones have the flash limiter off, as every zone does by default.
 
 ## Flash limiter
 
-- **On by default**, applied after rendering. It limits large luminance transitions to at most **3 flashes per second**, following WCAG 2.3.1 ("three flashes or below threshold").
-- It applies to all content, including third-party packs.
-- A zone may opt out, for example for screen sync of films. Opting out shows a photosensitivity warning and is recorded in the zone's settings.
+Decided in [ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md), which supersedes ADR-0007 D4.
+
+- **A per-zone setting, off by default.** Switched on, it is applied after rendering and limits large luminance transitions to at most **3 flashes per second**, following WCAG 2.3.1 ("three flashes or below threshold").
+- It applies to all content, including third-party packs and screen sync.
+- **Warnings:** FOLO shows a photosensitive epilepsy warning on the first run, beside each zone's switch while it's off, and in Settings, which can turn it on for all zones. Built-in effects that flash quickly carry a "Flashing" badge ([user interface](ui.md#photosensitivity)).

@@ -79,7 +79,7 @@ Status: Accepted · Implementation: Not started
    - golden tests against the current engine's ambient frames (within ±1 per channel)
 4. **Adapter chain** per [capabilities](../architecture/capabilities.md):
    - resolution, colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, rate (streaming or state with a token bucket), latency delay line
-   - **flash limiter** on by default, with a per-zone opt-out and warning
+   - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md))
 5. **Zone activation:** exclusive targets, with conflicts reported for the UI to confirm. Default surfaces and roles per zone type.
 6. **Provider interface:**
    - discover, describe (targets with capabilities), connect, send, release, status, admin

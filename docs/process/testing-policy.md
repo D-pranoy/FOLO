@@ -29,7 +29,7 @@ Demo mode is used for end-to-end tests, documentation screenshots and UI develop
 
 1. **Never** test against someone's live configuration or devices without their consent. Use a separate data folder (`--data-dir`) and a separate port for experiments.
 2. **Announce** what will change on a device or bridge (pairing, entertainment configurations, segments, settings) before doing it.
-3. Start at **low brightness** with **one target at a time**. Keep the flash limiter on.
+3. Start at **low brightness** with **one target at a time**. Turn the flash limiter on: it is off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)).
 4. **Release** devices afterwards: stop streams, clear priorities, restore settings you changed. Confirm the user's configuration is untouched.
 5. Hue: stop Hue Sync (or any other streaming app) before a streaming test. Never take over another app's stream without the device owner's confirmation.
 6. Bridges and controllers can only be changed while their owner can observe the result.
