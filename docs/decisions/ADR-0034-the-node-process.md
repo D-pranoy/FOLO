@@ -1,6 +1,6 @@
 # ADR-0034: The node process: folders, launches and its command line
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-22
 
 ## Context
