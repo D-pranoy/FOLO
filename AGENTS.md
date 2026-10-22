@@ -139,7 +139,7 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
 - `inputs/audio/capture.py`: this platform's `Capture` and `sources()`, on `common.py`'s `CaptureBase` (state, stats, the meter)
 - `inputs/audio/windows/`: the WASAPI capture (`Capture` in `audio_input.py`, on `wasapi.py`)
 - `inputs/audio/linux/`: the PulseAudio capture (`Capture` in `audio_input.py`, on `pulse.py`, [ADR-0031](docs/decisions/ADR-0031-linux-audio-capture.md))
-- `inputs/media/input.py`: `MediaInput`, now playing through `inputs/media/windows.py`. Linux's MPRIS isn't implemented yet, so it's unavailable there.
+- `inputs/media/input.py`: `MediaInput`, now playing through `inputs/media/windows.py` (media sessions) or `inputs/media/linux.py` (MPRIS on the session D-Bus, through dbus-fast; Pillow decodes local album art); `inputs/media/art.py`: the art's size limits and `cover_colors()`
 - `inputs/generator.py` (time, LFOs and noise), `inputs/screen.py` (no frames until folo-capture, RB-14) and `inputs/listing.py` (what `inputs.list` returns)
 - `signals/beat.py`: the beat tracker, and `BeatSignal`: a tracker per zone with its beat offset, publishing `[bpm, confidence, locked, phase, bar_beat]`
 - `effects/base.py`: the effect interface (`EffectInfo`, `LayerSpec`, `Effect` for effects that draw a line, `PostEffect` for those that change what is below them) and the registry (`register()`, `create()`)
@@ -207,6 +207,7 @@ The effect engine, restructured from the studio's engine in RB-03 with the same 
   - **Album art:** read when the song changes (again after 2 s if the player hasn't set it yet), decoded to 48×48 by `BitmapDecoder`. `cover_colors()` picks up to five hues from a histogram weighted by chroma², at full brightness and a bit more saturated; grey or dark art gives none.
   - **Album colors on the LEDs:** `AudioVisualizer.prepare(layers, colors)` swaps each layer's palette for as many art colors (`cover_palette()`: the strongest first for lows, the second for mids, the third for highs), so a new cover is worked out once.
   - **Controls:** `control()` runs `try_toggle_play_pause_async` / `try_skip_next_async` / `try_skip_previous_async` on the shown session.
+  - **Linux (`inputs/media/linux.py`, for the effect engine; the legacy studio doesn't use it):** the MPRIS players on the session D-Bus through dbus-fast, a playing one first. `PropertiesChanged` and `NameOwnerChanged` signals wake it, plus a check every second. Art is read only when the player names a local file (`file://`), decoded by Pillow. The controls call `PlayPause`, `Next` and `Previous`. Without a session bus the state is `unavailable`. `tests/test_mpris.py` runs it against a fake player on a private `dbus-daemon` (`tests/fake_mpris.py`), which CI's Ubuntu job installs (`FOLO_DBUS_TESTS=1` turns a missing daemon into a failure).
 - **Idle thread (`runtime/engine.py`):** after `IDLE_AFTER` (0.1 s) without an audio packet, it renders silence at `IDLE_FPS` (30), so fades, releases and the ambient light keep going. Packets stop when nothing plays on some devices, or when capture fails. Rendering from both threads is serialised by `_render_lock`. `fps` counts audio packets only, so it reads 0 while idle. `start()` renders a first frame itself, so a page that connects at once never gets an empty one.
 - **`HyperionSender` thread (`legacy/hyperion.py`):** sends JSON `color` commands with priority 100, origin `Audio Effects` and `duration` 2000 ms, so Hyperion releases the LEDs if the studio dies. Hyperion rejects an `origin` longer than 20 characters.
   - **Rate:** it checks for a new frame at the configured fps and sends it when it changed. An unchanged frame (silence, a solid ambient light) goes out again only every `KEEPALIVE` (0.5 s), well within `duration` and WLED's 2.5 s live timeout. Parsing our 40 commands a second cost Hyperion's JSON thread about 6% of a core.
@@ -326,6 +327,7 @@ The machine-readable forms of the prose specifications in `docs/specs/`. Nothing
 
 ## Not tested yet
 
+- Linux capture and MPRIS on a real desktop: the tests ran against PulseAudio with null sinks and a fake MPRIS player on a private bus, not PipeWire's `pipewire-pulse`, a real device or real players. Album art at web (`https://`) URLs isn't fetched.
 - A real default output switch or an unplugged device. The notification and reopen paths were only tested with simulated changes, to leave the owner's audio alone.
 - The glitch counter: it was never seen above 0.
 - Switching audio devices while the studio runs.

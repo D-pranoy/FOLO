@@ -1,6 +1,6 @@
 # M2 Engine
 
-Status: Accepted · Implementation: Partial (RB-03 and RB-05 done, with the node's first-run call coming in RB-06; RB-04 done apart from step 2's Linux media input, MPRIS; Linux capture awaits its first CI run)
+Status: Accepted · Implementation: Complete (RB-03, RB-04 and RB-05; the node calls the migration on first run in RB-06)
 
 ## RB-03: Effect engine restructure
 
@@ -38,7 +38,7 @@ Status: Accepted · Implementation: Partial (RB-03 and RB-05 done, with the node
      - Windows: output loopback, inputs and app capture (only / except)
      - Linux: PulseAudio/PipeWire monitors and inputs, through the PulseAudio client library ([ADR-0031](../decisions/ADR-0031-linux-audio-capture.md))
      - gain and auto level; quiet-window skip; stats and meters
-   - **`MediaInput`:** Windows media sessions through `winrt`; Linux MPRIS through `dbus-fast`. Album art, cover colours, play state, controls.
+   - **`MediaInput`:** Windows media sessions through `winrt`; Linux MPRIS through `dbus-fast`, with Pillow decoding the album art. Album art, cover colours, play state, controls.
    - `GeneratorInput` (time, LFO, noise)
    - a `ScreenInput` placeholder (filled in RB-14)
    - input listing: every available output, input, app playing audio, screen and media session, with enable flags

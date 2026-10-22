@@ -27,6 +27,10 @@ dependencies = [
   "winrt-Windows.Media.Control>=3.2; sys_platform == 'win32'",
   "winrt-Windows.Storage.Streams>=3.2; sys_platform == 'win32'",
   "winrt-Windows.Graphics.Imaging>=3.2; sys_platform == 'win32'",
+  # Now playing on Linux: MPRIS over the session D-Bus, and decoding the album art
+  # (folo_source/inputs/media/linux.py)
+  "dbus-fast>=5.2; sys_platform == 'linux'",
+  "pillow>=12; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -92,6 +96,8 @@ typeCheckingMode = "basic"
 include = ["studio.py", "source", "scripts", "tests"]
 extraPaths = ["source"]
 exclude = ["**/__pycache__"]
+# D-Bus signatures as annotations (dbus-fast), which aren't Python types
+ignore = ["tests/fake_mpris.py"]
 # New modules are checked strictly
 strict = [
   "scripts",

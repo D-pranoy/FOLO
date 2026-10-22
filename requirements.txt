@@ -14,3 +14,6 @@ winrt-Windows.Foundation.Collections; sys_platform == "win32"
 winrt-Windows.Media.Control; sys_platform == "win32"
 winrt-Windows.Storage.Streams; sys_platform == "win32"
 winrt-Windows.Graphics.Imaging; sys_platform == "win32"
+# Now playing on Linux (MPRIS) and its album art
+dbus-fast; sys_platform == "linux"
+pillow; sys_platform == "linux"
