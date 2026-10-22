@@ -678,7 +678,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The node's status, as `folo status --json` prints it; loopback only */
+        /**
+         * The node's status, as `folo status --json` prints it; loopback only
+         * @description Answers loopback requests only, which need no key (ADR-0034 D5).
+         */
         get: operations["getNodeStatus"];
         put?: never;
         post?: never;
@@ -697,7 +700,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-read node.toml and the documents, as `folo reload` does; loopback only */
+        /**
+         * Re-read node.toml and the documents, as `folo reload` does; loopback only
+         * @description Answers loopback requests only, which need no key (ADR-0034 D5).
+         */
         post: operations["reloadNode"];
         delete?: never;
         options?: never;
