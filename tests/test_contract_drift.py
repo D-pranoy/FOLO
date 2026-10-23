@@ -192,6 +192,35 @@ def test_post_processing_table(config_model: str) -> None:
         assert set(resolve(DEFS[by_effect[effect].removeprefix('#/$defs/')])['properties']) == names
 
 
+def test_effect_catalog_matches_the_registry() -> None:
+    """The built-in effects in the contract (ADR-0035 D3) are the engine's, declared alike."""
+    import numpy as np
+
+    from folo_source.effects import base
+    from folo_source.inputs.audio.analyzer import Analyzer
+    from folo_source.surfaces import renderer as _renderer  # registers every effect
+
+    assert _renderer
+    params = field('Layer', 'params')
+    catalog: dict[str, Json] = params['x-folo-effects']
+    by_effect: dict[str, str] = params['x-folo-params-by-effect']
+    assert set(catalog) == set(by_effect) == set(base.effect_ids())
+    for effect_id, entry in catalog.items():
+        effect = base.create(effect_id, Analyzer(), np.random.default_rng(0))
+        assert effect is not None
+        info = effect.info
+        declared = {
+            'version': info.version,
+            'name': info.name,
+            'description': info.description,
+            'inputs': list(info.inputs),
+            'min_elements': info.min_elements,
+        }
+        assert declared == entry, effect_id
+        assert info.id == effect_id
+        assert dict(info.params_schema) == DEFS[by_effect[effect_id].removeprefix('#/$defs/')]
+
+
 def test_source_inputs_table(config_model: str) -> None:
     for row in table(config_model, '**Source** (in `sources.json`)'):
         name = row['Field'].strip('`')

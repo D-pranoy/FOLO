@@ -76,6 +76,7 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 **Scene:** `id`, `name`, `tags` (up to 16 of up to 24 characters), `provenance? {pack, version, item}`, `layers_by_role {role: Layer[]}` (up to 64 layers per role), `macros[]` (up to 8: `id`, `name`, `value` 0–1 (default 0.5), `targets[] {layer, param, min, max}`).
 
 **Layer:** `id`, `name`, `effect {id, version}`, `params` (validated against the effect's JSON Schema; the `audio-visualizer` and post-processing effects' are below), `region`, `blend`, `axis`, `enabled` (default true), `solo` (default false), `lane` (UI row: −1…15, −1 places it automatically).
+- The built-in effects, with their names, inputs and minimum element counts, are listed in the show schema (`x-folo-effects`), which [`/effects`](client-api.md#resources) serves with their parameter schemas ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D3).
 - `region`: `{kind: cells, start, end}` (absolute cells, 0–1999), `{kind: relative, start, end}` (0–1 along a strip) or `{kind: rect, x, y, width, height}` (0–1 of a canvas). Default: the whole surface (`relative`, 0–1).
 - `blend`: `max` (default, today's behaviour), `add`, `alpha` or `multiply`.
 - `axis`: how a 1D effect runs on a canvas: `linear_x` (default), `linear_y`, `radial` or `angular`.

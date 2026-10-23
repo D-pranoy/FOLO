@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and both sides of the local link) · Contract version: 1.2
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and both sides of the local link) · Contract version: 1.3
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -62,7 +62,7 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 
 | Method | Purpose |
 |---|---|
-| `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. Each assigned surface carries its zone's `beat_offset_ms` and `album_colors`, which its layers use. `publish` holds the requested resolution, rate and compression per surface, and the signals to send with their signal index. |
+| `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. Each assigned surface carries its zone's `beat_offset_ms` and `album_colors`, which its layers use. `publish` holds the requested resolution, rate and compression per surface, the signals to send with their signal index, and the surfaces whose layers' levels to send (`levels`). |
 | `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | Content distribution |
 | `inputs.list` | The inputs available on the source (outputs, inputs, apps playing audio, screens, media session), with capabilities |
 | `media.control {action}` | `play_pause`, `next` or `previous` on the shown media session |
@@ -78,8 +78,9 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 |---|---|---|
 | `status {state, workers, inputs, errors}` | Health | Once a second, and when it changes (the local link's heartbeat) |
 | `activity {surface?, active: bool, level_db?, quiet_s}` | Activity for compositor switching and the zone's ambient light (silence uses the level without gain) | 10 times a second, and when `active` changes |
-| `media {state, app, title, artist, album, art_id, colors}` | Now playing | When it changes |
+| `media {state, app, title, artist, album, art, colors}` | Now playing | When it changes |
 | `input {format, packets_per_s, delay_ms, glitches, peaks, clip, gain_db, auto_gain_db, state}` | Audio input status | At most 10 times a second |
+| `levels {surface, layers: {id: [level_db, value, average_db]}}` | The levels of a surface's layers: the band level in dB, the shaped value 0–1 and the band's recent average in dB, which clients draw on their analyzers ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D6) | For each surface in `publish.levels`, with rendered steps, at most 60 times a second |
 | `metrics {render_ms, publish_fps, dropped}` | Performance since the last one: the mean render time of a step, surface frames sent per second per published surface, and frames dropped (steps merged to keep up, and frames replaced before they were sent) | Once a second |
 | `update.available / progress / result` | Updates | As they happen |
 
@@ -135,6 +136,7 @@ A signal's sequence number counts the frames sent for it, as for surfaces.
 
 The same newest-wins delivery applies. Used for:
 - **The beat signal:** `[bpm, confidence, locked, phase, bar_beat]`, sent with every analysed packet while the beat tracker runs. Clients show it.
+- **The spectrum signal:** 192 band levels in dB, sent with rendered steps, at most 60 times a second ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D6). Band `i` spans 20 Hz × 1000^(i/192) to 20 Hz × 1000^((i+1)/192). Its level is the loudest bin in that range, interpolated when the band is narrower than a bin, with the input's gain, and at least −120 dB. Clients draw it as the analyzer.
 - **Activity levels.**
 - Later, exporting analysis signals.
 

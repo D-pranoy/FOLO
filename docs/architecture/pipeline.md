@@ -102,6 +102,8 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 - **Signals** the engine publishes when `config.apply` asks for them by name:
   - `beat`: `[bpm, confidence, locked, phase, bar_beat]` of the first surface's zone, while the beat tracker runs
   - `activity`: `[active (0 or 1), level_db, quiet_s]`, as the activity notification below
+  - `spectrum`: 192 band levels for clients' analyzers ([source link](../specs/source-link.md#signal-frames))
+- **Layer levels:** for each surface `config.apply` lists in `publish.levels`, the engine sends its layers' levels as the `levels` notification ([source link](../specs/source-link.md#source--controller-notifications)).
 - The link and framing are in the [source link specification](../specs/source-link.md).
 
 ## The executor

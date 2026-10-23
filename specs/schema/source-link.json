@@ -80,7 +80,7 @@
     },
     "NotificationMethod": {
       "description": "Source -> controller.",
-      "enum": ["status", "activity", "media", "input", "metrics", "update.available", "update.progress", "update.result"]
+      "enum": ["status", "activity", "media", "input", "levels", "metrics", "update.available", "update.progress", "update.result"]
     },
     "ConfigApplyParams": {
       "type": "object",
@@ -111,7 +111,14 @@
       "type": "object",
       "properties": {
         "surfaces": {"type": "array", "items": {"$ref": "#/$defs/PublishSurface"}, "maxItems": 64},
-        "signals": {"type": "array", "items": {"$ref": "#/$defs/PublishSignal"}, "maxItems": 64}
+        "signals": {"type": "array", "items": {"$ref": "#/$defs/PublishSignal"}, "maxItems": 64},
+        "levels": {
+          "description": "The surface indices whose layers' levels the source sends as levels notifications (ADR-0035 D6).",
+          "type": "array",
+          "items": {"type": "integer", "minimum": 0, "maximum": 65535},
+          "maxItems": 64,
+          "default": []
+        }
       },
       "required": ["surfaces", "signals"],
       "additionalProperties": false
@@ -132,7 +139,7 @@
     "PublishSignal": {
       "type": "object",
       "properties": {
-        "name": {"description": "beat, activity, ...", "type": "string", "maxLength": 64},
+        "name": {"description": "beat, activity, spectrum, ...", "type": "string", "maxLength": 64},
         "index": {"type": "integer", "minimum": 0, "maximum": 65535}
       },
       "required": ["name", "index"],
@@ -225,6 +232,20 @@
         "quiet_s": {"type": "number", "minimum": 0}
       },
       "required": ["active", "quiet_s"],
+      "additionalProperties": false
+    },
+    "LevelsParams": {
+      "description": "The levels of a surface's layers (ADR-0035 D6).",
+      "type": "object",
+      "properties": {
+        "surface": {"description": "The surface's index in config.apply.", "type": "integer", "minimum": 0, "maximum": 65535},
+        "layers": {
+          "description": "Layer id: [band level dB, value 0-1, recent average dB].",
+          "type": "object",
+          "additionalProperties": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
+        }
+      },
+      "required": ["surface", "layers"],
       "additionalProperties": false
     },
     "MetricsParams": {
