@@ -75,7 +75,7 @@ pub fn local_config(zones: &Value, show: &Value, sources: &Value) -> Value {
         "inputs": inputs,
         "surfaces": assigned,
         "scenes": scenes,
-        "publish": {"surfaces": publish, "signals": []},
+        "publish": {"surfaces": publish, "signals": [], "levels": []},
     })
 }
 

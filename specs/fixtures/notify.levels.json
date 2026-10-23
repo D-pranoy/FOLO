@@ -1,0 +1,14 @@
+{
+ "jsonrpc": "2.0",
+ "method": "levels",
+ "params": {
+  "surface": 0,
+  "layers": {
+   "l1": [
+    -30.5,
+    0.62,
+    -34.1
+   ]
+  }
+ }
+}
