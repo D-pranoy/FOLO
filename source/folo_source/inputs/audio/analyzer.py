@@ -33,6 +33,10 @@ QUIET_PEAK_DB = SILENCE_DB - 1.0 - 20.0 * math.log10(2.0) - CALIBRATION_DB
 DISPLAY_BANDS = 192
 DISPLAY_MIN_HZ = 20.0
 DISPLAY_MAX_HZ = 20000.0
+# How planned_levels() reads the bins of some bands: whether from the short
+# window, the edges' bin indices, which bands are narrower than a bin, their
+# centres, and 1 for contiguous edges or 2 for separate (lo, hi) bands
+BandPlan = tuple[bool, npt.NDArray[np.intp], npt.NDArray[np.bool_], npt.NDArray[np.float64], int]
 
 # Audio counts as silent while its loudest bin is below this
 QUIET_DB = -70.0
@@ -248,7 +252,7 @@ class Analyzer:
         np.maximum(power, SILENCE_DB, out=db[:-1])
         return db
 
-    def band_plan(self, edges, fast=False):
+    def band_plan(self, edges: npt.ArrayLike, fast: bool = False) -> BandPlan:
         """
         How band_levels() reads the bins for these edges (Hz), worked out
         once. Pass it to planned_levels().
@@ -265,7 +269,7 @@ class Analyzer:
             plan = self._plans[key] = (fast, idx, empty, centers, 1)
         return plan
 
-    def bands_plan(self, bands, fast=False):
+    def bands_plan(self, bands: npt.ArrayLike, fast: bool = False) -> BandPlan:
         """
         Like band_plan(), for separate (lo, hi) bands that may overlap.
         """
@@ -275,7 +279,7 @@ class Analyzer:
         centers = np.sqrt(edges[0::2] * edges[1::2])[empty]
         return (fast, idx, empty, centers, 2)
 
-    def planned_levels(self, spectrum, plan):
+    def planned_levels(self, spectrum: Spectrum, plan: BandPlan) -> npt.NDArray[np.float64]:
         """
         Loudest bin of each band of a plan, from the short window if the plan
         is `fast`. Bands narrower than the FFT resolution are interpolated.

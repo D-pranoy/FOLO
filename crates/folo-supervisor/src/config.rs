@@ -11,17 +11,30 @@ const RATE_HZ: u32 = 60;
 /// Canvases are published at most this size (docs/specs/source-link.md).
 const CANVAS_MAX: (u64, u64) = (128, 72);
 
+/// What live clients want from the local source besides its surfaces
+/// (docs/specs/client-api.md#topics-and-delivery).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Wanted {
+    /// The `beat` signal.
+    pub beat: bool,
+    /// The `spectrum` signal.
+    pub spectrum: bool,
+    /// The `levels` notifications of every surface.
+    pub levels: bool,
+}
+
 /// `config.apply`'s params for the local source, without `revision`, which
-/// the link adds when it sends them.
+/// the link adds when it sends them. The signals `wanted` asks for are
+/// indexed in the order they're listed: `beat`, then `spectrum`.
 #[must_use]
-pub fn local_config(zones: &Value, show: &Value, sources: &Value) -> Value {
+pub fn local_config(zones: &Value, show: &Value, sources: &Value, wanted: Wanted) -> Value {
     let local = sources["sources"]
         .as_array()
         .into_iter()
         .flatten()
         .find(|s| s["id"] == LOCAL_SOURCE);
     let inputs = local.map_or_else(default_inputs, |s| s["inputs"].clone());
-    let wanted: Vec<&str> = local
+    let surface_ids: Vec<&str> = local
         .and_then(|s| s["surfaces"].as_array())
         .into_iter()
         .flatten()
@@ -31,7 +44,7 @@ pub fn local_config(zones: &Value, show: &Value, sources: &Value) -> Value {
     let mut assigned = Vec::new();
     let mut publish = Vec::new();
     let mut scene_ids: Vec<&str> = Vec::new();
-    for id in wanted {
+    for id in surface_ids {
         let Some((zone, surface)) = find_surface(zones, id) else {
             continue;
         };
@@ -60,6 +73,17 @@ pub fn local_config(zones: &Value, show: &Value, sources: &Value) -> Value {
             "lz4": false,
         }));
     }
+    let mut signals = Vec::new();
+    for (name, on) in [("beat", wanted.beat), ("spectrum", wanted.spectrum)] {
+        if on {
+            signals.push(json!({"name": name, "index": signals.len()}));
+        }
+    }
+    let levels: Vec<usize> = if wanted.levels {
+        (0..assigned.len()).collect()
+    } else {
+        Vec::new()
+    };
     let scenes: Vec<Value> = scene_ids
         .iter()
         .filter_map(|id| {
@@ -75,7 +99,7 @@ pub fn local_config(zones: &Value, show: &Value, sources: &Value) -> Value {
         "inputs": inputs,
         "surfaces": assigned,
         "scenes": scenes,
-        "publish": {"surfaces": publish, "signals": []},
+        "publish": {"surfaces": publish, "signals": signals, "levels": levels},
     })
 }
 
@@ -152,7 +176,7 @@ mod tests {
     #[test]
     fn assigned_surfaces_in_the_sources_order() {
         let (zones, show, sources) = documents();
-        let config = local_config(&zones, &show, &sources);
+        let config = local_config(&zones, &show, &sources, Wanted::default());
         let surfaces = config["surfaces"].as_array().unwrap();
         assert_eq!(surfaces.len(), 2);
         assert_eq!(surfaces[0]["index"], 0);
@@ -172,7 +196,7 @@ mod tests {
     #[test]
     fn surfaces_are_published_at_60_hz_as_rgb8() {
         let (zones, show, sources) = documents();
-        let publish = &local_config(&zones, &show, &sources)["publish"];
+        let publish = &local_config(&zones, &show, &sources, Wanted::default())["publish"];
         assert_eq!(
             publish["surfaces"],
             json!([
@@ -181,12 +205,39 @@ mod tests {
             ])
         );
         assert_eq!(publish["signals"], json!([]));
+        assert_eq!(publish["levels"], json!([]));
+    }
+
+    #[test]
+    fn signals_and_levels_live_clients_want() {
+        let (zones, show, sources) = documents();
+        let wanted = Wanted {
+            beat: false,
+            spectrum: true,
+            levels: true,
+        };
+        let publish = &local_config(&zones, &show, &sources, wanted)["publish"];
+        assert_eq!(
+            publish["signals"],
+            json!([{"name": "spectrum", "index": 0}])
+        );
+        assert_eq!(publish["levels"], json!([0, 1]));
+        let all = Wanted {
+            beat: true,
+            ..wanted
+        };
+        let publish = &local_config(&zones, &show, &sources, all)["publish"];
+        assert_eq!(
+            publish["signals"],
+            json!([{"name": "beat", "index": 0}, {"name": "spectrum", "index": 1}])
+        );
     }
 
     #[test]
     fn without_a_local_source_the_defaults_and_nothing_to_render() {
         let (zones, show, _) = documents();
-        let config = local_config(&zones, &show, &clamped("SourcesDocument", &json!({})));
+        let empty = clamped("SourcesDocument", &json!({}));
+        let config = local_config(&zones, &show, &empty, Wanted::default());
         assert_eq!(config["surfaces"], json!([]));
         assert_eq!(config["inputs"]["audio"]["device"], "default");
     }
@@ -194,7 +245,12 @@ mod tests {
     #[test]
     fn the_params_are_valid_config_apply_params() {
         let (zones, show, sources) = documents();
-        let mut params = local_config(&zones, &show, &sources);
+        let wanted = Wanted {
+            beat: true,
+            spectrum: true,
+            levels: true,
+        };
+        let mut params = local_config(&zones, &show, &sources, wanted);
         params["revision"] = json!(1);
         let again = clamped("ConfigApplyParams", &params);
         assert!(same(&again["surfaces"], &params["surfaces"]), "{again}");

@@ -2,6 +2,7 @@
  "type": "levels",
  "data": {
   "source": "local",
+  "surface": "main",
   "layers": {
    "l1": [
     -30.5,

@@ -1,6 +1,7 @@
 //! FOLO's contracts in Rust (RB-02): the types generated from `specs/schema`,
 //! the clampers, and the version-1 config rules.
 
+pub mod catalog;
 pub mod clamp;
 pub mod number;
 pub mod v1;

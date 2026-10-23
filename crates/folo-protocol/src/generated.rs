@@ -5930,6 +5930,17 @@ pub struct Levels {
     ///Layer id: [band level dB, value 0-1, recent average dB].
     pub layers: ::std::collections::HashMap<::std::string::String, [f64; 3usize]>,
     pub source: LevelsSource,
+    ///The surface the layers draw on (ADR-0035 D4).
+    pub surface: LevelsSurface,
+}
+///The levels of a surface's layers (ADR-0035 D6).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelsParams {
+    ///Layer id: [band level dB, value 0-1, recent average dB].
+    pub layers: ::std::collections::HashMap<::std::string::String, [f64; 3usize]>,
+    ///The surface's index in config.apply.
+    pub surface: u16,
 }
 ///`LevelsSource`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -5974,6 +5985,60 @@ impl ::std::convert::TryFrom<::std::string::String> for LevelsSource {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for LevelsSource {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The surface the layers draw on (ADR-0035 D4).
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LevelsSurface(::std::string::String);
+impl ::std::ops::Deref for LevelsSurface {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LevelsSurface> for ::std::string::String {
+    fn from(value: LevelsSurface) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LevelsSurface {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelsSurface {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelsSurface {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LevelsSurface {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -9118,6 +9183,8 @@ pub enum NotificationMethod {
     Media,
     #[serde(rename = "input")]
     Input,
+    #[serde(rename = "levels")]
+    Levels,
     #[serde(rename = "metrics")]
     Metrics,
     #[serde(rename = "update.available")]
@@ -9134,6 +9201,7 @@ impl ::std::fmt::Display for NotificationMethod {
             Self::Activity => f.write_str("activity"),
             Self::Media => f.write_str("media"),
             Self::Input => f.write_str("input"),
+            Self::Levels => f.write_str("levels"),
             Self::Metrics => f.write_str("metrics"),
             Self::UpdateAvailable => f.write_str("update.available"),
             Self::UpdateProgress => f.write_str("update.progress"),
@@ -9151,6 +9219,7 @@ impl ::std::str::FromStr for NotificationMethod {
             "activity" => Ok(Self::Activity),
             "media" => Ok(Self::Media),
             "input" => Ok(Self::Input),
+            "levels" => Ok(Self::Levels),
             "metrics" => Ok(Self::Metrics),
             "update.available" => Ok(Self::UpdateAvailable),
             "update.progress" => Ok(Self::UpdateProgress),
@@ -11913,6 +11982,9 @@ impl ::std::default::Default for ProvidersDocument {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Publish {
+    ///The surface indices whose layers' levels the source sends as levels notifications (ADR-0035 D6).
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub levels: ::std::vec::Vec<u16>,
     pub signals: ::std::vec::Vec<PublishSignal>,
     pub surfaces: ::std::vec::Vec<PublishSurface>,
 }
@@ -11921,10 +11993,10 @@ pub struct Publish {
 #[serde(deny_unknown_fields)]
 pub struct PublishSignal {
     pub index: u16,
-    ///beat, activity, ...
+    ///beat, activity, spectrum, ...
     pub name: PublishSignalName,
 }
-///beat, activity, ...
+///beat, activity, spectrum, ...
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct PublishSignalName(::std::string::String);

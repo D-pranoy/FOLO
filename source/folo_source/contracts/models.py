@@ -540,6 +540,29 @@ class Levels(BaseModel):
         extra='forbid',
     )
     source: Annotated[str, Field(max_length=64)]
+    surface: Annotated[
+        str,
+        Field(
+            description='The surface the layers draw on (ADR-0035 D4).', max_length=64
+        ),
+    ]
+    layers: Annotated[
+        dict[str, LayersAdditionalProperty],
+        Field(description='Layer id: [band level dB, value 0-1, recent average dB].'),
+    ]
+
+
+class LevelsParams(BaseModel):
+    """
+    The levels of a surface's layers (ADR-0035 D6).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    surface: Annotated[
+        int, Field(description="The surface's index in config.apply.", ge=0, le=65535)
+    ]
     layers: Annotated[
         dict[str, LayersAdditionalProperty],
         Field(description='Layer id: [band level dB, value 0-1, recent average dB].'),
@@ -958,11 +981,17 @@ class ProviderStatus(BaseModel):
     state: Literal['stopped', 'connecting', 'connected', 'error']
 
 
+class Level(RootModel[int]):
+    root: Annotated[int, Field(ge=0, le=65535)]
+
+
 class PublishSignal(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    name: Annotated[str, Field(description='beat, activity, ...', max_length=64)]
+    name: Annotated[
+        str, Field(description='beat, activity, spectrum, ...', max_length=64)
+    ]
     index: Annotated[int, Field(ge=0, le=65535)]
 
 
@@ -1118,7 +1147,7 @@ class RpcNotification(BaseModel):
     )
     jsonrpc: Literal['2.0']
     method: Annotated[
-        Literal['status', 'activity', 'media', 'input', 'metrics', 'update.available', 'update.progress', 'update.result'],
+        Literal['status', 'activity', 'media', 'input', 'levels', 'metrics', 'update.available', 'update.progress', 'update.result'],
         Field(description='Source -> controller.'),
     ]
     params: dict[str, Any] | None = None
@@ -2169,6 +2198,14 @@ class Publish(BaseModel):
     )
     surfaces: Annotated[list[PublishSurface], Field(max_length=64)]
     signals: Annotated[list[PublishSignal], Field(max_length=64)]
+    levels: Annotated[
+        list[Level],
+        Field(
+            description="The surface indices whose layers' levels the source sends as levels notifications (ADR-0035 D6).",
+            max_length=64,
+            validate_default=True,
+        ),
+    ] = []
 
 
 class ReactionItem(BaseModel):

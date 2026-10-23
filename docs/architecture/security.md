@@ -1,6 +1,6 @@
 # Security
 
-Status: Accepted · Implementation: Partial (owner-only secrets, and the local link's launch token)
+Status: Accepted · Implementation: Partial (owner-only secrets, the local link's launch token, the Host and client-address checks, and the UI's Content Security Policy; no client keys yet)
 
 ## Assets
 
@@ -16,6 +16,7 @@ Status: Accepted · Implementation: Partial (owner-only secrets, and the local l
 | Unauthorised LAN client | Per-client API keys; LAN-only client filter; failed-login backoff; audit log |
 | DNS rebinding from a browser | Host-header allowlist (loopback names plus configured LAN names and IPs) |
 | Cross-site requests | JSON-only mutating requests; Origin check; HttpOnly, SameSite=Strict session cookies |
+| Script injected into the UI | A Content Security Policy that runs scripts from the node only ([rules](#rules)) |
 | Sniffing on the LAN | **Source links are Noise-encrypted.** UI traffic is plain HTTP by decision ([ADR-0009](../decisions/ADR-0009-client-access.md)). Anyone who can sniff the LAN can capture a client key. Optional HTTPS is a later option. |
 | Rogue source or impersonated controller | Pinned static keys after pairing; one-time, expiring invites; join requests require a verification code and admin approval |
 | A local program posing as the effect engine | The node starts its engine with a launch token in the engine's environment, and its loopback source link accepts only that token ([ADR-0032](../decisions/ADR-0032-local-source-link.md)) |
@@ -34,6 +35,8 @@ Status: Accepted · Implementation: Partial (owner-only secrets, and the local l
   - unique-local IPv6: fc00::/7
 - **Loopback clients need no key.** The Host check still applies.
 - **Static UI files load without a key; every API and WebSocket call requires one.** The exceptions are `/api/v1/health` and the pairing endpoints, which use their own proofs.
+- **Before client keys** arrive with RB-15, no key is valid: clients on other machines get `401` from every API and WebSocket call that needs one ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D1).
+- **The UI's Content Security Policy:** `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. Inline styles are allowed because Svelte's transitions write them ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D7).
 - **Secrets** live in a separate file with owner-only permissions. Secrets are excluded from every API response, log and export.
 - **Device certificates:**
   - Hue bridges are verified against the bundled Signify root certificates, with CN = bridge id.

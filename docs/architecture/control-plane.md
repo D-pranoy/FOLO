@@ -1,6 +1,6 @@
 # Control plane
 
-Status: Accepted · Implementation: Partial (the node's settings, folders, documents, identity, local link, supervision, logs and command line; no pairing, discovery or client API yet)
+Status: Accepted · Implementation: Partial (the node's settings, folders, documents, identity, local link, supervision, logs, command line and client API; no pairing or discovery yet)
 
 Covers roles, ports, pairing, links, settings, supervision and status. Decided in [ADR-0003](../decisions/ADR-0003-system-roles.md), [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md), [ADR-0009](../decisions/ADR-0009-client-access.md) and [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md).
 
@@ -148,7 +148,7 @@ A usage error exits with status 2. Until their run books land, `token`, `pair` a
   - `inputs`: the inputs of the source `local` in `sources.json`, or the defaults when there is none
   - `surfaces`: the surfaces in that source's `surfaces`, in that order, indexed from 0. Each carries its zone's `beat_offset_ms` and `album_colors`, its role, and its zone's active scene in `show.json`.
   - `scenes`: the scenes those surfaces render
-  - `publish`: each surface at its resolution (canvases at most 128 × 72), at 60 Hz, as `rgb8` and without LZ4 on loopback; the signals a consumer asks for, none until RB-07's live channel
+  - `publish`: each surface at its resolution (canvases at most 128 × 72), at 60 Hz, as `rgb8` and without LZ4 on loopback; the `spectrum` and `beat` signals and the surfaces' `levels`, while a live client subscribes to them ([client API](../specs/client-api.md#topics-and-delivery))
   - `revision`: the count of configurations the node has sent since it started
 - **The node's log** ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D8):
   - It writes JSON lines in the engine's format to stderr and to `folo.log` in its log folder (see [folders](#folders)). The file rotates at 10 MiB, and four older files are kept (`folo.log.1` to `folo.log.4`).

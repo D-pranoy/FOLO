@@ -10,12 +10,13 @@ from typing import Any
 
 import numpy as np
 
+from folo_source.effects.base import shown_levels
 from folo_source.inputs.audio import capture
 from folo_source.inputs.audio.analyzer import SAMPLERATE, Spectrum
 from folo_source.inputs.audio.input import MAX_DT, AudioInput, AudioPacket
 from folo_source.inputs.media import windows as now_playing
 from folo_source.legacy.hyperion import HyperionSender
-from folo_source.legacy.renderer import Renderer, shown_levels
+from folo_source.legacy.renderer import Renderer
 from folo_source.runtime import lifecycle
 from folo_source.signals import beat as beat_tracker
 
