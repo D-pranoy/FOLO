@@ -36,6 +36,7 @@ def apply_params(
     album_colors: bool = False,
     signals: list[dict[str, Any]] | None = None,
     revision: int = 1,
+    levels: list[int] | None = None,
 ) -> dict[str, Any]:
     params = {
         'revision': revision,
@@ -63,6 +64,7 @@ def apply_params(
                 }
             ],
             'signals': signals or [],
+            'levels': levels or [],
         },
     }
     return cast(dict[str, Any], clamp.clamp('ConfigApplyParams', params))
@@ -141,6 +143,39 @@ def test_signals_are_published_when_asked() -> None:
     executor.step([Step.silence(0.01)], STEP_US)
     decoded = [frames.decode_signal_frame(data) for data in sent if data[:4] == frames.SIGNAL_MAGIC]
     assert [(d.index, len(d.values)) for d in decoded] == [(0, 5), (1, 3)]
+
+
+def test_the_spectrum_and_levels_go_out_at_most_60_times_a_second() -> None:
+    segments = config()
+    executor, sent = make(segments, signals=[{'name': 'spectrum', 'index': 2}], levels=[0])
+    silent = Spectrum.silent()
+    padded = silent.padded_for(False).copy()
+    bin_1k = int(np.searchsorted(executor.analyzer.freqs, 1000.0))
+    padded[bin_1k] = -20.0
+    loud = Spectrum(padded, silent.padded_for(True))
+    notified: list[list[dict[str, Any]]] = []
+    for step in range(1, 11):  # 100 steps a second
+        executor.step([Step(loud, 480, 0.01)], step * STEP_US)
+        notified.append(executor.levels_due(step * STEP_US))
+    spectra = [frames.decode_signal_frame(data) for data in sent if data[:4] == frames.SIGNAL_MAGIC]
+    # Due every 1/60 s from the first: the steps at 10, 30, 50, 70 and 90 ms
+    assert [s.timestamp_us for s in spectra] == [10_000, 30_000, 50_000, 70_000, 90_000]
+    assert all(s.index == 2 and len(s.values) == 192 for s in spectra)
+    band = int(np.searchsorted(executor.analyzer.display_edges, 1000.0)) - 1
+    assert max(spectra[0].values) == pytest.approx(spectra[0].values[band])
+    assert min(spectra[0].values) == -120.0
+    assert [bool(n) for n in notified] == [True, False] * 5
+    layers = notified[0][0]['layers']
+    assert notified[0][0]['surface'] == 0
+    assert set(layers) == {seg['id'] for seg in segments['segments']}
+    assert all(len(values) == 3 for values in layers.values())
+
+
+def test_without_asking_no_spectrum_or_levels() -> None:
+    executor, sent = make(config())
+    executor.step([Step.silence(0.01)], STEP_US)
+    assert executor.levels_due(STEP_US) == []
+    assert not [data for data in sent if data[:4] == frames.SIGNAL_MAGIC]
 
 
 def test_layers_keep_their_state_across_configurations() -> None:

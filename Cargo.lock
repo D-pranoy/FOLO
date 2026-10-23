@@ -67,6 +67,7 @@ dependencies = [
  "axum-core",
  "base64",
  "bytes",
+ "form_urlencoded",
  "futures-util",
  "http",
  "http-body",
@@ -82,6 +83,7 @@ dependencies = [
  "serde_core",
  "serde_json",
  "serde_path_to_error",
+ "serde_urlencoded",
  "sha1",
  "sync_wrapper",
  "tokio",
@@ -114,6 +116,12 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "bitflags"
+version = "2.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "blake2"
@@ -302,6 +310,7 @@ name = "folo-node"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "base64",
  "clap",
  "folo-identity",
  "folo-protocol",
@@ -309,10 +318,13 @@ dependencies = [
  "folo-store",
  "folo-supervisor",
  "futures-util",
+ "gethostname",
  "log",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "tower",
  "windows-sys",
 ]
 
@@ -359,6 +371,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "form_urlencoded"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+dependencies = [
+ "percent-encoding",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -397,6 +418,16 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "gethostname"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
+dependencies = [
+ "rustix",
+ "windows-link",
 ]
 
 [[package]]
@@ -529,6 +560,12 @@ name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "log"
@@ -680,6 +717,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys",
+]
+
+[[package]]
+name = "ryu"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
 name = "schemars"
 version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -795,6 +851,18 @@ dependencies = [
  "quote",
  "serde",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "serde_urlencoded"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
+dependencies = [
+ "form_urlencoded",
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

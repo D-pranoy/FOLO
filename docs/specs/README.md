@@ -21,7 +21,7 @@ Once a machine-readable form exists, it and this prose must agree. A change to e
 | Specification | Implementation |
 |---|---|
 | [Configuration model](config-model.md) | Partial (JSON Schemas, generated types, clampers and the v1 migration; the node reads and writes the documents) |
-| [Client API](client-api.md) | Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; the node serves `/system/status` and `/system/reload`) |
+| [Client API](client-api.md) | Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; the node serves the API, the live channel and the UI's files, with `501` for the endpoints before their run books) |
 | [Source link](source-link.md) | Partial (the AsyncAPI contract, message fixtures, the conformance harness, and both sides of the local link) |
 | [Pairing and connect](pairing-and-connect.md) | Partial (the node's identity) |
 | [Pack format](pack-format.md) | Partial (JSON Schemas for the manifest and the items; nothing reads packs yet) |

@@ -1,7 +1,7 @@
 //! `folo run` (RB-06 steps 6, 7 and 9): takes the home's lock, reads the
 //! settings and documents, makes sure the node has an identity, imports a
-//! legacy `studio.json` on a first run, serves the node's port, supervises
-//! the effect engine, and stops cleanly on a signal.
+//! legacy `studio.json` on a first run, serves the node's port (RB-07),
+//! supervises the effect engine, and stops cleanly on a signal.
 
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -20,7 +20,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, lock, logs, server};
+use crate::{import, live, lock, logs, server};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -31,6 +31,8 @@ pub struct Node {
     pub place: Place,
     /// The node id.
     pub id: String,
+    /// Its name in `/api/v1/info`: the computer's host name (ADR-0035 D9).
+    pub name: String,
     /// The role and the address it listens on, as started: they change
     /// only with a restart.
     pub role: String,
@@ -39,6 +41,8 @@ pub struct Node {
     settings: Mutex<Layered>,
     pub store: Store,
     pub supervisor: Supervisor,
+    /// The live channel's connections.
+    pub live: live::Hub,
 }
 
 impl Node {
@@ -53,16 +57,30 @@ impl Node {
         self.role == "source" || settings.settings.local_source.enabled
     }
 
-    /// The engine's configuration: built from the documents in the controller
-    /// role; none in the source role until its controller sends one (RB-16).
+    /// Whether the node runs its engine, the source `local`, now.
+    #[must_use]
+    pub fn engine_runs(&self) -> bool {
+        self.engine_wanted(&self.settings())
+    }
+
+    /// The engine's configuration: built from the documents and what live
+    /// clients watch in the controller role; none in the source role until
+    /// its controller sends one (RB-16).
     fn engine_config(&self) -> Option<Value> {
         (self.role == "controller").then(|| {
             local_config(
                 &self.store.get(Doc::Zones),
                 &self.store.get(Doc::Show),
                 &self.store.get(Doc::Sources),
+                self.live.wanted(),
             )
         })
+    }
+
+    /// Sends the engine its configuration again when it changed: after a
+    /// document it comes from changed, or what live clients watch.
+    pub fn refresh_engine(&self) {
+        self.supervisor.set_config(self.engine_config());
     }
 
     /// `folo reload` (ADR-0034 D7): reads `node.toml` and the documents
@@ -114,6 +132,46 @@ impl Node {
         log::info!("reloaded: {result}");
         Ok(result)
     }
+}
+
+/// A node for the server's unit tests: its documents in `dir`, its
+/// settings from `node_toml`, and no engine.
+#[cfg(test)]
+pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
+    use folo_settings::folders::{Folders, Mode};
+    let layered = folo_settings::layer(Some(node_toml), &|_| None, &[], Launch::Foreground)
+        .expect("the test's node.toml reads");
+    let folders = Folders {
+        mode: Mode::Custom,
+        home: dir.to_path_buf(),
+        data: dir.to_path_buf(),
+        logs: dir.join("logs"),
+    };
+    let place = Place {
+        folders,
+        layered: layered.clone(),
+        launch: Launch::Foreground,
+        exe_dir: dir.to_path_buf(),
+        cwd: dir.to_path_buf(),
+    };
+    let engine = EngineCommand {
+        program: dir.join("no-engine"),
+        args: Vec::new(),
+    };
+    let supervisor = Supervisor::start(engine, String::new(), Arc::new(EngineLog), false);
+    Arc::new(Node {
+        started: SystemTime::now(),
+        place,
+        id: "0123456789abcdef".into(),
+        name: "test".into(),
+        role: "controller".into(),
+        listen: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8777),
+        flags: Vec::new(),
+        settings: Mutex::new(layered),
+        store: Store::open(dir).expect("the test's data folder opens"),
+        supervisor,
+        live: live::Hub::default(),
+    })
 }
 
 /// The value at a dotted settings path (`listen.port`), or null.
@@ -279,6 +337,7 @@ async fn start(
     let node = Arc::new(Node {
         started: SystemTime::now(),
         id: identity.node_id(),
+        name: gethostname::gethostname().to_string_lossy().into_owned(),
         role,
         listen,
         flags,
@@ -286,6 +345,7 @@ async fn start(
         place,
         store,
         supervisor,
+        live: live::Hub::default(),
     });
     node.supervisor.set_config(node.engine_config());
     log::info!(
@@ -384,6 +444,7 @@ async fn serve_until(
             status = EXIT_FAILED;
         }
     }
+    node.live.stop();
     node.supervisor.shutdown().await;
     let _ = halt.send(true);
     if tokio::time::timeout(SERVER_STOP, async {

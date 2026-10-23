@@ -51,6 +51,17 @@ class EffectInfo:
         }
 
 
+def shown_levels(levels: Levels) -> dict[str, list[float]]:
+    """
+    Layer levels as clients get them: {layer id: [level dB, value, recent
+    average dB]}, rounded.
+    """
+    return {
+        layer_id: [round(level, 1), round(value, 3), round(average, 1)]
+        for layer_id, (level, value, average) in levels.items()
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class LayerSpec:
     """A layer as its effect renders it: its parameters and the line it draws."""

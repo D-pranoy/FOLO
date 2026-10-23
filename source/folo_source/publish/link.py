@@ -32,7 +32,7 @@ from folo_source.publish.frames import SIGNAL_MAGIC, SURFACE_MAGIC
 log = logging.getLogger(__name__)
 
 SUBPROTOCOL = Subprotocol('folo.source-link.v1')
-CONTRACT_VERSION = '1.2'
+CONTRACT_VERSION = '1.3'
 ENV_URL = 'FOLO_SOURCE_LINK'
 ENV_TOKEN = 'FOLO_SOURCE_TOKEN'
 

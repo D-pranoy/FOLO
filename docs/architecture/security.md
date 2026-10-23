@@ -1,6 +1,6 @@
 # Security
 
-Status: Accepted · Implementation: Partial (owner-only secrets, and the local link's launch token)
+Status: Accepted · Implementation: Partial (owner-only secrets, the local link's launch token, the Host and client-address checks, and the UI's Content Security Policy; no client keys yet)
 
 ## Assets
 

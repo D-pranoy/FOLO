@@ -1,0 +1,28 @@
+# How the conformance harness (scripts/conformance.py) runs schemathesis
+# against a node on loopback: the client API's documented answers count as
+# conforming (docs/specs/client-api.md, ADR-0035).
+
+# Mutating requests send JSON, those without a body too
+# (docs/specs/client-api.md#conventions)
+headers = { "Content-Type" = "application/json" }
+
+[checks]
+# Loopback clients need no key: checking authentication needs a client key
+# and another machine, which arrive with RB-15
+ignored_auth.enabled = false
+# Endpoints before their run books answer 501, and requests to a source that
+# isn't linked 503 (docs/specs/client-api.md#before-their-run-books)
+not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", "501", "503"]
+# A write whose If-Match names another revision gets 412
+positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "412", "429", "5xx"]
+negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", "406", "409", "412", "415", "422", "428", "429", "5xx"]
+
+# Documents are clamped, never rejected (docs/specs/config-model.md#clamping-rules)
+[[operations]]
+include-operation-id = ["createZone", "putZone", "putShow", "createProvider", "putProvider", "putSource"]
+checks.negative_data_rejection.enabled = false
+
+# schemathesis has no serializer for application/zip bodies
+[[operations]]
+include-operation-id = ["installPack", "restoreBackup"]
+enabled = false

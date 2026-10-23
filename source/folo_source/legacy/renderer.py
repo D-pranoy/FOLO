@@ -71,17 +71,6 @@ def layers_from_v1(config: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def shown_levels(levels: Levels) -> dict[str, list[float]]:
-    """
-    Renderer.render's segment levels as the web UI gets them:
-    {segment id: [level dB, value, recent average dB]}, rounded.
-    """
-    return {
-        seg_id: [round(level, 1), round(value, 3), round(average, 1)]
-        for seg_id, (level, value, average) in levels.items()
-    }
-
-
 class Renderer:
     """
     Turns the spectrum into LED colours according to a v1 config's segments,
