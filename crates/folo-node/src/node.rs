@@ -151,6 +151,7 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         folders,
         layered: layered.clone(),
         launch: Launch::Foreground,
+        service: false,
         exe_dir: dir.to_path_buf(),
         cwd: dir.to_path_buf(),
     };

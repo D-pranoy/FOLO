@@ -24,8 +24,9 @@ pub struct Wanted {
 }
 
 /// `config.apply`'s params for the local source, without `revision`, which
-/// the link adds when it sends them. The signals `wanted` asks for are
-/// indexed in the order they're listed: `beat`, then `spectrum`.
+/// the link adds when it sends them. Each signal keeps its index whatever
+/// else is wanted (`beat` 0, `spectrum` 1), so a frame that arrives after
+/// the wanted signals change is never taken for another signal's.
 #[must_use]
 pub fn local_config(zones: &Value, show: &Value, sources: &Value, wanted: Wanted) -> Value {
     let local = sources["sources"]
@@ -73,12 +74,12 @@ pub fn local_config(zones: &Value, show: &Value, sources: &Value, wanted: Wanted
             "lz4": false,
         }));
     }
-    let mut signals = Vec::new();
-    for (name, on) in [("beat", wanted.beat), ("spectrum", wanted.spectrum)] {
-        if on {
-            signals.push(json!({"name": name, "index": signals.len()}));
-        }
-    }
+    let signals: Vec<Value> = [("beat", wanted.beat), ("spectrum", wanted.spectrum)]
+        .into_iter()
+        .enumerate()
+        .filter(|(_, (_, on))| *on)
+        .map(|(index, (name, _))| json!({"name": name, "index": index}))
+        .collect();
     let levels: Vec<usize> = if wanted.levels {
         (0..assigned.len()).collect()
     } else {
@@ -219,7 +220,7 @@ mod tests {
         let publish = &local_config(&zones, &show, &sources, wanted)["publish"];
         assert_eq!(
             publish["signals"],
-            json!([{"name": "spectrum", "index": 0}])
+            json!([{"name": "spectrum", "index": 1}])
         );
         assert_eq!(publish["levels"], json!([0, 1]));
         let all = Wanted {

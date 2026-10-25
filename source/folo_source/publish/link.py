@@ -183,10 +183,14 @@ class LocalLink:
         key, kind = _frame_key(frame)
         self._put(key, bytes([kind]) + frame)
 
-    def notify(self, method: str, params: Mapping[str, Any]) -> None:
-        """Sends a notification; newest wins per method."""
+    def notify(self, method: str, params: Mapping[str, Any], part: int | None = None) -> None:
+        """
+        Sends a notification; newest wins per method, or per method and `part`
+        for notifications sent once per surface.
+        """
+        slot = method if part is None else f'{method}:{part}'
         self._put(
-            ('notify', method), rpc_message({'jsonrpc': '2.0', 'method': method, 'params': params})
+            ('notify', slot), rpc_message({'jsonrpc': '2.0', 'method': method, 'params': params})
         )
 
     def _put(self, key: SlotKey, message: bytes) -> None:

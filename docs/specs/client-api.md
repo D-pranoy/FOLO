@@ -25,6 +25,7 @@ Every request goes through these checks in order. The first that fails answers:
 | Check | Fails with |
 |---|---|
 | The `Host` header names the node: a loopback name, or one of `remote_access.allowed_hosts` while remote access is on ([security](../architecture/security.md#rules)) | 403 `host_not_allowed` |
+| An `Origin` header, when the request has one, names the node the same way: requests from pages on other sites, `null` origins included, are refused ([security](../architecture/security.md#rules)) | 403 `origin_not_allowed` |
 | The client's address: loopback always; the private ranges only while remote access is on | 403 `client_not_allowed` |
 | Authentication: loopback clients and the unauthenticated endpoints need no key; every other request to `/api/` does. Until client keys and sessions arrive ([RB-15](../runbooks/m7-network.md#rb-15-client-access)), no key is valid. | 401 `unauthorized` |
 | The resource exists | 404 `not_found` |
@@ -111,7 +112,7 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
 - Any other id that `sources.json` doesn't list gets 404 `not_found`.
 - A source that isn't linked gets 503 `source_offline`, as does `/media` before the source's first `media` notification. A source that doesn't answer within 5 s gets 504 `source_timeout`.
 - When the source has no such art any more, `/media/art` gets 404 `not_available`; when no player took the action, `/media/control` gets 409 `not_available`.
-- `/media/art` answers with the image's bytes and the content type the source gives.
+- `/media/art` answers with the image's bytes and the content type the source gives, when that is PNG, JPEG, WebP, GIF or BMP, with a Content Security Policy that sandboxes it. Any other type gets 502 `source_error`.
 
 ## Live WebSocket
 
@@ -163,4 +164,4 @@ The node serves the UI's files outside `/api/`, with no key ([ADR-0035](../decis
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/ingest/surfaces` (WebSocket) | Third parties stream surface frames to the controller using a scoped ingest token. Framing as in the [source link](source-link.md#surface-frames). Appears as a source in the compositor. |
-| `GET /api/v1/source-link` (WebSocket) | Source nodes ([source link](source-link.md)). The `local` purpose is taken from loopback clients only; the other purposes are rejected until RB-16. |
+| `GET /api/v1/source-link` (WebSocket) | Source nodes ([source link](source-link.md)). The `local` purpose is taken from loopback clients only; until RB-16 brings the other purposes, clients on other machines get 403 `loopback_only` before the upgrade. |

@@ -205,7 +205,10 @@ async fn session<S: LinkSocket>(
                     Some(Request::RestartEngine) => {
                         rpc(next_id, "restart", &json!({"component": "engine"}))
                     }
+                    // Its caller gave up (504): the engine mustn't act on it late
+                    Some(Request::Call { reply, .. }) if reply.is_closed() => continue,
                     Some(Request::Call { method, params, reply }) => {
+                        pending.retain(|_, waiting| !waiting.is_closed());
                         pending.insert(next_id, reply);
                         rpc(next_id, &method, &params)
                     }

@@ -35,6 +35,8 @@ const MAX_NAME: usize = 64;
 /// (policy violation), and the node stopping (going away).
 const CLOSE_POLICY: u16 = 1008;
 const CLOSE_GOING_AWAY: u16 = 1001;
+/// How long a client may take to accept a message before it's dropped.
+const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 /// Frame types on the link (docs/specs/source-link.md#messages-inside-the-noise-channel).
 const SURFACE_FRAME: u8 = 0x02;
 const SIGNAL_FRAME: u8 = 0x03;
@@ -592,7 +594,7 @@ async fn session(node: Arc<Node>, mut socket: WebSocket) {
                 match ClientMessage::parse(text.as_str()) {
                     Some(ClientMessage::Subscribe(topics)) => {
                         let answer = client.subscribe(topics);
-                        if socket.send(answer).await.is_err() {
+                        if !deliver(&mut socket, answer).await {
                             break;
                         }
                     }
@@ -610,7 +612,7 @@ async fn session(node: Arc<Node>, mut socket: WebSocket) {
             }
             _ = tick.tick() => {
                 for message in client.update(&node) {
-                    if socket.send(message).await.is_err() {
+                    if !deliver(&mut socket, message).await {
                         break 'session;
                     }
                 }
@@ -626,12 +628,21 @@ async fn session(node: Arc<Node>, mut socket: WebSocket) {
     }
 }
 
+/// Sends a message, or gives up on a client that hasn't taken it within
+/// [`SEND_TIMEOUT`]: a vanished client mustn't keep its topics wanted.
+async fn deliver(socket: &mut WebSocket, message: Message) -> bool {
+    matches!(
+        tokio::time::timeout(SEND_TIMEOUT, socket.send(message)).await,
+        Ok(Ok(()))
+    )
+}
+
 async fn close(socket: &mut WebSocket, code: u16, reason: &'static str) {
     let frame = CloseFrame {
         code,
         reason: reason.into(),
     };
-    let _ = socket.send(Message::Close(Some(frame))).await;
+    deliver(socket, Message::Close(Some(frame))).await;
 }
 
 #[cfg(test)]

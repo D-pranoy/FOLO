@@ -113,8 +113,11 @@ def own_node(folo: Path) -> Generator[str]:
     temporary = tempfile.TemporaryDirectory(prefix='folo-conformance-', ignore_cleanup_errors=True)
     with temporary as home:
         port = _free_port()
-        cmd = [str(folo), 'run', '--home', home, '--port', str(port), '--local-source', 'off']
-        node = subprocess.Popen([*cmd, '--log-level', 'warn'], stdin=subprocess.DEVNULL)
+        cmd = [str(folo.resolve()), 'run', '--home', home, '--port', str(port)]
+        cmd += ['--local-source', 'off', '--log-level', 'warn']
+        # Run in its home: a first run looks for studio.json in the working
+        # directory too, and a live one must never be imported
+        node = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, cwd=home)
         url = f'http://127.0.0.1:{port}/api/v1'
         try:
             deadline = time.monotonic() + NODE_START_S

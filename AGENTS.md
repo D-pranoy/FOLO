@@ -345,3 +345,4 @@ The rebuild's Rust node, binary `folo`. It doesn't drive lights yet (that's RB-0
 - The beat tracker on real music: it was only measured on synthetic songs. The timing offset that suits the real LEDs isn't known yet.
 - The player controls (previous, play/pause, next): never pressed, to leave the owner's player alone. Only refusing a bad action was tested.
 - Players other than Arc, and album art from a music app (Arc gave a video thumbnail).
+- The node's client API from another machine, and with a real UI build: remote access, the `401` for other machines and the Origin check were only tested in-process, and the UI's files only with a throwaway `ui/dist` (the UI arrives with RB-11).

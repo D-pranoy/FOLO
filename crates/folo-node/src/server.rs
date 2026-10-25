@@ -199,7 +199,7 @@ async fn headers(request: Request, next: Next) -> Response {
     response
 }
 
-/// The Host check, the client's address and authentication, in that order
+/// The Host and Origin checks, the client's address and authentication, in that order
 /// (docs/specs/client-api.md#request-checks).
 async fn guard(
     State(node): State<Arc<Node>>,
@@ -213,6 +213,13 @@ async fn guard(
             StatusCode::FORBIDDEN,
             "host_not_allowed",
             "the Host header isn't allowed",
+        );
+    }
+    if !origin_allowed(&node, request.headers()) {
+        return error(
+            StatusCode::FORBIDDEN,
+            "origin_not_allowed",
+            "requests from other sites aren't served",
         );
     }
     // A dual-stack listener sees 127.0.0.1 as ::ffff:127.0.0.1
@@ -269,7 +276,25 @@ fn host_allowed(node: &Node, headers: &HeaderMap) -> bool {
     let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
         return false;
     };
-    let name = host_name(host);
+    name_allowed(node, host_name(host))
+}
+
+/// Whether a browser's `Origin` header, when it sends one, names the node
+/// the way the Host check allows: a page on another site can't use the API
+/// or the live channel through a loopback client (`null` origins included).
+fn origin_allowed(node: &Node, headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get(header::ORIGIN) else {
+        return true;
+    };
+    let authority = origin
+        .to_str()
+        .ok()
+        .and_then(|o| o.split_once("://"))
+        .map(|(_, rest)| rest.split('/').next().unwrap_or_default());
+    authority.is_some_and(|a| !a.is_empty() && name_allowed(node, host_name(a)))
+}
+
+fn name_allowed(node: &Node, name: &str) -> bool {
     if LOOPBACK_HOSTS.contains(&name) {
         return true;
     }
@@ -323,11 +348,20 @@ async fn source_link(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     upgrade: Result<WebSocketUpgrade, ws::rejection::WebSocketUpgradeRejection>,
 ) -> Response {
+    let loopback = peer.ip().to_canonical().is_loopback();
+    if !loopback {
+        // Only the local engine links before RB-16, so other machines are
+        // refused before the upgrade, without buffering anything they send
+        return error(
+            StatusCode::FORBIDDEN,
+            "loopback_only",
+            "sources on other machines link with RB-16",
+        );
+    }
     let Ok(upgrade) = upgrade else {
         return not_a_websocket();
     };
     let endpoint = node.supervisor.endpoint();
-    let loopback = peer.ip().to_canonical().is_loopback();
     upgrade
         .protocols([SUBPROTOCOL])
         .on_upgrade(move |socket| async move { endpoint.serve(Socket(socket), loopback).await })
@@ -471,6 +505,9 @@ mod tests {
             headers[header::CONTENT_SECURITY_POLICY],
             CONTENT_SECURITY_POLICY
         );
+        let (status, _, body) = ask(REMOTE, LAN_PEER, get("/api/v1/source-link", "tv.local")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "loopback_only");
         for path in ["/api/v1/state", "/api/v1/system/status", "/api/v1/live"] {
             let (status, headers, body) = ask(REMOTE, LAN_PEER, get(path, "tv.local")).await;
             assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}");
@@ -501,6 +538,38 @@ mod tests {
         assert_eq!(headers[header::CACHE_CONTROL], "no-store");
         assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
         assert!(headers.get(header::CONTENT_SECURITY_POLICY).is_none());
+    }
+
+    #[tokio::test]
+    async fn pages_on_other_sites_are_refused() {
+        let from = |origin: &str| {
+            Request::builder()
+                .uri("/api/v1/live")
+                .header(header::HOST, "localhost:8777")
+                .header(header::ORIGIN, origin)
+                .body(Body::empty())
+                .unwrap()
+        };
+        for origin in [
+            "https://evil.example",
+            "null",
+            "http://localhost.evil.example",
+        ] {
+            let (status, _, body) = ask("", "127.0.0.1:50000", from(origin)).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{origin}");
+            assert_eq!(body["error"]["code"], "origin_not_allowed");
+        }
+        // The node's own pages, by any of its names, pass the check
+        let request = || {
+            Request::builder()
+                .uri("/api/v1/info")
+                .header(header::HOST, "localhost:8777")
+                .header(header::ORIGIN, "http://127.0.0.1:8777")
+                .body(Body::empty())
+                .unwrap()
+        };
+        let (status, _, _) = ask("", "127.0.0.1:50000", request()).await;
+        assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]

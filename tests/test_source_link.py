@@ -141,6 +141,18 @@ def test_nothing_is_sent_before_the_handshake(engine: Engine) -> None:
     assert linked.dropped == 0 and not linked.connected
 
 
+def test_levels_of_each_surface_are_kept(engine: Engine) -> None:
+    linked = make_link('ws://127.0.0.1:9/api/v1/source-link', engine)
+    linked._linked.set()  # pyright: ignore[reportPrivateUsage]
+    for surface in (0, 1, 0):
+        linked.notify('levels', {'surface': surface, 'layers': {}}, part=surface)
+    linked.notify('status', {'state': 'starting'})
+    linked.notify('status', {'state': 'running'})
+    slots = linked._slots  # pyright: ignore[reportPrivateUsage]
+    assert set(slots) == {('notify', 'levels:0'), ('notify', 'levels:1'), ('notify', 'status')}
+    assert b'running' in slots[('notify', 'status')]
+
+
 def test_a_wrong_token_is_refused(node: FakeNode, engine: Engine) -> None:
     linked = make_link(node.url, engine, token='wrong')
     linked.start()

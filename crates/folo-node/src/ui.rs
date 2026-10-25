@@ -26,6 +26,16 @@ fn serve_from(
     method: &Method,
     path: &str,
 ) -> Response {
+    let name = match path.trim_start_matches('/') {
+        "" => "index.html",
+        name => name,
+    };
+    // 404 before 405, as the request checks order them
+    let bytes = match files.binary_search_by(|(file, _)| (*file).cmp(name)) {
+        Ok(at) => files[at].1,
+        Err(_) if files.is_empty() && name == "index.html" => NOT_BUILT.as_bytes(),
+        Err(_) => return error(StatusCode::NOT_FOUND, "not_found", "no such file"),
+    };
     if method != Method::GET && method != Method::HEAD {
         let mut refused = error(
             StatusCode::METHOD_NOT_ALLOWED,
@@ -37,17 +47,7 @@ fn serve_from(
             .insert(header::ALLOW, HeaderValue::from_static("GET,HEAD"));
         return refused;
     }
-    let name = match path.trim_start_matches('/') {
-        "" => "index.html",
-        name => name,
-    };
-    let Ok(at) = files.binary_search_by(|(file, _)| (*file).cmp(name)) else {
-        if files.is_empty() && name == "index.html" {
-            return file_response("index.html", NOT_BUILT.as_bytes());
-        }
-        return error(StatusCode::NOT_FOUND, "not_found", "no such file");
-    };
-    file_response(name, files[at].1)
+    file_response(name, bytes)
 }
 
 fn file_response(name: &str, bytes: &'static [u8]) -> Response {
@@ -133,6 +133,8 @@ mod tests {
         let post = serve_from(BUILT, &Method::POST, "/");
         assert_eq!(post.status(), StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(header_of(&post, header::ALLOW), "GET,HEAD");
+        let post_missing = serve_from(BUILT, &Method::POST, "/nope");
+        assert_eq!(post_missing.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]

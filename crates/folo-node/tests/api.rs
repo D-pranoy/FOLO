@@ -325,8 +325,15 @@ impl Running {
     async fn wait_for(&self, what: &str, wanted: impl Fn(&Value) -> bool) -> Value {
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
-            let answer = self.get("/api/v1/system/status").await;
-            if answer.status == 200 && wanted(&answer.json()) {
+            let raw = request_text(self.port, "GET", "/api/v1/system/status", &[], None);
+            let port = self.port;
+            let answer = tokio::task::spawn_blocking(move || try_send(port, &raw))
+                .await
+                .unwrap();
+            if let Ok(answer) = answer
+                && answer.status == 200
+                && wanted(&answer.json())
+            {
                 return answer.json();
             }
             assert!(Instant::now() < deadline, "timed out waiting for {what}");
@@ -391,10 +398,16 @@ fn request_text(
 }
 
 fn send(port: u16, raw: &[u8]) -> Answer {
-    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-    stream.write_all(raw).unwrap();
+    try_send(port, raw).unwrap()
+}
+
+/// Sends a request, or fails when the node can't be reached: Linux refuses a
+/// connection at once while the node isn't listening yet.
+fn try_send(port: u16, raw: &[u8]) -> std::io::Result<Answer> {
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port))?;
+    stream.write_all(raw)?;
     let mut response = Vec::new();
-    stream.read_to_end(&mut response).unwrap();
+    stream.read_to_end(&mut response)?;
     let split = response.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
     let head = String::from_utf8(response[..split].to_vec()).unwrap();
     let mut lines = head.split("\r\n");
@@ -417,11 +430,11 @@ fn send(port: u16, raw: &[u8]) -> Answer {
     if chunked {
         body = dechunk(&body);
     }
-    Answer {
+    Ok(Answer {
         status,
         headers,
         body,
-    }
+    })
 }
 
 fn dechunk(mut body: &[u8]) -> Vec<u8> {
@@ -556,6 +569,11 @@ async fn zones_with_revisions(node: &Running) {
         .send_json("PUT", "/api/v1/zones/nope", &json!({}))
         .await;
     assert_eq!(missing.status, 404);
+    // A body that isn't an item is refused, and the item stays
+    let not_an_item = node.send_json("PUT", &path, &json!([])).await;
+    assert_eq!(not_an_item.status, 422);
+    assert_eq!(not_an_item.code(), "structural_error");
+    assert_eq!(node.get(&path).await.json()["name"], "Desk lamp");
 }
 
 /// The show: a whole-document write, clamped; structural errors, bodies
@@ -632,7 +650,9 @@ async fn the_rest(node: &Running) {
     let logs = node.get("/api/v1/system/logs?lines=3").await.json();
     conforms::<LogLines>(&logs, "/system/logs");
     assert_eq!(logs["lines"].as_array().unwrap().len(), 3);
-    assert_eq!(logs["lines"][2]["source"], "node");
+    // The logger is the process's: the other test's engine may write too
+    let lines = logs["lines"].as_array().unwrap();
+    assert!(lines.iter().any(|line| line["source"] == "node"), "{logs}");
     assert_eq!(node.get("/api/v1/system/logs?lines=0").await.status, 400);
     let page = node.get("/").await;
     assert_eq!(page.status, 200);

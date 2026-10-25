@@ -144,6 +144,19 @@ impl Received {
     }
 }
 
+/// The type byte of surface frames.
+const SURFACE_FRAME: u8 = 2;
+
+/// The surface ids of a configuration, in index order.
+fn surfaces_of(config: Option<&Value>) -> Vec<&Value> {
+    config
+        .and_then(|c| c["surfaces"].as_array())
+        .into_iter()
+        .flatten()
+        .map(|s| &s["surface"]["id"])
+        .collect()
+}
+
 /// Why a request to the engine got no result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestError {
@@ -314,14 +327,26 @@ impl Supervisor {
     /// The configuration the engine gets, without its revision; `None`
     /// sends nothing, as in the source role before its controller sends one.
     pub fn set_config(&self, config: Option<Value>) {
+        let mut moved = false;
         self.shared.config.send_if_modified(|current| {
             if *current == config {
                 false
             } else {
+                moved = surfaces_of(current.as_ref()) != surfaces_of(config.as_ref());
                 *current = config;
                 true
             }
         });
+        // Frames and levels are kept by surface index: once the surfaces
+        // move, what was received under an index may be another surface's
+        if moved {
+            let mut state = self.shared.lock();
+            state
+                .received
+                .frames
+                .retain(|(kind, _), _| *kind != SURFACE_FRAME);
+            state.received.levels.clear();
+        }
     }
 
     /// The worker's state.

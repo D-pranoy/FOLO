@@ -194,7 +194,7 @@ class SourceEngine:
             self._published += self.executor.publisher.sent - sent
             levels = self.executor.levels_due(stamp)
         for params in levels:
-            self.link.notify('levels', params)
+            self.link.notify('levels', params, part=params['surface'])
         took = time.perf_counter() - started
         self._renders += 1
         self._render_s += took

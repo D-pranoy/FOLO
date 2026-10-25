@@ -30,6 +30,14 @@ const NOT_AVAILABLE: i64 = -32000;
 const INVALID_PARAMS: i64 = -32602;
 /// `GET /system/logs`: the default and the most lines (openapi.yaml).
 const LOG_LINES: (u64, u64) = (500, 10_000);
+/// The album art types `/media/art` serves (specs/openapi.yaml: `image/*`).
+const ART_TYPES: [&str; 5] = [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+];
 
 type Shared = State<Arc<Node>>;
 type Body = Result<Bytes, BytesRejection>;
@@ -70,7 +78,7 @@ pub async fn effects() -> Json<Value> {
 fn system_of(node: &Node) -> Value {
     let settings = node.settings();
     let remote = &settings.settings.remote_access;
-    let service = node.place.folders.mode == folo_settings::folders::Mode::Service;
+    let service = node.place.service;
     json!({
         "remote_access": {"enabled": remote.enabled, "allowed_hosts": remote.allowed_hosts},
         "start_at_sign_in": false,
@@ -410,15 +418,21 @@ fn put_item(
     body: Body,
     add: bool,
 ) -> Response {
-    let mut body = match read_json(body) {
+    let body = match read_json(body) {
         Ok(body) => body,
         Err(refused) => return *refused,
     };
-    if let Value::Object(object) = &mut body {
-        object.insert("id".into(), Value::String(id.to_owned()));
-    }
     let stored = node.store.update(items.doc, |document| {
         check_revision(headers, document)?;
+        // Clamped as an item first, so a body that isn't one is refused
+        // rather than dropped from the list with the item it replaces
+        let mut body = clamp(items.definition, &body, &mut folo_store::new_id).map_err(|e| {
+            StoreError::Structural {
+                file: items.doc.file().into(),
+                why: e.to_string(),
+            }
+        })?;
+        body["id"] = Value::String(id.to_owned());
         let mut all = list(document, items).to_vec();
         match all.iter().position(|item| item["id"] == id) {
             Some(at) => all[at] = body,
@@ -660,11 +674,26 @@ pub async fn source_media_art(State(node): Shared, Path(id): Path<String>) -> Re
             "the art isn't base64",
         );
     };
-    let content_type = art["content_type"]
-        .as_str()
-        .and_then(|t| HeaderValue::from_str(t).ok())
-        .unwrap_or(HeaderValue::from_static("application/octet-stream"));
-    ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
+    // Served from the node's origin: only image types, and sandboxed, so art
+    // a player labelled as a page can't run script there
+    let content_type = art["content_type"].as_str().unwrap_or_default();
+    if !ART_TYPES.contains(&content_type.to_ascii_lowercase().as_str()) {
+        return error(
+            StatusCode::BAD_GATEWAY,
+            "source_error",
+            "the art isn't an image",
+        );
+    }
+    let mut response = bytes.into_response();
+    let headers = response.headers_mut();
+    if let Ok(value) = HeaderValue::from_str(content_type) {
+        headers.insert(header::CONTENT_TYPE, value);
+    }
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; sandbox"),
+    );
+    response
 }
 
 pub async fn source_media_control(
