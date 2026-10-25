@@ -85,7 +85,14 @@
     {
      "name": "beat",
      "index": 0
+    },
+    {
+     "name": "spectrum",
+     "index": 1
     }
+   ],
+   "levels": [
+    0
    ]
   }
  }

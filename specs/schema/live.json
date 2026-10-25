@@ -159,13 +159,14 @@
       "type": "object",
       "properties": {
         "source": {"type": "string", "maxLength": 64},
+        "surface": {"description": "The surface the layers draw on (ADR-0035 D4).", "type": "string", "maxLength": 64},
         "layers": {
           "description": "Layer id: [band level dB, value 0-1, recent average dB].",
           "type": "object",
           "additionalProperties": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
         }
       },
-      "required": ["source", "layers"],
+      "required": ["source", "surface", "layers"],
       "additionalProperties": false
     },
     "ConfigChanged": {

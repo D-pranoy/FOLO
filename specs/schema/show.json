@@ -80,7 +80,14 @@
           "description": "The effect's parameters, clamped with its parameter schema when the effect is known.",
           "type": "object",
           "default": {},
-          "x-folo-params-by-effect": {"audio-visualizer": "#/$defs/AudioVisualizerParams", "brightness": "#/$defs/BrightnessParams", "mirror": "#/$defs/MirrorParams", "blur": "#/$defs/BlurParams", "trail": "#/$defs/TrailParams"}
+          "x-folo-params-by-effect": {"audio-visualizer": "#/$defs/AudioVisualizerParams", "brightness": "#/$defs/BrightnessParams", "mirror": "#/$defs/MirrorParams", "blur": "#/$defs/BlurParams", "trail": "#/$defs/TrailParams"},
+          "x-folo-effects": {
+            "audio-visualizer": {"version": "1.0.0", "name": "Audio visualizer", "description": "A frequency band of the audio, shaped and smoothed, in one of ten modes.", "inputs": ["audio", "beat", "media"], "min_elements": 1},
+            "brightness": {"version": "1.0.0", "name": "Brightness", "description": "Scales the colours below it, and their saturation around their luma.", "inputs": [], "min_elements": 1},
+            "mirror": {"version": "1.0.0", "name": "Mirror", "description": "Copies one half of what is below it, reversed, onto the other half.", "inputs": [], "min_elements": 1},
+            "blur": {"version": "1.0.0", "name": "Blur", "description": "Averages each cell of what is below it with its neighbours.", "inputs": [], "min_elements": 1},
+            "trail": {"version": "1.0.0", "name": "Trail", "description": "An afterglow: what is below it fades out instead of going dark at once.", "inputs": [], "min_elements": 1}
+          }
         },
         "region": {"$ref": "#/$defs/Region", "default": {"kind": "relative"}},
         "blend": {"enum": ["max", "add", "alpha", "multiply"], "default": "max"},

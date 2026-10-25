@@ -1872,6 +1872,47 @@
       "mirror": "#/$defs/MirrorParams",
       "blur": "#/$defs/BlurParams",
       "trail": "#/$defs/TrailParams"
+     },
+     "x-folo-effects": {
+      "audio-visualizer": {
+       "version": "1.0.0",
+       "name": "Audio visualizer",
+       "description": "A frequency band of the audio, shaped and smoothed, in one of ten modes.",
+       "inputs": [
+        "audio",
+        "beat",
+        "media"
+       ],
+       "min_elements": 1
+      },
+      "brightness": {
+       "version": "1.0.0",
+       "name": "Brightness",
+       "description": "Scales the colours below it, and their saturation around their luma.",
+       "inputs": [],
+       "min_elements": 1
+      },
+      "mirror": {
+       "version": "1.0.0",
+       "name": "Mirror",
+       "description": "Copies one half of what is below it, reversed, onto the other half.",
+       "inputs": [],
+       "min_elements": 1
+      },
+      "blur": {
+       "version": "1.0.0",
+       "name": "Blur",
+       "description": "Averages each cell of what is below it with its neighbours.",
+       "inputs": [],
+       "min_elements": 1
+      },
+      "trail": {
+       "version": "1.0.0",
+       "name": "Trail",
+       "description": "An afterglow: what is below it fades out instead of going dark at once.",
+       "inputs": [],
+       "min_elements": 1
+      }
      }
     },
     "region": {
@@ -1924,6 +1965,11 @@
      "type": "string",
      "maxLength": 64
     },
+    "surface": {
+     "description": "The surface the layers draw on (ADR-0035 D4).",
+     "type": "string",
+     "maxLength": 64
+    },
     "layers": {
      "description": "Layer id: [band level dB, value 0-1, recent average dB].",
      "type": "object",
@@ -1939,6 +1985,36 @@
    },
    "required": [
     "source",
+    "surface",
+    "layers"
+   ],
+   "additionalProperties": false
+  },
+  "LevelsParams": {
+   "description": "The levels of a surface's layers (ADR-0035 D6).",
+   "type": "object",
+   "properties": {
+    "surface": {
+     "description": "The surface's index in config.apply.",
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 65535
+    },
+    "layers": {
+     "description": "Layer id: [band level dB, value 0-1, recent average dB].",
+     "type": "object",
+     "additionalProperties": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+     }
+    }
+   },
+   "required": [
+    "surface",
     "layers"
    ],
    "additionalProperties": false
@@ -2864,6 +2940,7 @@
     "activity",
     "media",
     "input",
+    "levels",
     "metrics",
     "update.available",
     "update.progress",
@@ -3565,6 +3642,17 @@
       "$ref": "#/$defs/PublishSignal"
      },
      "maxItems": 64
+    },
+    "levels": {
+     "description": "The surface indices whose layers' levels the source sends as levels notifications (ADR-0035 D6).",
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+     },
+     "maxItems": 64,
+     "default": []
     }
    },
    "required": [
@@ -3577,7 +3665,7 @@
    "type": "object",
    "properties": {
     "name": {
-     "description": "beat, activity, ...",
+     "description": "beat, activity, spectrum, ...",
      "type": "string",
      "maxLength": 64
     },

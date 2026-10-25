@@ -45,14 +45,17 @@ Status: Accepted · Implementation: Partial (RB-06 done)
 2. **Middleware:**
    - Host allowlist
    - client-IP policy: loopback always; private ranges only when remote access is on
+   - authentication: loopback clients need no key, and other clients get `401` until client keys arrive with RB-15 ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D1)
    - JSON-only mutating requests; a body limit
    - a strict CSP for UI files; `no-store` for the API
 3. **Resources** per [client API](../specs/client-api.md):
    - `info`, `health`, `state`, `zones`, `show`, `effects`, `providers`, `sources`, `library`, `clients`, `updates`, `system`, `auth`
-   - endpoints whose subsystems arrive later return `501` until their run book lands
-4. **Live WebSocket:** topic subscriptions; binary frames; 30 Hz per client by default; newest data wins under backpressure.
-5. **Static UI:** serve `ui/dist` (from RB-11), with hashed assets cacheable and `index.html` uncacheable.
-6. **Loopback source link endpoint** for the local source, accepting only its launch token ([the local link](../specs/source-link.md#the-local-link)): RB-06 serves it, and here it moves behind the middleware. Encryption for remote sources arrives in RB-16.
+   - endpoints whose subsystems arrive later return `501` until their run book lands ([before their run books](../specs/client-api.md#before-their-run-books))
+   - the effect catalog from the contract ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D3)
+   - requests to the local source through its link ([requests to sources](../specs/client-api.md#requests-to-sources))
+4. **Live WebSocket:** topic subscriptions; binary frames; 30 Hz per client by default; newest data wins under backpressure ([topics and delivery](../specs/client-api.md#topics-and-delivery)). The engine sends the `spectrum` signal and the `levels` notification the topics need ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D6).
+5. **Static UI:** embed `ui/dist` (from RB-11) in the node's build ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D7), with hashed assets cacheable and `index.html` uncacheable.
+6. **Loopback source link endpoint** for the local source, accepting only its launch token from loopback clients ([the local link](../specs/source-link.md#the-local-link)): RB-06 serves it, and here it moves behind the middleware. Encryption for remote sources arrives in RB-16.
 7. **Conformance:** run the RB-02 harness (schemathesis and message fixtures) in CI.
 
 **Done when:** conformance tests pass and the live channel streams engine data.
@@ -114,6 +117,7 @@ Status: Accepted · Implementation: Partial (RB-06 done)
 4. **Reset all** runs on the controller with the default scene.
 5. **Distribution:** compute the packs each source needs; push them over the source link, checked by hash.
 6. **Clean-room rewrite gate:** record the LedFx-inspired items that must be rewritten before the first public binary release ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)). Write their behaviour specifications in `docs/specs/effects/` without reference to LedFx code, and reimplement them from those specifications. Golden tests then pin the new behaviour.
+7. **Backup and restore:** `/system/backup` and `/system/restore`, holding the configuration and the library's packs, secrets excluded ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D2).
 
 **Done when:** the API serves every built-in from packs, equivalence tests pass, and the rewrite gate is tracked.
 
