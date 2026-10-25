@@ -1,6 +1,6 @@
 # ADR-0035: Serving the client API
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-23
 
 ## Context

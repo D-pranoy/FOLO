@@ -48,4 +48,4 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0032](ADR-0032-local-source-link.md) | The effect engine's link to its node | Accepted |
 | [0033](ADR-0033-flash-limiter-off-by-default.md) | The flash limiter is off by default, with epilepsy warnings | Accepted |
 | [0034](ADR-0034-the-node-process.md) | The node process: folders, launches and its command line | Accepted |
-| [0035](ADR-0035-serving-the-client-api.md) | Serving the client API | Proposed |
+| [0035](ADR-0035-serving-the-client-api.md) | Serving the client API | Accepted |
