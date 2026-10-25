@@ -73,6 +73,8 @@ Engine logic can be tested offline by importing `folo_source.inputs.audio.analyz
 
 `.claude/launch.json` (git-ignored) has a `studio-test` configuration for the in-app browser preview: port 8778 with a config copy in a session scratchpad. Point `--config` at your own copy before using it.
 
+`paseo.json` sets up a new Paseo worktree: it copies the git-ignored `AGENTS.local.md`, `CLAUDE.local.md` and `.claude/launch.json` from the checkout the worktree came from, then runs `uv sync` and `npm ci` in `ui\`.
+
 ## Architecture
 
 ### Studio server (`studio.py`)
