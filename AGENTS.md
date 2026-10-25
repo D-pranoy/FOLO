@@ -14,6 +14,16 @@ The [`docs/`](docs/README.md) folder holds FOLO's decisions (ADRs), specificatio
 - **Branches:** rebuild work goes to `v1`, the default branch ([ADR-0030](docs/decisions/ADR-0030-rebuild-on-a-v1-branch.md)). `main` is the frozen legacy studio: no merges and no fixes.
 - **Branches, commits and pull requests:** `<type>/<short-topic>` branches, Conventional Commits and the PR template's documentation impact section, summarised in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Reviewing documents with EGM
+
+The [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) (EGM, the `egm` plugin) checks a document with reviewer subagents that start with no context and read only the document and the code. Use it where it fits the docs-first process above:
+- **Install:** in Claude Code, `claude plugin marketplace add google/elephant-goldfish-model` and then `claude plugin install egm@egm`. In Codex, `codex plugin marketplace add google/elephant-goldfish-model` and then `codex plugin add egm@egm`.
+- **Before a document's pull request:** run `/egm:egm-review <document>` on a new or changed ADR, specification or run book, then `/egm:egm-resolve` to work through the findings. In Codex the commands have no `egm:` prefix.
+- **A new feature or decision:** `/egm:egm-brainstorm`, then `/egm:egm-draft`. EGM writes to `docs/designs/` by default, which isn't one of FOLO's documents. Move the result to where FOLO keeps it: an ADR from [the template](docs/decisions/adr-template.md), a specification in `docs/specs/`, or a run book step.
+- **Documents against the code:** `/egm:egm-drift-report` on `docs/specs/` or `docs/architecture/` lists where the code has moved away from them.
+- **Not `/egm:egm-bootstrap`:** it writes `README.md` files across the tree, and FOLO's documentation lives in `docs/`.
+- **Who runs them:** a person. The skills can't be started by an agent (`disable-model-invocation`), so agents suggest them at these points. Their findings are input; decisions still go through [the workflow](docs/process/workflow.md).
+
 ## What this is
 
 **FOLO** (formerly Vibearion): a Windows / Python 3 fork of RanzQ/hyperion-audio-effects (2017, Python 2, Linux GStreamer). The main product is the **FOLO studio** ("Fear of lights out", formerly the Audio Studio): a local web UI where LED segments are mapped to frequency ranges and rendered live to [Hyperion.NG](https://github.com/hyperion-project/hyperion.ng), which drives a WLED strip. The upstream effect runner (`main.py` + `effects/`), ported to Python 3, is gone from `v1` ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md)); it stays on `main` and in the `v0.9.0-legacy` tag.
