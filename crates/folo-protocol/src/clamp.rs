@@ -14,13 +14,20 @@ const BUNDLE: &str = include_str!("../../../specs/generated/folo.schema.json");
 /// The document format version this clamper reads.
 pub const SCHEMA_VERSION: i64 = 2;
 
-static DEFS: LazyLock<Map<String, Value>> = LazyLock::new(|| {
+/// The bundled schema definitions, by name.
+pub(crate) static DEFS: LazyLock<Map<String, Value>> = LazyLock::new(|| {
     let bundle: Value = serde_json::from_str(BUNDLE).expect("the schema bundle is valid JSON");
     bundle["$defs"]
         .as_object()
         .expect("the bundle has $defs")
         .clone()
 });
+
+/// A bundled schema definition by name, such as `ZonesDocument`.
+#[must_use]
+pub fn definition(name: &str) -> Option<&'static Value> {
+    DEFS.get(name)
+}
 
 /// Why a document can't be clamped.
 #[derive(Debug, Clone, PartialEq, Eq)]

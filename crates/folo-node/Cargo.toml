@@ -1,6 +1,6 @@
 [package]
 name = "folo-node"
-description = "The FOLO node, binary `folo`: settings, store, identity, supervision and status (ADR-0003, RB-06)."
+description = "The FOLO node, binary `folo`: settings, store, identity, supervision, status and the client API (ADR-0003, RB-06, RB-07)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,13 +17,15 @@ name = "folo"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "ws"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "ws"] }
+base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 folo-identity = { path = "../folo-identity" }
 folo-protocol = { path = "../folo-protocol" }
 folo-settings = { path = "../folo-settings" }
 folo-store = { path = "../folo-store" }
 folo-supervisor = { path = "../folo-supervisor" }
+gethostname = "1"
 log = { version = "0.4", features = ["std"] }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
@@ -34,4 +36,6 @@ windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+serde = "1"
 tokio-tungstenite = "0.29"
+tower = { version = "0.5", default-features = false, features = ["util"] }

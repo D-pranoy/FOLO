@@ -3,21 +3,24 @@
 //! heartbeat, and requests to the engine. The socket is abstract, so the
 //! session runs over the node's HTTP server and over channels in tests.
 
+use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq as _;
+use tokio::sync::oneshot;
 use tokio::time::{Instant, sleep_until, timeout};
 
-use crate::{Event, Shared};
+use crate::{Event, Received, Shared, Stamped};
 
 /// The WebSocket subprotocol of the source link.
 pub const SUBPROTOCOL: &str = "folo.source-link.v1";
 /// The source-link versions the node speaks, newest first: this contract
 /// and one minor version older (docs/specs/README.md#versioning).
-pub const VERSIONS: [&str; 2] = ["1.2", "1.1"];
+pub const VERSIONS: [&str; 2] = ["1.3", "1.2"];
 /// How long the engine has for its handshake.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Silence after which the engine counts as hung (ADR-0032 D4).
@@ -44,11 +47,27 @@ pub trait LinkSocket: Send {
 }
 
 /// What the node asks of the engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Request {
     /// `restart {component: engine}`: the engine ends with status 0.
     RestartEngine,
+    /// A JSON-RPC request whose answer goes to `reply`.
+    Call {
+        method: String,
+        params: Value,
+        reply: oneshot::Sender<Result<Value, RpcError>>,
+    },
 }
+
+/// A JSON-RPC error answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpcError {
+    pub code: i64,
+    pub message: String,
+}
+
+/// Where the answers to pending requests go, by request id.
+type Pending = HashMap<u64, oneshot::Sender<Result<Value, RpcError>>>;
 
 /// Why a connection was turned away.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,14 +79,14 @@ enum Refusal {
 }
 
 /// Serves one connection to the link's endpoint until it ends.
-pub(crate) async fn serve<S: LinkSocket>(shared: &Shared, mut socket: S) {
+pub(crate) async fn serve<S: LinkSocket>(shared: &Shared, mut socket: S, loopback: bool) {
     let Ok(Some(Message::Text(first))) = timeout(HANDSHAKE_TIMEOUT, socket.recv()).await else {
         log::warn!("a connection to the source link sent no handshake");
         return;
     };
     let mut generation = shared.generation.subscribe();
     let engine = *generation.borrow_and_update();
-    let accepted = check_hello(shared, &first);
+    let accepted = check_hello(shared, &first, loopback);
     let version = match accepted {
         Ok(version) => version,
         Err(Refusal::Busy) => {
@@ -94,12 +113,17 @@ pub(crate) async fn serve<S: LinkSocket>(shared: &Shared, mut socket: S) {
 
 /// The source-link version both sides speak, or why the hello is refused.
 /// Accepting marks the link as taken.
-fn check_hello(shared: &Shared, first: &str) -> Result<&'static str, Refusal> {
+fn check_hello(shared: &Shared, first: &str, loopback: bool) -> Result<&'static str, Refusal> {
     let hello: Value = serde_json::from_str(first)
         .map_err(|_| Refusal::Rejected("the hello isn't JSON".into()))?;
     let purpose = &hello["purpose"];
     if purpose["kind"] != "local" {
         return Err(Refusal::Rejected("only the local purpose is served".into()));
+    }
+    if !loopback {
+        return Err(Refusal::Rejected(
+            "the local purpose is taken from loopback clients only".into(),
+        ));
     }
     let offered = purpose["token"].as_str().unwrap_or_default();
     let mut state = shared.lock();
@@ -123,6 +147,11 @@ fn check_hello(shared: &Shared, first: &str) -> Result<&'static str, Refusal> {
         .find(|v| versions.contains(v))
         .ok_or_else(|| Refusal::Rejected(format!("no common version in {versions:?}")))?;
     state.linked = true;
+    // A new link starts with nothing received: what an earlier engine sent is stale
+    state.received = Received {
+        updates: state.received.updates,
+        ..Received::default()
+    };
     Ok(version)
 }
 
@@ -143,6 +172,7 @@ async fn session<S: LinkSocket>(
     let _ = shared.events.send((engine, Event::Linked));
     let mut last_seen = Instant::now();
     let mut next_id: u64 = 1;
+    let mut pending = Pending::new();
     config.mark_changed();
     loop {
         tokio::select! {
@@ -152,7 +182,7 @@ async fn session<S: LinkSocket>(
                     return Event::Unlinked;
                 };
                 last_seen = Instant::now();
-                receive(shared, &message);
+                receive(shared, &message, &mut pending);
             }
             changed = config.changed() => {
                 if changed.is_err() {
@@ -171,10 +201,19 @@ async fn session<S: LinkSocket>(
                 }
             }
             request = requests.recv() => {
-                let Some(Request::RestartEngine) = request else {
-                    continue;
+                let message = match request {
+                    Some(Request::RestartEngine) => {
+                        rpc(next_id, "restart", &json!({"component": "engine"}))
+                    }
+                    // Its caller gave up (504): the engine mustn't act on it late
+                    Some(Request::Call { reply, .. }) if reply.is_closed() => continue,
+                    Some(Request::Call { method, params, reply }) => {
+                        pending.retain(|_, waiting| !waiting.is_closed());
+                        pending.insert(next_id, reply);
+                        rpc(next_id, &method, &params)
+                    }
+                    None => continue,
                 };
-                let message = rpc(next_id, "restart", &json!({"component": "engine"}));
                 next_id += 1;
                 if let Some(ended) = send(socket, Message::Binary(message)).await {
                     return ended;
@@ -219,46 +258,87 @@ fn rpc(id: u64, method: &str, params: &Value) -> Vec<u8> {
     out
 }
 
-/// Keeps what the engine sent: notifications by method, frames by index.
-fn receive(shared: &Shared, message: &Message) {
+/// Keeps what the engine sent (notifications by method, `levels` by
+/// surface, frames by index) and hands answers to the requests waiting for them.
+fn receive(shared: &Shared, message: &Message, pending: &mut Pending) {
     let Message::Binary(bytes) = message else {
         log::debug!("ignored a text message after the handshake");
         return;
     };
     match bytes.first().copied() {
         Some(TYPE_RPC) => match serde_json::from_slice::<Value>(&bytes[1..]) {
-            Ok(rpc) => receive_rpc(shared, &rpc),
+            Ok(rpc) => receive_rpc(shared, rpc, pending),
             Err(_) => log::warn!("ignored a JSON-RPC message that isn't JSON"),
         },
         Some(kind @ (TYPE_SURFACE | TYPE_SIGNAL)) => {
             let index_at = if kind == TYPE_SURFACE { 9 } else { 7 };
             if let Some(index) = bytes.get(index_at..index_at + 2) {
                 let index = u16::from_le_bytes([index[0], index[1]]);
-                shared
-                    .lock()
+                let mut state = shared.lock();
+                let update = state.received.next();
+                let value = Arc::new(bytes[1..].to_vec());
+                state
+                    .received
                     .frames
-                    .insert((kind, index), bytes[1..].to_vec());
+                    .insert((kind, index), Stamped { update, value });
             }
         }
         other => log::debug!("ignored a message of type {other:?}"),
     }
 }
 
-fn receive_rpc(shared: &Shared, rpc: &Value) {
+fn receive_rpc(shared: &Shared, mut rpc: Value, pending: &mut Pending) {
     if let Some(method) = rpc["method"].as_str() {
         if rpc.get("id").is_some() {
             log::debug!("ignored a request for {method} from the engine");
             return;
         }
-        shared
-            .lock()
-            .notifications
-            .insert(method.to_owned(), rpc["params"].clone());
-    } else if let Some(error) = rpc.get("error") {
-        log::warn!(
-            "the effect engine answered request {} with {error}",
-            rpc["id"]
-        );
+        let method = method.to_owned();
+        let params = rpc["params"].take();
+        let mut state = shared.lock();
+        if method == "levels" {
+            let Some(surface) = params["surface"]
+                .as_u64()
+                .and_then(|s| u16::try_from(s).ok())
+            else {
+                log::debug!("ignored levels without a surface");
+                return;
+            };
+            let update = state.received.next();
+            let levels = Stamped {
+                update,
+                value: params,
+            };
+            state.received.levels.insert(surface, levels);
+        } else {
+            let update = state.received.next();
+            let notification = Stamped {
+                update,
+                value: params,
+            };
+            state.received.notifications.insert(method, notification);
+        }
+        return;
+    }
+    let waiting = rpc["id"].as_u64().and_then(|id| pending.remove(&id));
+    if let Some(error) = rpc.get("error") {
+        let error = RpcError {
+            code: error["code"].as_i64().unwrap_or(0),
+            message: error["message"].as_str().unwrap_or_default().to_owned(),
+        };
+        match waiting {
+            Some(reply) => {
+                let _ = reply.send(Err(error));
+            }
+            None => log::warn!(
+                "the effect engine answered request {} with {} ({})",
+                rpc["id"],
+                error.message,
+                error.code
+            ),
+        }
+    } else if let Some(reply) = waiting {
+        let _ = reply.send(Ok(rpc["result"].take()));
     }
 }
 
@@ -303,7 +383,7 @@ mod tests {
     fn hello(token: &str) -> Message {
         Message::Text(
             json!({
-                "version": ["1.2"],
+                "version": ["1.3"],
                 "node": {"id": "folo-source", "name": "folo-source", "version": "0", "platform": "test"},
                 "purpose": {"kind": "local", "token": token},
             })
@@ -354,11 +434,11 @@ mod tests {
         let (node, mut engine) = pipe();
         let server = {
             let shared = Arc::clone(&shared);
-            tokio::spawn(async move { serve(&shared, node).await })
+            tokio::spawn(async move { serve(&shared, node, true).await })
         };
         engine.outgoing.send(hello("secret")).unwrap();
         let welcome = welcome_of(engine.incoming.recv().await);
-        assert_eq!(welcome, json!({"version": "1.2", "result": "ok"}));
+        assert_eq!(welcome, json!({"version": "1.3", "result": "ok"}));
         let apply = rpc_of(engine.incoming.recv().await);
         assert_eq!(apply["method"], "config.apply");
         assert_eq!(apply["params"]["revision"], 1);
@@ -374,10 +454,116 @@ mod tests {
         let restart = rpc_of(engine.incoming.recv().await);
         assert_eq!(restart["method"], "restart");
         assert_eq!(restart["params"], json!({"component": "engine"}));
-        assert_eq!(shared.lock().notifications["status"]["state"], "running");
+        assert_eq!(
+            shared.lock().received.notifications["status"].value["state"],
+            "running"
+        );
 
         drop(engine);
         server.await.unwrap();
+        assert!(!shared.lock().linked);
+    }
+
+    fn from_engine(body: &Value) -> Message {
+        let mut bytes = vec![TYPE_RPC];
+        bytes.extend_from_slice(body.to_string().as_bytes());
+        Message::Binary(bytes)
+    }
+
+    #[tokio::test]
+    async fn requests_get_their_answers_and_levels_are_kept_per_surface() {
+        let shared = expecting("secret", None);
+        let (node, mut engine) = pipe();
+        let server = {
+            let shared = Arc::clone(&shared);
+            tokio::spawn(async move { serve(&shared, node, true).await })
+        };
+        engine.outgoing.send(hello("secret")).unwrap();
+        welcome_of(engine.incoming.recv().await);
+        tokio::task::yield_now().await;
+        let requests = shared.lock().requests.clone().unwrap();
+
+        let (reply, answer) = oneshot::channel();
+        let params = json!({"art_id": 3});
+        let method = "media.art".to_owned();
+        requests
+            .send(Request::Call {
+                method,
+                params,
+                reply,
+            })
+            .unwrap();
+        let asked = rpc_of(engine.incoming.recv().await);
+        assert_eq!(asked["method"], "media.art");
+        assert_eq!(asked["params"], json!({"art_id": 3}));
+        let result = json!({"content_type": "image/png", "data": "AA"});
+        let answer_body = json!({"jsonrpc": "2.0", "id": asked["id"], "result": result});
+        engine.outgoing.send(from_engine(&answer_body)).unwrap();
+        assert_eq!(answer.await.unwrap(), Ok(result));
+
+        let (reply, answer) = oneshot::channel();
+        let params = json!({"action": "next"});
+        let method = "media.control".to_owned();
+        requests
+            .send(Request::Call {
+                method,
+                params,
+                reply,
+            })
+            .unwrap();
+        let asked = rpc_of(engine.incoming.recv().await);
+        let error = json!({"code": -32000, "message": "no player took it"});
+        let refusal = json!({"jsonrpc": "2.0", "id": asked["id"], "error": error});
+        engine.outgoing.send(from_engine(&refusal)).unwrap();
+        let expected = RpcError {
+            code: -32000,
+            message: "no player took it".into(),
+        };
+        assert_eq!(answer.await.unwrap(), Err(expected));
+
+        for surface in [0, 1, 0] {
+            let layers = json!({"l1": [-30.0, 0.5, -33.0]});
+            let params = json!({"surface": surface, "layers": layers});
+            let levels = json!({"jsonrpc": "2.0", "method": "levels", "params": params});
+            engine.outgoing.send(from_engine(&levels)).unwrap();
+        }
+        // A request still waiting when the link ends gets no answer
+        let (reply, answer) = oneshot::channel();
+        let method = "inputs.list".to_owned();
+        let params = json!({});
+        requests
+            .send(Request::Call {
+                method,
+                params,
+                reply,
+            })
+            .unwrap();
+        rpc_of(engine.incoming.recv().await);
+        {
+            let state = shared.lock();
+            let levels = &state.received.levels;
+            assert_eq!(levels.len(), 2);
+            assert!(
+                levels[&0].update > levels[&1].update,
+                "the newest of surface 0 is kept"
+            );
+            assert!(!state.received.notifications.contains_key("levels"));
+        }
+        drop(engine);
+        server.await.unwrap();
+        assert!(answer.await.is_err());
+    }
+
+    #[tokio::test]
+    async fn the_local_engine_links_from_loopback_only() {
+        let shared = expecting("secret", None);
+        let (node, mut engine) = pipe();
+        engine.outgoing.send(hello("secret")).unwrap();
+        serve(&shared, node, false).await;
+        assert_eq!(
+            welcome_of(engine.incoming.recv().await)["result"],
+            "rejected"
+        );
         assert!(!shared.lock().linked);
     }
 
@@ -386,7 +572,7 @@ mod tests {
         let shared = expecting("secret", None);
         let (node, mut engine) = pipe();
         engine.outgoing.send(hello("guess")).unwrap();
-        serve(&shared, node).await;
+        serve(&shared, node, true).await;
         assert_eq!(
             welcome_of(engine.incoming.recv().await)["result"],
             "rejected"
@@ -400,7 +586,7 @@ mod tests {
         let shared = Supervisor::shared_for_tests();
         let (node, mut engine) = pipe();
         engine.outgoing.send(hello("")).unwrap();
-        serve(&shared, node).await;
+        serve(&shared, node, true).await;
         assert_eq!(
             welcome_of(engine.incoming.recv().await)["result"],
             "rejected"
@@ -413,7 +599,7 @@ mod tests {
         shared.lock().linked = true;
         let (node, mut engine) = pipe();
         engine.outgoing.send(hello("secret")).unwrap();
-        serve(&shared, node).await;
+        serve(&shared, node, true).await;
         assert!(
             engine.incoming.recv().await.is_none(),
             "closed without a welcome"
@@ -429,7 +615,7 @@ mod tests {
             .outgoing
             .send(Message::Text(hello.to_string()))
             .unwrap();
-        serve(&shared, node).await;
+        serve(&shared, node, true).await;
         assert_eq!(
             welcome_of(engine.incoming.recv().await)["result"],
             "rejected"
@@ -443,7 +629,7 @@ mod tests {
         let (node, mut engine) = pipe();
         let server = {
             let shared = Arc::clone(&shared);
-            tokio::spawn(async move { serve(&shared, node).await })
+            tokio::spawn(async move { serve(&shared, node, true).await })
         };
         engine.outgoing.send(hello("secret")).unwrap();
         welcome_of(engine.incoming.recv().await);

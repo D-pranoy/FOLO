@@ -3,11 +3,16 @@ The conformance harness (RB-02 step 5): drives an implementation of FOLO's
 API or WebSocket channels against the contracts in specs/.
 
     uv run python scripts/conformance.py api --url http://127.0.0.1:8777/api/v1 [--key KEY] [st ...]
+    uv run python scripts/conformance.py api --node target/debug/folo [st ...]
     uv run python scripts/conformance.py messages DIR
 
 `api` runs schemathesis against specs/openapi.yaml: every operation with
-generated requests, every response checked against the spec. Point it at a
-node in demo mode (docs/process/testing-policy.md), never at a live setup.
+generated requests, every response checked against the spec, with every
+check but those scripts/schemathesis.toml says the client API's documented
+answers rule out. Point it at a node of its own on loopback
+(docs/process/testing-policy.md), never at a live setup. With `--node`, the
+harness starts that `folo` itself, with a temporary home, a free loopback
+port and no effect engine, and stops it afterwards; CI runs it so.
 
 `messages` checks captured WebSocket messages against specs/asyncapi.yaml.
 DIR holds one message per file, named after its AsyncAPI message
@@ -25,10 +30,15 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import struct
 import subprocess
 import sys
-from collections.abc import Iterator
+import tempfile
+import time
+import urllib.request
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -41,6 +51,8 @@ from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parent.parent
 SPECS = ROOT / 'specs'
+# How schemathesis treats the client API's documented answers
+SCHEMATHESIS_CONFIG = ROOT / 'scripts' / 'schemathesis.toml'
 OPENAPI = SPECS / 'openapi.yaml'
 ASYNCAPI = SPECS / 'asyncapi.yaml'
 SOURCE_LINK = SPECS / 'schema' / 'source-link.json'
@@ -48,6 +60,8 @@ FIXTURES = SPECS / 'fixtures'
 
 Json = Any
 PIXEL_BYTES = {1: 3, 2: 6, 3: 12}  # rgb8, rgb16, rgbf32: bytes per cell
+NODE_START_S = 30.0  # how long a node of its own has to answer /health
+NODE_STOP_S = 10.0
 
 
 # ---------------------------------------------------------------- API
@@ -59,12 +73,12 @@ def run_api(url: str, key: str | None, extra: list[str]) -> int:
         raise SystemExit('schemathesis is needed: uv sync')
     cmd = [
         st,
+        '--config-file',
+        str(SCHEMATHESIS_CONFIG),
         'run',
         str(OPENAPI),
         '--url',
         url,
-        '--checks',
-        'all',
         '--exclude-tag',
         'websockets',
         '--no-color',
@@ -74,6 +88,53 @@ def run_api(url: str, key: str | None, extra: list[str]) -> int:
     # Its report has non-ASCII characters, which a Windows console can't take otherwise
     env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
     return subprocess.run(cmd + extra, check=False, env=env).returncode
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return int(probe.getsockname()[1])
+
+
+def _healthy(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(f'{url}/health', timeout=2) as answer:
+            return answer.status == 200
+    except OSError:
+        return False
+
+
+@contextmanager
+def own_node(folo: Path) -> Generator[str]:
+    """
+    A node of its own: `folo` with a temporary home, a free loopback port
+    and no effect engine, stopped afterwards. Yields its API base.
+    """
+    temporary = tempfile.TemporaryDirectory(prefix='folo-conformance-', ignore_cleanup_errors=True)
+    with temporary as home:
+        port = _free_port()
+        cmd = [str(folo.resolve()), 'run', '--home', home, '--port', str(port)]
+        cmd += ['--local-source', 'off', '--log-level', 'warn']
+        # Run in its home: a first run looks for studio.json in the working
+        # directory too, and a live one must never be imported
+        node = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, cwd=home)
+        url = f'http://127.0.0.1:{port}/api/v1'
+        try:
+            deadline = time.monotonic() + NODE_START_S
+            while not _healthy(url):
+                if node.poll() is not None:
+                    raise SystemExit(f'{folo} exited with status {node.returncode}')
+                if time.monotonic() > deadline:
+                    raise SystemExit(f'{folo} did not answer within {NODE_START_S:.0f} s')
+                time.sleep(0.1)
+            yield url
+        finally:
+            node.terminate()
+            try:
+                node.wait(timeout=NODE_STOP_S)
+            except subprocess.TimeoutExpired:
+                node.kill()
+                node.wait()
 
 
 # ---------------------------------------------------------------- messages
@@ -221,15 +282,21 @@ def main() -> None:
     )
     commands = parser.add_subparsers(dest='command', required=True)
     api = commands.add_parser('api', help='run schemathesis against a running API')
-    api.add_argument(
-        '--url', required=True, help='the API base, for example http://127.0.0.1:8777/api/v1'
+    target = api.add_mutually_exclusive_group(required=True)
+    target.add_argument('--url', help='the API base, for example http://127.0.0.1:8777/api/v1')
+    target.add_argument(
+        '--node', type=Path, help='a folo executable to start and test on a home of its own'
     )
     api.add_argument('--key', help='a client key (loopback needs none)')
     messages = commands.add_parser('messages', help='check captured WebSocket messages')
     messages.add_argument('folder', type=Path, nargs='?', default=FIXTURES)
     args, extra = parser.parse_known_args()
     if args.command == 'api':
-        sys.exit(run_api(args.url, args.key, extra))
+        if args.node is None:
+            sys.exit(run_api(args.url, args.key, extra))
+        with own_node(args.node) as url:
+            status = run_api(url, args.key, extra)
+        sys.exit(status)
     problems = check_messages(args.folder)
     for problem in problems:
         print(problem, file=sys.stderr)

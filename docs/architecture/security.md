@@ -1,6 +1,6 @@
 # Security
 
-Status: Accepted · Implementation: Partial (owner-only secrets, and the local link's launch token)
+Status: Accepted · Implementation: Partial (owner-only secrets, the local link's launch token, the Host, Origin and client-address checks, and the UI's Content Security Policy; no client keys yet)
 
 ## Assets
 
@@ -34,6 +34,7 @@ Status: Accepted · Implementation: Partial (owner-only secrets, and the local l
   - link-local
   - unique-local IPv6: fc00::/7
 - **Loopback clients need no key.** The Host check still applies.
+- **The Origin check:** a request whose `Origin` header names anything but the node, by the names the Host check allows, is refused, so a page on another site can't reach the API or the live channel through the browser of someone on the node's machine.
 - **Static UI files load without a key; every API and WebSocket call requires one.** The exceptions are `/api/v1/health` and the pairing endpoints, which use their own proofs.
 - **Before client keys** arrive with RB-15, no key is valid: clients on other machines get `401` from every API and WebSocket call that needs one ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D1).
 - **The UI's Content Security Policy:** `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. Inline styles are allowed because Svelte's transitions write them ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D7).

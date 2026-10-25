@@ -23,7 +23,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, watch};
 use tokio::time::Instant;
 
-pub use link::{LinkSocket, Message, Request};
+pub use link::{LinkSocket, Message, Request, RpcError};
 
 /// The engine's environment variables for the link (ADR-0032 D2).
 pub const ENV_URL: &str = "FOLO_SOURCE_LINK";
@@ -40,6 +40,9 @@ const JITTER: f64 = 0.25;
 const HEALTHY_AFTER: Duration = Duration::from_secs(60);
 /// How long a stopping engine has before it is killed.
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a request to the engine may take before it counts as unanswered
+/// (docs/specs/client-api.md#requests-to-sources).
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a started or unlinked engine has to link before it counts as
 /// hung: the engine itself gives up after 30 s without a link (ADR-0032).
 const LINK_TIMEOUT: Duration = Duration::from_secs(30);
@@ -112,6 +115,59 @@ impl WorkerState {
     }
 }
 
+/// A value the engine sent, with the update it came in: the count of
+/// everything the engine sent before it, so a reader can tell what's new.
+#[derive(Debug, Clone)]
+pub struct Stamped<T> {
+    pub update: u64,
+    pub value: T,
+}
+
+/// The newest of what the linked engine sent; empty until it sends.
+#[derive(Debug, Default)]
+pub struct Received {
+    /// Counts what the engine sent since the node started.
+    pub updates: u64,
+    /// The newest notification of each method, but `levels`.
+    pub notifications: HashMap<String, Stamped<Value>>,
+    /// The newest `levels` notification of each surface index.
+    pub levels: HashMap<u16, Stamped<Value>>,
+    /// The newest surface (type 2) and signal (type 3) frame by index,
+    /// without the type byte.
+    pub frames: HashMap<(u8, u16), Stamped<Arc<Vec<u8>>>>,
+}
+
+impl Received {
+    pub(crate) fn next(&mut self) -> u64 {
+        self.updates += 1;
+        self.updates
+    }
+}
+
+/// The type byte of surface frames.
+const SURFACE_FRAME: u8 = 2;
+
+/// The surface ids of a configuration, in index order.
+fn surfaces_of(config: Option<&Value>) -> Vec<&Value> {
+    config
+        .and_then(|c| c["surfaces"].as_array())
+        .into_iter()
+        .flatten()
+        .map(|s| &s["surface"]["id"])
+        .collect()
+}
+
+/// Why a request to the engine got no result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RequestError {
+    /// No engine is linked, or its link ended before it answered.
+    Offline,
+    /// It didn't answer within [`REQUEST_TIMEOUT`].
+    Timeout,
+    /// It answered with a JSON-RPC error.
+    Rpc(RpcError),
+}
+
 /// What the link session tells the supervisor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Event {
@@ -128,10 +184,8 @@ pub(crate) struct State {
     /// Where the supervisor sends requests while an engine is linked.
     pub requests: Option<mpsc::UnboundedSender<Request>>,
     pub status: WorkerStatus,
-    /// The latest notification of each method the engine sent.
-    pub notifications: HashMap<String, Value>,
-    /// The latest surface (type 2) and signal (type 3) frame by index.
-    pub frames: HashMap<(u8, u16), Vec<u8>>,
+    /// What the linked engine sent.
+    pub received: Received,
 }
 
 pub(crate) struct Shared {
@@ -160,8 +214,7 @@ impl Shared {
                     pid: 0,
                     restarts: 0,
                 },
-                notifications: HashMap::new(),
-                frames: HashMap::new(),
+                received: Received::default(),
             }),
             config: watch::channel(None).0,
             revision: AtomicU64::new(0),
@@ -218,9 +271,10 @@ pub struct LinkEndpoint {
 }
 
 impl LinkEndpoint {
-    /// Serves one connection to `/api/v1/source-link` until it ends.
-    pub async fn serve<S: LinkSocket>(&self, socket: S) {
-        link::serve(&self.shared, socket).await;
+    /// Serves one connection to `/api/v1/source-link` until it ends. Only a
+    /// `loopback` client may link as the local engine (ADR-0035 D1).
+    pub async fn serve<S: LinkSocket>(&self, socket: S, loopback: bool) {
+        link::serve(&self.shared, socket, loopback).await;
     }
 }
 
@@ -273,14 +327,26 @@ impl Supervisor {
     /// The configuration the engine gets, without its revision; `None`
     /// sends nothing, as in the source role before its controller sends one.
     pub fn set_config(&self, config: Option<Value>) {
+        let mut moved = false;
         self.shared.config.send_if_modified(|current| {
             if *current == config {
                 false
             } else {
+                moved = surfaces_of(current.as_ref()) != surfaces_of(config.as_ref());
                 *current = config;
                 true
             }
         });
+        // Frames and levels are kept by surface index: once the surfaces
+        // move, what was received under an index may be another surface's
+        if moved {
+            let mut state = self.shared.lock();
+            state
+                .received
+                .frames
+                .retain(|(kind, _), _| *kind != SURFACE_FRAME);
+            state.received.levels.clear();
+        }
     }
 
     /// The worker's state.
@@ -289,10 +355,48 @@ impl Supervisor {
         self.shared.lock().status
     }
 
-    /// The latest notification of `method` the engine sent.
+    /// Reads the configuration the engine gets, without its revision.
+    pub fn with_config<R>(&self, read: impl FnOnce(Option<&Value>) -> R) -> R {
+        read(self.shared.config.borrow().as_ref())
+    }
+
+    /// Whether an engine is linked now.
     #[must_use]
-    pub fn notification(&self, method: &str) -> Option<Value> {
-        self.shared.lock().notifications.get(method).cloned()
+    pub fn linked(&self) -> bool {
+        self.shared.lock().linked
+    }
+
+    /// Reads what the linked engine sent, under the supervisor's lock: keep
+    /// `read` short.
+    pub fn received<R>(&self, read: impl FnOnce(&Received) -> R) -> R {
+        read(&self.shared.lock().received)
+    }
+
+    /// Sends the linked engine a JSON-RPC request and waits for its result,
+    /// at most [`REQUEST_TIMEOUT`].
+    ///
+    /// # Errors
+    ///
+    /// [`RequestError`]: no engine linked, no answer in time, or an error answer.
+    pub async fn request(&self, method: &str, params: Value) -> Result<Value, RequestError> {
+        let requests = self.shared.lock().requests.clone();
+        let Some(requests) = requests else {
+            return Err(RequestError::Offline);
+        };
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        let call = Request::Call {
+            method: method.to_owned(),
+            params,
+            reply,
+        };
+        if requests.send(call).is_err() {
+            return Err(RequestError::Offline);
+        }
+        match tokio::time::timeout(REQUEST_TIMEOUT, answer).await {
+            Err(_) => Err(RequestError::Timeout),
+            Ok(Err(_)) => Err(RequestError::Offline),
+            Ok(Ok(result)) => result.map_err(RequestError::Rpc),
+        }
     }
 
     /// Stops the engine and the supervision.

@@ -213,6 +213,8 @@ pub struct Place {
     pub folders: Folders,
     pub layered: Layered,
     pub launch: Launch,
+    /// Launched with `--service`, whatever folders it uses.
+    pub service: bool,
     pub exe_dir: PathBuf,
     pub cwd: PathBuf,
 }
@@ -275,6 +277,7 @@ pub fn locate(
         folders,
         layered,
         launch,
+        service: location.service,
         exe_dir,
         cwd,
     })

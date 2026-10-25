@@ -262,10 +262,28 @@ impl Store {
     /// [`StoreError::Structural`] when `value` can't be a document; the
     /// document stays as it was.
     pub fn replace(&self, doc: Doc, value: &Value) -> Result<Arc<Value>, StoreError> {
-        let mut value = clamped(doc.definition(), value, &self.dir.join(doc.file()))?;
+        self.update(doc, |_| Ok::<_, StoreError>(value.clone()))
+    }
+
+    /// Changes a document from its current value, atomically: `change`
+    /// gets the document as it is and returns the new one, which is then
+    /// stored as [`Store::replace`] stores it. No other change can come in
+    /// between, so `change` can check the revision a writer last saw.
+    ///
+    /// # Errors
+    ///
+    /// The error `change` returns, or [`StoreError::Structural`] when the
+    /// new value can't be a document; either way the document stays as it was.
+    pub fn update<E: From<StoreError>>(
+        &self,
+        doc: Doc,
+        change: impl FnOnce(&Value) -> Result<Value, E>,
+    ) -> Result<Arc<Value>, E> {
         let mut state = locked(&self.shared.state);
-        let revision = revision_of(&state.docs[index(doc)]) + 1;
-        stamp(&mut value, revision, &self.server_id);
+        let current = Arc::clone(&state.docs[index(doc)]);
+        let changed = change(&current)?;
+        let mut value = clamped(doc.definition(), &changed, &self.dir.join(doc.file()))?;
+        stamp(&mut value, revision_of(&current) + 1, &self.server_id);
         let value = Arc::new(value);
         state.docs[index(doc)] = Arc::clone(&value);
         state.dirty.insert(doc);
@@ -498,6 +516,52 @@ mod tests {
 
     fn read(path: &Path) -> Value {
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    }
+
+    #[derive(Debug)]
+    enum Refused {
+        Stale,
+        Store(StoreError),
+    }
+
+    impl From<StoreError> for Refused {
+        fn from(error: StoreError) -> Self {
+            Self::Store(error)
+        }
+    }
+
+    #[test]
+    fn an_update_sees_the_current_document_and_can_refuse() {
+        let dir = TempDir::new();
+        let store = Store::open(&dir.0).unwrap();
+        let seen = store.get(Doc::Zones)["revision"].as_u64().unwrap();
+        let updated = store
+            .update(Doc::Zones, |current| {
+                assert_eq!(current["revision"], seen);
+                let mut next = current.clone();
+                next["zones"] = json!([{"id": "z1", "name": "Desk"}]);
+                Ok::<_, Refused>(next)
+            })
+            .unwrap();
+        assert_eq!(updated["revision"], seen + 1);
+        assert_eq!(updated["zones"][0]["name"], "Desk");
+        // A writer that saw an older revision is refused, and nothing changes
+        let refused = store.update(Doc::Zones, |current| {
+            if current["revision"] == seen {
+                Ok(current.clone())
+            } else {
+                Err(Refused::Stale)
+            }
+        });
+        assert!(matches!(refused, Err(Refused::Stale)));
+        assert_eq!(store.get(Doc::Zones)["revision"], seen + 1);
+        // A value that can't be a document is refused by the store
+        let structural = store.update(Doc::Zones, |_| Ok::<_, Refused>(json!([])));
+        assert!(matches!(
+            structural,
+            Err(Refused::Store(StoreError::Structural { .. }))
+        ));
+        assert_eq!(store.get(Doc::Zones)["revision"], seen + 1);
     }
 
     #[test]

@@ -217,6 +217,100 @@ fn timestamp(time: SystemTime) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{milli:03}Z")
 }
 
+/// Unix milliseconds of a timestamp as [`timestamp`] writes it.
+fn parse_timestamp(text: &str) -> Option<i64> {
+    let number = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
+    let shape = text.len() == 24
+        && text.get(10..11) == Some("T")
+        && text.get(19..20) == Some(".")
+        && text.ends_with('Z');
+    if !shape {
+        return None;
+    }
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    let milli = number(20..23)?;
+    let days = days_from_civil(year, month, day);
+    Some((((days * 24 + hour) * 60 + minute) * 60 + second) * 1000 + milli)
+}
+
+/// The day count since 1970-01-01 of a date ([`civil`] the other way).
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = year - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let yoe = year.rem_euclid(400);
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The longest message a log line carries (api.json's `LogLine`).
+const MESSAGE_MAX: usize = 10_000;
+
+/// One record of the log as api.json's `LogLine`: `source` is
+/// `folo-source` for the effect engine's records and `node` for the
+/// node's own; the levels `warning` and `critical` read `warn` and `error`.
+fn log_line(record: &Value) -> Option<Value> {
+    let time_ms = parse_timestamp(record["ts"].as_str()?)?.max(0);
+    let level = match record["level"].as_str()? {
+        "critical" | "error" => "error",
+        "warning" => "warn",
+        "debug" => "debug",
+        _ => "info",
+    };
+    let logger = record["logger"].as_str().unwrap_or_default();
+    let source = if logger.starts_with("folo_source") || logger == ENGINE_LOGGER {
+        ENGINE_LOGGER
+    } else {
+        "node"
+    };
+    let mut message = record["msg"].as_str().unwrap_or_default().to_owned();
+    if let Some(exc) = record["exc"].as_str().filter(|e| !e.is_empty()) {
+        message.push('\n');
+        message.push_str(exc);
+    }
+    if message.chars().count() > MESSAGE_MAX {
+        message = message.chars().take(MESSAGE_MAX).collect();
+    }
+    let mut line = Map::new();
+    line.insert("time_ms".into(), Value::from(time_ms));
+    line.insert("level".into(), Value::from(level));
+    line.insert("source".into(), Value::from(source));
+    line.insert("message".into(), Value::from(message));
+    Some(Value::Object(line))
+}
+
+/// The newest `count` records of the log at `path` and its rotated files,
+/// oldest first, as api.json's `LogLine`s (`GET /api/v1/system/logs`).
+/// Lines that aren't records are skipped.
+#[must_use]
+pub fn tail(path: &Path, count: usize) -> Vec<Value> {
+    let mut newest_first: Vec<Value> = Vec::new();
+    let files = std::iter::once(path.to_path_buf())
+        .chain((1..=KEEP).map(|n| PathBuf::from(format!("{}.{n}", path.display()))));
+    for file in files {
+        if newest_first.len() >= count {
+            break;
+        }
+        let Ok(bytes) = fs::read(&file) else {
+            continue;
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        for line in text.lines().rev() {
+            if newest_first.len() >= count {
+                break;
+            }
+            let record = serde_json::from_str::<Value>(line).ok();
+            if let Some(line) = record.as_ref().and_then(log_line) {
+                newest_first.push(line);
+            }
+        }
+    }
+    newest_first.reverse();
+    newest_first
+}
+
 /// The date of a day count since 1970-01-01 (Howard Hinnant's algorithm).
 fn civil(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
@@ -322,6 +416,56 @@ mod tests {
             assert!(fs::metadata(dir.join(name)).unwrap().len() <= ROTATE_AT);
         }
         drop(rotating);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn timestamps_read_back() {
+        for millis in [0, 1_793_015_445_123, 951_782_400_000, 4_102_444_799_999] {
+            let time = UNIX_EPOCH + Duration::from_millis(millis);
+            let millis = i64::try_from(millis).unwrap();
+            assert_eq!(parse_timestamp(&timestamp(time)), Some(millis));
+        }
+        assert_eq!(parse_timestamp("2026-10-26 11:50:45.123Z"), None);
+        assert_eq!(parse_timestamp("yesterday"), None);
+    }
+
+    #[test]
+    fn the_tail_reads_the_newest_records_across_rotated_files() {
+        let dir = std::env::temp_dir().join(format!("folo-tail-{}", folo_store::new_id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("folo.log");
+        let record = |n: u32, level: &str, logger: &str| {
+            format!(
+                r#"{{"ts": "2026-10-23T10:00:{n:02}.000Z", "level": "{level}", "logger": "{logger}", "msg": "line {n}"}}"#
+            )
+        };
+        let older = [
+            record(1, "info", "folo_node::node"),
+            record(2, "warning", "folo_source.runtime.source"),
+        ];
+        fs::write(dir.join("folo.log.1"), older.join("\n") + "\n").unwrap();
+        let newer = [
+            record(3, "critical", "folo-source"),
+            "not a record".to_owned(),
+            record(4, "debug", "folo_node::server"),
+        ];
+        fs::write(&path, newer.join("\n") + "\n").unwrap();
+
+        let lines = tail(&path, 3);
+        let messages: Vec<&str> = lines
+            .iter()
+            .map(|l| l["message"].as_str().unwrap())
+            .collect();
+        assert_eq!(messages, ["line 2", "line 3", "line 4"]);
+        assert_eq!(lines[0]["level"], "warn");
+        assert_eq!(lines[0]["source"], "folo-source");
+        assert_eq!(lines[1]["level"], "error");
+        assert_eq!(lines[1]["source"], "folo-source");
+        assert_eq!(lines[2]["source"], "node");
+        assert_eq!(lines[2]["time_ms"], 1_792_749_604_000_i64);
+        assert_eq!(tail(&path, 10).len(), 4);
+        assert_eq!(tail(&dir.join("missing.log"), 10), Vec::<Value>::new());
         fs::remove_dir_all(&dir).unwrap();
     }
 

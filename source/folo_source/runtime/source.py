@@ -189,8 +189,12 @@ class SourceEngine:
         started = time.perf_counter()
         with self._lock:
             sent = self.executor.publisher.sent
-            self.executor.step(steps, now_us())
+            stamp = now_us()
+            self.executor.step(steps, stamp)
             self._published += self.executor.publisher.sent - sent
+            levels = self.executor.levels_due(stamp)
+        for params in levels:
+            self.link.notify('levels', params, part=params['surface'])
         took = time.perf_counter() - started
         self._renders += 1
         self._render_s += took

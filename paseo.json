@@ -1,0 +1,9 @@
+{
+  "worktree": {
+    "setup": [
+      "foreach ($f in 'AGENTS.local.md', 'CLAUDE.local.md', '.claude/launch.json') { $src = Join-Path $env:PASEO_SOURCE_CHECKOUT_PATH $f; if (Test-Path -LiteralPath $src) { New-Item -ItemType Directory -Force (Split-Path -Parent (Join-Path $PWD $f)) | Out-Null; Copy-Item -LiteralPath $src -Destination $f -Force } }",
+      "uv sync",
+      "Set-Location ui; npm ci"
+    ]
+  }
+}

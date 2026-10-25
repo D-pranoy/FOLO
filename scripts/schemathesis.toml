@@ -1,0 +1,54 @@
+# How the conformance harness (scripts/conformance.py) runs schemathesis
+# against a node on loopback: the client API's documented answers count as
+# conforming (docs/specs/client-api.md, ADR-0035).
+
+# Mutating requests send JSON, those without a body too
+# (docs/specs/client-api.md#conventions)
+headers = { "Content-Type" = "application/json" }
+
+[checks]
+# Loopback clients need no key: checking authentication needs a client key
+# and another machine, which arrive with RB-15
+ignored_auth.enabled = false
+# No server errors, but where the operations below document them
+not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx"]
+# A write whose If-Match names another revision gets 412
+positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "412", "429"]
+negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", "406", "409", "412", "415", "422", "428", "429"]
+
+# Endpoints before their run books answer 501
+# (docs/specs/client-api.md#before-their-run-books): the routes server.rs
+# gives `later`, and nothing else
+[[operations]]
+include-operation-id = [
+  "activateZone", "deactivateZone", "identifyTarget", "testZone",
+  "discoverProviders", "getProviderAdmin", "postProviderAdmin", "pairHueBridge",
+  "applyScene", "getPacks", "getPack", "removePack", "exportPack",
+  "getBackup",
+  "getClients", "issueClient", "getClient", "revokeClient",
+  "login", "logout", "requestClientKey", "approveClientKeyRequest", "putSystem",
+  "deleteSource", "createInvite", "getJoinRequests", "approveJoinRequest", "rejectJoinRequest",
+  "ingestSurfaces",
+  "getUpdates", "approveUpdate", "skipUpdate", "getUpdatePolicy", "putUpdatePolicy",
+]
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", "501"]
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "412", "429", "501"]
+checks.negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", "406", "409", "412", "415", "422", "428", "429", "501"]
+
+# Requests to a source: 503 when it isn't linked, 504 when it doesn't answer
+# (docs/specs/client-api.md#requests-to-sources)
+[[operations]]
+include-operation-id = ["getSourceInputs", "getSourceMedia", "getSourceMediaArt", "controlSourceMedia"]
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", "503", "504"]
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "412", "429", "503", "504"]
+checks.negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", "406", "409", "412", "415", "422", "428", "429", "503", "504"]
+
+# Documents are clamped, never rejected (docs/specs/config-model.md#clamping-rules)
+[[operations]]
+include-operation-id = ["createZone", "putZone", "putShow", "createProvider", "putProvider", "putSource"]
+checks.negative_data_rejection.enabled = false
+
+# schemathesis has no serializer for application/zip bodies
+[[operations]]
+include-operation-id = ["installPack", "restoreBackup"]
+enabled = false

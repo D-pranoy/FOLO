@@ -7,6 +7,7 @@ rendering, the requests it answers, and the `folo-source` command.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import subprocess
@@ -94,11 +95,19 @@ def test_it_renders_and_publishes(
     sequences = [f.sequence for f in surfaces]
     assert sequences == sorted(sequences)
     assert any(f.pixels.any() for f in surfaces)  # the music lit something
-    beat = [frames.decode_signal_frame(f) for f in node.received(link.TYPE_SIGNAL)]
-    assert beat and all(f.index == 0 and len(f.values) == 5 for f in beat)
+    # The fixture asks for the beat (index 0), the spectrum (index 1) and surface 0's levels
+    signals = [frames.decode_signal_frame(f) for f in node.received(link.TYPE_SIGNAL)]
+    assert {f.index: len(f.values) for f in signals} == {0: 5, 1: 192}
+    assert any(max(f.values) > -120.0 for f in signals if f.index == 1)  # the music shows
+    spectra = [f.timestamp_us for f in signals if f.index == 1]
+    gaps = [b - a for a, b in itertools.pairwise(spectra)]
+    assert min(gaps) >= 1_000_000 // 60, 'at most 60 times a second'
+    levels = node.wait_for(lambda: node.notifications('levels'))
+    assert {n['params']['surface'] for n in levels} == {0}
+    assert set(levels[-1]['params']['layers']) == {'l1'}
     running = node.notifications('status')[-1]['params']
     assert running['state'] in ('running', 'degraded')
-    for method in ('status', 'activity', 'input', 'media', 'metrics'):
+    for method in ('status', 'activity', 'input', 'media', 'levels', 'metrics'):
         message = node.notifications(method)[-1]
         (tmp_path / f'notify.{method}--engine.json').write_text(
             json.dumps(message), encoding='utf-8'

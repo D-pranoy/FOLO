@@ -43,6 +43,7 @@ class Publisher:
     def __init__(self) -> None:
         self._routes: dict[int, _Route] = {}
         self._signals: dict[str, int] = {}  # name -> signal index
+        self.levels: tuple[int, ...] = ()  # surfaces whose layer levels are sent
         self._surface_sequences: dict[int, int] = {}
         self._signal_sequences: dict[int, int] = {}
         self._unknown: set[str] = set()
@@ -69,6 +70,7 @@ class Publisher:
             str(entry['name']): int(entry['index'])
             for entry in cast(Sequence[Mapping[str, Any]], publish.get('signals', []))
         }
+        self.levels = tuple(int(i) for i in cast(Sequence[Any], publish.get('levels', [])))
 
     @property
     def surfaces(self) -> tuple[int, ...]:

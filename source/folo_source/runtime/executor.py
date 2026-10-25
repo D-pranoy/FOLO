@@ -15,6 +15,7 @@ from typing import Any, Protocol, cast
 import numpy as np
 
 from folo_source.core import Frame, Signal
+from folo_source.effects.base import Levels, shown_levels
 from folo_source.effects.visualizers import EFFECT_ID
 from folo_source.inputs.audio.analyzer import QUIET_DB, SAMPLERATE, Analyzer, Spectrum
 from folo_source.inputs.audio.input import MAX_DT
@@ -23,7 +24,9 @@ from folo_source.signals.beat import BeatSignal
 from folo_source.surfaces.renderer import SurfaceRenderer
 
 # The signals this engine has
-SIGNALS = ('beat', 'activity')
+SIGNALS = ('beat', 'activity', 'spectrum')
+# The spectrum and the layers' levels go out at most 60 times a second (ADR-0035 D6)
+DISPLAY_EVERY_US = 1_000_000 // 60
 
 Layers = Sequence[Mapping[str, Any]]
 
@@ -119,6 +122,10 @@ class Executor:
         self._track = 0
         # The front frames: what the last step rendered, swapped as a whole
         self.frames: dict[int, Frame] = {}
+        self.levels: dict[int, Levels] = {}  # per surface: its layers' levels
+        # The spectrum signal's bands (docs/specs/source-link.md#signal-frames)
+        self._display_plan = analyzer.band_plan(analyzer.display_edges)
+        self._display_due: dict[str, int] = {}  # when the spectrum and levels may go next
         self.timings: dict[int, dict[str, float]] = {}  # per surface: seconds per effect
         self.sequence = 0
 
@@ -185,11 +192,12 @@ class Executor:
         spectrum = steps[-1].spectrum
         dt = min(MAX_DT, sum(audio.dt for audio in steps))
         frames: dict[int, Frame] = {}
+        levels: dict[int, Levels] = {}
         timings: dict[int, dict[str, float]] = {}
         colors = self.media.colors
         for assigned in self._surfaces:
             tracker = self.beat.trackers.get(assigned.beat_offset_ms)
-            frame, _ = assigned.renderer.render(
+            frame, levels[assigned.index] = assigned.renderer.render(
                 assigned.surface,
                 assigned.layers,
                 spectrum,
@@ -201,9 +209,9 @@ class Executor:
             )
             frames[assigned.index] = frame
             timings[assigned.index] = dict(assigned.renderer.timings)
-        self.frames, self.timings = frames, timings
+        self.frames, self.levels, self.timings = frames, levels, timings
         self.sequence += 1
-        self._publish(frames, now_us)
+        self._publish(frames, spectrum, now_us)
 
     def _follow_track(self) -> None:
         track = self.media.track
@@ -212,15 +220,36 @@ class Executor:
             self._track = track
             self.beat.reset()
 
-    def _publish(self, frames: Mapping[int, Frame], now_us: int) -> None:
+    def _display_due_now(self, what: str, now_us: int) -> bool:
+        """Whether the spectrum or the levels may go out again."""
+        if now_us < self._display_due.get(what, 0):
+            return False
+        self._display_due[what] = now_us + DISPLAY_EVERY_US
+        return True
+
+    def levels_due(self, now_us: int) -> list[dict[str, Any]]:
+        """
+        The levels notifications due after a step: one per surface in
+        `publish.levels`, at most 60 times a second.
+        """
+        wanted = [i for i in self.publisher.levels if i in self.levels]
+        if not wanted or not self._display_due_now('levels', now_us):
+            return []
+        return [{'surface': i, 'layers': shown_levels(self.levels[i])} for i in wanted]
+
+    def _publish(self, frames: Mapping[int, Frame], spectrum: Spectrum, now_us: int) -> None:
         for index, frame in frames.items():
             data = self.publisher.surface(index, frame)
             if data is not None:
                 self.send(data)
-        signals = (
+        signals = [
             Signal('beat', self.beat.values(), now_us, self.sequence),
             Signal('activity', self.activity.values(), now_us, self.sequence),
-        )
+        ]
+        if self.publisher.wants('spectrum') and self._display_due_now('spectrum', now_us):
+            bands = self.analyzer.planned_levels(spectrum, self._display_plan)
+            values = tuple(float(band) for band in bands)
+            signals.append(Signal('spectrum', values, now_us, self.sequence))
         for signal in signals:
             if signal.name == 'beat' and not self.beat_wanted:
                 continue

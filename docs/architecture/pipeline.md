@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher, the local link and the executor)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher with the spectrum signal and layer levels, the local link and the executor)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
