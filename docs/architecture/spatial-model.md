@@ -87,7 +87,7 @@ The node applies them in `POST /zones`, to each of `surfaces` and `mappings` the
 - Surface and mapping ids are generated like any missing id. The roles are what scenes bind to.
 - The `canvas.room` plane is as wide and deep as the zone's `bounds` (`u = (x, 0, 0)`, `v = (0, −y, 0)`); the `canvas.screen` plane is the TV's rectangle turned by `Rz(yaw) · Rx(pitch) · Ry(roll)`, right-handed, about its centre.
 - A `strip.<target>` is unplaced (`placement` `none`), and a line target's manual mapping covers all its elements (`geometry.count`).
-- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the line targets past it unmapped. A line target whose `strip.<id>` role would pass 64 characters gets no strip, and a `display` target no mapping. A `null` counts as left out. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
+- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the line targets past it unmapped. A `strip.<id>` role that would pass 64 characters is shortened: the start of the id and a hash of the whole id (FNV-1a, 8 hex digits) after a `-`, so it is deterministic and unique within the zone, with a warning in the log naming the zone and target. A `display` target no mapping. A `null` counts as left out. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
 
 ## Mappings and projection
 

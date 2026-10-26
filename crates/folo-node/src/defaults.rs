@@ -43,8 +43,19 @@ fn is_line(target: &Value) -> bool {
     target["kind"] == "line"
 }
 
+/// `strip.<target id>`; one that would pass `MAX_ROLE` keeps the start of the
+/// id and ends in a hash of the whole id (FNV-1a), so it stays unique.
 fn strip_role(target: &Value) -> String {
-    format!("strip.{}", target["id"].as_str().unwrap_or_default())
+    let id = target["id"].as_str().unwrap_or_default();
+    let role = format!("strip.{id}");
+    if role.len() <= MAX_ROLE {
+        return role;
+    }
+    let hash = id.bytes().fold(0x811c_9dc5_u32, |h, b| {
+        (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+    });
+    let kept: String = id.chars().take(MAX_ROLE - "strip.".len() - 9).collect();
+    format!("strip.{kept}-{hash:08x}")
 }
 
 /// A `canvas` surface of the default resolution on `plane`.
@@ -132,9 +143,10 @@ fn surfaces(zone: &Value, new_id: NewId) -> Vec<Value> {
         .flatten()
         .filter(|t| is_line(t))
     {
-        if all.len() >= MAX_SURFACES || strip_role(target).len() > MAX_ROLE {
-            continue;
+        if all.len() >= MAX_SURFACES {
+            break;
         }
+        log_shortened(zone, target);
         all.push(json!({
             "id": new_id(),
             "kind": "strip",
@@ -145,6 +157,16 @@ fn surfaces(zone: &Value, new_id: NewId) -> Vec<Value> {
         }));
     }
     all
+}
+
+fn log_shortened(zone: &Value, target: &Value) {
+    let id = target["id"].as_str().unwrap_or_default();
+    if format!("strip.{id}").len() > MAX_ROLE {
+        let name = zone["name"].as_str().unwrap_or_default();
+        log::warn!(
+            "zone {name}: target {id}: the strip's role is shortened to fit {MAX_ROLE} characters"
+        );
+    }
 }
 
 fn surface_with_role<'a>(zone: &'a Value, role: &str) -> Option<&'a str> {
@@ -339,16 +361,29 @@ mod tests {
     }
 
     #[test]
-    fn a_null_counts_as_left_out_and_a_long_role_gets_no_strip() {
-        let long = "x".repeat(60);
-        let mut made = zone(
-            "room",
-            "none",
-            &[line(&long, 5), json!({"id": "d", "kind": "display"})],
-        );
+    fn a_null_counts_as_left_out_and_a_display_gets_no_mapping() {
+        let mut made = zone("room", "none", &[json!({"id": "d", "kind": "display"})]);
         apply(&json!({"surfaces": null}), &mut made, &mut ids());
         assert_eq!(roles(&made), ["canvas.room"]);
         assert_eq!(made["mappings"], json!([]));
+    }
+
+    #[test]
+    fn a_long_role_is_shortened_deterministically_and_stays_unique() {
+        let (a, b) = (
+            format!("{}a", "x".repeat(70)),
+            format!("{}b", "x".repeat(70)),
+        );
+        let mut made = zone("room", "none", &[line(&a, 5), line(&b, 5)]);
+        apply(&json!({}), &mut made, &mut ids());
+        let roles = roles(&made);
+        assert!(
+            roles[1..].iter().all(|role| role.len() <= MAX_ROLE),
+            "{roles:?}"
+        );
+        assert_ne!(roles[1], roles[2]);
+        assert_eq!(roles[1], strip_role(&line(&a, 5)));
+        assert_eq!(made["mappings"].as_array().unwrap().len(), 2);
     }
 
     #[test]
