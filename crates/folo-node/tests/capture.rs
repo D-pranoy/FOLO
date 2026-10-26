@@ -423,17 +423,23 @@ impl Home {
         let listing = format!(
             r#"{{"screens": [{{"id": "{id}", "name": "Listed", "width": 800, "height": 600, "primary": true}}]}}"#
         );
-        if cfg!(windows) {
-            let path = self.path.join("listing.cmd");
-            std::fs::write(&path, format!("@echo {listing}\r\n")).unwrap();
-            path
-        } else {
-            use std::os::unix::fs::PermissionsExt as _;
-            let path = self.path.join("listing.sh");
-            std::fs::write(&path, format!("#!/bin/sh\nprintf '%s' '{listing}'\n")).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-            path
-        }
+        self.write_listing_script(&listing)
+    }
+
+    #[cfg(windows)]
+    fn write_listing_script(&self, listing: &str) -> PathBuf {
+        let path = self.path.join("listing.cmd");
+        std::fs::write(&path, format!("@echo {listing}\r\n")).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn write_listing_script(&self, listing: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt as _;
+        let path = self.path.join("listing.sh");
+        std::fs::write(&path, format!("#!/bin/sh\nprintf '%s' '{listing}'\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
     }
 
     fn read_record(&self, name: &str) -> Option<Vec<u8>> {
