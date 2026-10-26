@@ -129,7 +129,7 @@ What `crates/folo-provider-hue` does, where this page leaves a choice.
   | `update_status` | the bridge's software update state | |
 
   A configuration FOLO streams to isn't edited or deleted. A request that is wrong answers `provider_error` with "invalid request", because the admin errors have no bad-request kind.
-- **Tests.** The fake bridge (`tests/support/`) serves the old `/api`, `/auth/v1`, the CLIP v2 resources, configuration CRUD and the event stream over HTTPS with a test authority, and a DTLS-PSK endpoint that decrypts what it is sent. `tests/openssl_server.rs` also runs the run book's `openssl s_server`; it is skipped without the command unless `FOLO_OPENSSL_TESTS=1`, which CI's Ubuntu job sets.
+- **Tests.** The fake bridge (`tests/support/`) serves the old `/api`, `/auth/v1`, the CLIP v2 resources, configuration CRUD and the event stream over HTTPS with a test authority, and a DTLS-PSK endpoint that decrypts what it is sent. `tests/openssl_server.rs` also runs the run book's `openssl s_server`; it is skipped on Windows and without the command unless `FOLO_OPENSSL_TESTS=1`, which CI's Ubuntu job sets.
 
 ## Licences of the references
 

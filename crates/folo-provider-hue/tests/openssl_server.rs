@@ -2,7 +2,7 @@
 //! PSK-AES128-GCM-SHA256`. The client must shake hands with an OpenSSL command line server and
 //! its datagrams must arrive as the encoder made them.
 //!
-//! The test is skipped where there is no `openssl` command. CI's Ubuntu job sets
+//! The test is skipped on Windows and where there is no `openssl` command. CI's Ubuntu job sets
 //! `FOLO_OPENSSL_TESTS=1`, which turns a missing command into a failure.
 
 mod support;
@@ -89,6 +89,12 @@ fn start(port: u16) -> Server {
 
 #[test]
 fn the_client_shakes_hands_with_openssl_s_server_and_the_payload_arrives_intact() {
+    // The run book scopes this endpoint to Linux runners: the `openssl` on a Windows machine is
+    // Git's bundled build, and its s_server doesn't answer a DTLS client on the runner
+    if cfg!(windows) {
+        eprintln!("skipped on Windows");
+        return;
+    }
     if !openssl_works() {
         assert!(
             std::env::var("FOLO_OPENSSL_TESTS").is_err(),
