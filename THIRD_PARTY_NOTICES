@@ -4,7 +4,7 @@ FOLO is MIT-licensed ([LICENSE](LICENSE)). Code copied or ported into FOLO from 
 
 ## Hyperion.NG
 
-- **Used in:** the black-bar detector of the display capture agent (`folo-capture`, [ADR-0037](docs/decisions/ADR-0037-display-capture-agent.md) D7), a port of Hyperion.NG's black-border detector (`libsrc/blackborder`), adapted to time-based hysteresis. The port is added with RB-14's black-bar change; it will live in `crates/folo-capture-core/src/bars.rs`.
+- **Used in:** the black-bar detector of the display capture agent (`folo-capture`, [ADR-0037](docs/decisions/ADR-0037-display-capture-agent.md) D7), a port of Hyperion.NG's black-border detector (`libsrc/blackborder`), adapted to time-based hysteresis. The port is `crates/folo-capture-core/src/bars/`: `scan.rs` ports `include/blackborder/BlackBorderDetector.h` and `libsrc/blackborder/BlackBorderDetector.cpp` (the default, letterbox and OSD modes, the threshold), `hysteresis.rs` ports `BlackBorderProcessor::updateBorder` and `mod.rs` the processor's blur margin. Each file's module documentation credits Hyperion.NG.
 - **Source:** https://github.com/hyperion-project/hyperion.ng
 - **Licence:** MIT
 

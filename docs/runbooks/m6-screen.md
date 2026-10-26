@@ -1,6 +1,6 @@
 # M6 Screen
 
-Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; the backends, the bar detector, the link and the Screen effect follow)
+Status: Accepted · Implementation: Partial (RB-14 steps 1 and 5: the core crate, the agent scaffold and the bar detector; the backends, the link and the Screen effect follow)
 
 ## RB-14: Display capture and Screen effect
 
@@ -13,7 +13,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - `folo-capture-core`: a `CaptureBackend` trait (list screens, start, frames, stop), the errors, the `FOLC` frame codec, the colour and downscale reference, and the synthetic and replay backends for tests
    - `folo-capture-windows` and `folo-capture-linux` for the backends, and `folo-capture`, the binary (`run`, `screens --json`, `--backend`)
    - `unsafe` code only in the backend crates' FFI modules (ADR-0037 D19)
-   - done so far: `folo-capture-core` (the types, the trait, the codec, the colour and sizing reference, the frame pacer, the synthetic and replay backends) and the `folo-capture` binary with `run`, `screens --json` and `--backend`; `run` stops at the link client, which comes with the node's side
+   - done so far: `folo-capture-core` (the types, the trait, the codec, the colour and sizing reference, the frame pacer, the synthetic and replay backends, the bar detector) and the `folo-capture` binary with `run`, `screens --json` and `--backend`; `run` stops at the link client, which comes with the node's side
 2. **Windows backend:**
    - Desktop Duplication through `windows-rs`: `DuplicateOutput1` with BGRA8 and R16G16B16A16_FLOAT; a device on the output's adapter
    - Windows.Graphics.Capture fallback: cursor off, free-threaded frame pool, borderless with consent on build 20348+
@@ -27,6 +27,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - the restore token returned in the agent's status and kept by the node in `secrets.json`
    - re-prompts shown as notifications, sent by the agent
 5. **Black-bar detection:** a port of Hyperion.NG's black-border detector (MIT; its notice is in `THIRD_PARTY_NOTICES`): the default, letterbox and OSD modes; time-based hysteresis; blur margin; presets (Auto, Off, 21:9, 4:3); video and game profiles. The protected-content flag is reported.
+   - done so far: the detector in `folo-capture-core`'s `bars` (the three modes, the threshold, time-based hysteresis with the periods in [display capture](../integrations/display-capture.md#black-bar-detection), the blur margin, the presets and both profiles) with the golden tests of step 9; the agent's run loop will call it before the pacer, and backends set the protected flag
 6. **Agent process** (`folo-capture`) and its link:
    - runs in the user session and starts on demand when an enabled screen input and an enabled Screen layer are in an active scene
    - dials the node's capture link with its launch token, sends `capture.status` at least once a second, and sends frames (`FOLC`) with bars, protected, HDR and held flags
@@ -40,7 +41,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - the screen-sync wizard and the protected-content banner are built with the interface (RB-11), and the "screen sync active" indicator in the tray with the desktop app (RB-19 step 3)
    - the black-bar preview is drawn from the reported bars over the zone's surface, never from screen frames
 9. **Tests:**
-   - black-bar golden tests (letterbox, pillarbox, 21:9, subtitles in the bars, logos, fade to black, OSD, noise near the threshold)
+   - black-bar golden tests (letterbox, pillarbox, 21:9, subtitles in the bars, logos, fade to black, OSD, noise near the threshold); done, in `crates/folo-capture-core/tests/bars.rs`
    - shader tests on WARP with fixtures
    - on Linux, on the CI runner: a real PipeWire daemon with a test producer and a fake ScreenCast portal on a private `dbus-daemon`, in an Ubuntu 24.04 job (the workspace must still build on 22.04)
    - privacy: marker pixels in the frames of a run must be in no live message, log line or temporary file
