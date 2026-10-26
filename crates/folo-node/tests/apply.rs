@@ -1024,21 +1024,40 @@ async fn an_apply_that_binds_nothing_is_refused() {
         "the show is unchanged, revision included"
     );
 
-    // Reset all refuses as a whole, and writes nothing
+    // Reset all skips the zone nothing binds in, and resets the rest
     let reset = node
         .send("POST", "/api/v1/show/reset", &json!({}), None)
         .await;
-    assert_eq!((reset.status, reset.code()), (409, "no_surface".into()));
-    assert_eq!(node.show().await, before);
-    let one = node
+    assert_eq!(
+        reset.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&reset.body)
+    );
+    let body = reset.json();
+    serde_json::from_value::<SceneApplied>(body.clone()).unwrap();
+    let results = body["results"].as_array().unwrap();
+    let bare = results.iter().find(|r| r["zone"] == "bare").unwrap();
+    assert_eq!(bare["roles"], json!({}));
+    assert_eq!(bare["skipped"], json!(["strip.main"]));
+    assert_eq!(bare["scene"], id.as_str(), "its scene is as it was");
+    assert_eq!(body["show"]["active"]["bare"], id.as_str());
+    let z1 = results.iter().find(|r| r["zone"] == "z1").unwrap();
+    assert_eq!(z1["roles"], json!({"strip.main": "s1"}));
+
+    // Only uncovered zones: 409, and nothing changes
+    let before = node.show().await;
+    let none = node
         .send(
             "POST",
             "/api/v1/show/reset",
-            &json!({"zones": ["z1"]}),
+            &json!({"zones": ["bare"]}),
             None,
         )
         .await;
-    assert_eq!(one.status, 200);
+    assert_eq!((none.status, none.code()), (409, "no_surface".into()));
+    assert_eq!(none.details()["zone"], "bare");
+    assert_eq!(node.show().await, before);
     assert_eq!(node.stop().await, 0);
 }
 

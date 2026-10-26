@@ -607,6 +607,9 @@ fn reset_request(node: &Arc<Node>, headers: &HeaderMap, body: Body) -> Result<Re
     }
     let mut results = Vec::new();
     let mut bases = Vec::new();
+    // The zones the default scene reached; the others are left as they are
+    let mut covered: Vec<String> = Vec::new();
+    let mut first_uncovered = None;
     let stored = node.store.update(Doc::Show, |current| {
         check_revision(headers, current)?;
         let mut show = current.clone();
@@ -618,15 +621,34 @@ fn reset_request(node: &Arc<Node>, headers: &HeaderMap, body: Body) -> Result<Re
         };
         for id in &ids {
             let zone = find(&zones, ZONES, id).ok_or(Refused::Absent("zone"))?;
-            let done = apply_to_zone(node, &mut show, zone, &target, &ask)?;
-            results.push(done.result);
-            bases.extend(done.base);
+            match apply_to_zone(node, &mut show, zone, &target, &ask) {
+                Ok(done) => {
+                    results.push(done.result);
+                    bases.extend(done.base);
+                    covered.push(id.clone());
+                }
+                Err(Refused::NoSurface {
+                    zone: name,
+                    skipped,
+                }) => {
+                    // Unchanged: its current scene, no roles bound, the roles skipped
+                    let scene = show["active"][id.as_str()].as_str().unwrap_or_default();
+                    results.push(applied(id, scene, &BTreeMap::new(), &skipped));
+                    first_uncovered.get_or_insert((name, skipped));
+                }
+                Err(other) => return Err(other),
+            }
+        }
+        if covered.is_empty()
+            && let Some((zone, skipped)) = first_uncovered.take()
+        {
+            return Err(Refused::NoSurface { zone, skipped });
         }
         drop_stale_bindings(&mut show, &zones);
         Ok::<_, Refused>(show)
     })?;
     finish(node, &bases);
-    restore_surfaces(node, &ids)?;
+    restore_surfaces(node, &covered)?;
     Ok(answer(&stored, &results))
 }
 
