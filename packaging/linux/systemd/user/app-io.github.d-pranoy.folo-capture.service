@@ -1,0 +1,30 @@
+# The display capture agent as a systemd user unit (RB-14 step 6, ADR-0037 D16).
+#
+# Reserved, and not installed or started by anything yet: the agent needs
+# FOLO_CAPTURE_LINK and FOLO_CAPTURE_TOKEN in its environment, and a unit that
+# systemd starts has no way to get the node's launch token. How it gets one is
+# decided with service mode (RB-19, RB-20); until then the node starts the agent
+# itself, in a transient scope (see crates/folo-capture-linux/src/appid.rs).
+#
+# The name is how the desktop portal learns the agent's application id: systemd's
+# desktop convention is app-<id>.service, and the portal reads <id> from the
+# unit's cgroup. A "-" inside <id> is written \x2d there, so the package installs
+# this file as
+#   app-io.github.d\x2dpranoy.folo\x2dcapture.service
+# (a file name with backslashes can't be checked out on Windows, so the
+# repository keeps the plain one).
+#
+# It is a user unit: capture works only in the signed-in user's session, which
+# is why it follows graphical-session.target and has no [Install] section.
+
+[Unit]
+Description=FOLO display capture agent
+Documentation=https://github.com/D-pranoy/FOLO/blob/v1/docs/integrations/display-capture.md
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/folo/folo-capture run
+Restart=on-failure
+RestartSec=2

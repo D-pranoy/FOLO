@@ -8,6 +8,15 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# `ashpd` (the portal wrapper RB-14 names, ADR-0037) is on zbus 5, whose
+# `zvariant`, `zvariant_derive` and `zbus_names` crates were folded into zbus 6.
+# These are notices of unmaintained crates, not vulnerabilities. Drop them when
+# `ashpd` moves to zbus 6.
+ignore = [
+  { id = "RUSTSEC-2026-0370", reason = "zvariant is merged into zbus 6; ashpd 0.13 still uses zbus 5" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names is merged into zbus 6; ashpd 0.13 still uses zbus 5" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is merged into zbus 6; ashpd 0.13 still uses zbus 5" },
+]
 
 [licenses]
 version = 2

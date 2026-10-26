@@ -20,3 +20,11 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 folo-capture-core = { path = "../folo-capture-core" }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+
+[features]
+# The Linux portal backend (`--backend portal`, and `auto` on Linux). It needs
+# PipeWire 1.0's development files to build, so it is off by default.
+portal = ["folo-capture-linux/portal"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+folo-capture-linux = { path = "../folo-capture-linux" }

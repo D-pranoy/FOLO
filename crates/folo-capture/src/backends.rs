@@ -54,7 +54,7 @@ impl BackendChoice {
     /// # Errors
     ///
     /// [`CaptureError::Unavailable`] for a backend that isn't built yet (the
-    /// Windows and Linux ones arrive with their crates), and
+    /// Windows ones arrive with their crate) or isn't for this platform, and
     /// [`CaptureError::Failed`] for a replay file that can't be used.
     pub fn open(&self) -> Result<Box<dyn CaptureBackend>, CaptureError> {
         let not_built = |name: &str| {
@@ -63,15 +63,50 @@ impl BackendChoice {
             )))
         };
         match self {
-            // Neither platform crate exists yet, so there is no best one to pick.
-            Self::Auto => not_built("platform"),
+            Self::Auto => Self::open_platform_default(),
             Self::Dda => not_built("dda"),
             Self::Wgc => not_built("wgc"),
             Self::Gdi => not_built("gdi"),
-            Self::Portal => not_built("portal"),
+            Self::Portal => Self::open_portal(),
             Self::Synthetic => Ok(Box::new(SyntheticBackend::new(Pattern::Gradient))),
             Self::Replay(path) => Ok(Box::new(ReplayBackend::open(path)?)),
         }
+    }
+}
+
+impl BackendChoice {
+    /// The portal on Linux. The Windows crate isn't built yet, so there is no
+    /// best backend to pick there.
+    fn open_platform_default() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        if cfg!(target_os = "linux") {
+            Self::open_portal()
+        } else {
+            Err(CaptureError::Unavailable(
+                "the platform's capture backend isn't built yet; use --backend synthetic or --backend replay:<file>"
+                    .to_owned(),
+            ))
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "portal"))]
+    #[allow(clippy::unnecessary_wraps)] // the other versions can fail
+    fn open_portal() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        Ok(Box::new(folo_capture_linux::PortalBackend::new()))
+    }
+
+    #[cfg(all(target_os = "linux", not(feature = "portal")))]
+    fn open_portal() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        Err(CaptureError::Unavailable(
+            "the portal backend isn't built into this binary: it needs PipeWire 1.0's development files, then cargo's --features portal"
+                .to_owned(),
+        ))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn open_portal() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        Err(CaptureError::Unavailable(
+            "the portal backend is for Linux".to_owned(),
+        ))
     }
 }
 
@@ -106,18 +141,31 @@ mod tests {
 
     #[test]
     fn the_unbuilt_backends_say_so_and_the_test_backend_opens() {
-        for choice in [
-            BackendChoice::Auto,
-            BackendChoice::Dda,
-            BackendChoice::Wgc,
-            BackendChoice::Gdi,
-            BackendChoice::Portal,
-        ] {
+        for choice in [BackendChoice::Dda, BackendChoice::Wgc, BackendChoice::Gdi] {
             assert!(
                 matches!(choice.open(), Err(CaptureError::Unavailable(_))),
                 "{choice:?}"
             );
         }
         assert_eq!(BackendChoice::Synthetic.open().unwrap().name(), "synthetic");
+    }
+
+    #[cfg(all(target_os = "linux", feature = "portal"))]
+    #[test]
+    fn the_portal_is_the_backend_on_linux_and_auto_picks_it() {
+        for choice in [BackendChoice::Portal, BackendChoice::Auto] {
+            assert_eq!(choice.open().unwrap().name(), "portal", "{choice:?}");
+        }
+    }
+
+    #[cfg(not(all(target_os = "linux", feature = "portal")))]
+    #[test]
+    fn without_the_portal_backend_it_and_auto_say_so() {
+        for choice in [BackendChoice::Portal, BackendChoice::Auto] {
+            assert!(
+                matches!(choice.open(), Err(CaptureError::Unavailable(_))),
+                "{choice:?}"
+            );
+        }
     }
 }
