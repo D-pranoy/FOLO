@@ -1,0 +1,28 @@
+{
+  "id": "vu-meter",
+  "schema_version": 2,
+  "description": "Classic volume meter with a peak marker.",
+  "hints": {
+    "group": "Full range",
+    "tempo": "Fast",
+    "anim": "meter",
+    "dur": 0.7
+  },
+  "name": "VU meter",
+  "params": {
+    "freq_lo": 20,
+    "freq_hi": 16000,
+    "threshold": -45,
+    "ceiling": -10,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "fill",
+    "direction": "forward",
+    "attack": 5,
+    "release": 300,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0,
+    "peak": true
+  }
+}

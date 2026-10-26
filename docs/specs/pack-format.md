@@ -1,6 +1,6 @@
 # Pack format
 
-Status: Accepted · Implementation: Partial (JSON Schemas for the manifest and the items; nothing reads packs yet)
+Status: Accepted · Implementation: Partial (JSON Schemas for the manifest and the items, and the built-in packs in `packs/folo/`; nothing reads packs yet)
 
 Decided in [ADR-0021](../decisions/ADR-0021-content-packs.md) and [ADR-0038](../decisions/ADR-0038-content-library.md). The model is in [content](../architecture/content.md), and the library's routes in the [client API](client-api.md#library).
 

@@ -1,0 +1,28 @@
+{
+  "id": "beat-pulse",
+  "schema_version": 2,
+  "description": "The whole band flashes on every beat of the music.",
+  "hints": {
+    "group": "On the beat",
+    "tempo": "Fast",
+    "anim": "kick",
+    "dur": 0.5
+  },
+  "name": "Beat pulse",
+  "params": {
+    "freq_lo": 30,
+    "freq_hi": 16000,
+    "threshold": -70,
+    "ceiling": -30,
+    "trigger": "beat",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 220,
+    "gain": 1,
+    "curve": 1.4,
+    "floor": 0,
+    "peak": false
+  }
+}

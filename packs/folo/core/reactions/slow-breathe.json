@@ -1,0 +1,28 @@
+{
+  "id": "slow-breathe",
+  "schema_version": 2,
+  "description": "Very slow breathing with the overall energy.",
+  "hints": {
+    "group": "Mids",
+    "tempo": "Slow",
+    "anim": "breathe",
+    "dur": 4.5
+  },
+  "name": "Slow breathe",
+  "params": {
+    "freq_lo": 100,
+    "freq_hi": 2000,
+    "threshold": -50,
+    "ceiling": -25,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 600,
+    "release": 2500,
+    "gain": 1.2,
+    "curve": 1,
+    "floor": 0.15,
+    "peak": false
+  }
+}

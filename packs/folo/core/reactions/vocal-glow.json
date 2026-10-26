@@ -1,0 +1,28 @@
+{
+  "id": "vocal-glow",
+  "schema_version": 2,
+  "description": "Soft glow that follows voices and leads.",
+  "hints": {
+    "group": "Mids",
+    "tempo": "Slow",
+    "anim": "breathe",
+    "dur": 2.4
+  },
+  "name": "Vocal glow",
+  "params": {
+    "freq_lo": 300,
+    "freq_hi": 3000,
+    "threshold": -48,
+    "ceiling": -22,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "forward",
+    "attack": 150,
+    "release": 900,
+    "gain": 1,
+    "curve": 1.2,
+    "floor": 0.1,
+    "peak": false
+  }
+}

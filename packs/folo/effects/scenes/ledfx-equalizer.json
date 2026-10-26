@@ -1,0 +1,272 @@
+{
+  "id": "ledfx-equalizer",
+  "schema_version": 2,
+  "description": "LedFx-inspired. Six meters growing from their own centers, with your palette running along the whole strip.",
+  "hints": {
+    "tempo": "Fast",
+    "source": "LedFx"
+  },
+  "scene": {
+    "id": "ledfx-equalizer",
+    "name": "Equalizer",
+    "tags": [
+      "LedFx",
+      "Jazz",
+      "Classical",
+      "Spectrum"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Band 1",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 30.0,
+            "freq_hi": 84.5,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -18.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 150.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.16666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Band 2",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 84.5,
+            "freq_hi": 238.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -54.4,
+            "ceiling": -22.4,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 150.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.16666666666666666,
+            "end": 0.3333333333333333,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Band 3",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 238.0,
+            "freq_hi": 671.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -58.8,
+            "ceiling": -26.8,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 150.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#4B00FF",
+              "#FF3399"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.3333333333333333,
+            "end": 0.5,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Band 4",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 671.0,
+            "freq_hi": 1890.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -63.2,
+            "ceiling": -31.2,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 150.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5,
+            "end": 0.6666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "5",
+          "name": "Band 5",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 1890.0,
+            "freq_hi": 5320.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -67.6,
+            "ceiling": -35.6,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 150.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.6666666666666666,
+            "end": 0.8333333333333334,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "6",
+          "name": "Band 6",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 5320.0,
+            "freq_hi": 15000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -72.0,
+            "ceiling": -40.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 150.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.8333333333333334,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

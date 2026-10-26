@@ -1,0 +1,73 @@
+{
+  "id": "ledfx-bar",
+  "schema_version": 2,
+  "description": "LedFx-inspired. A bar travels to the other end on every beat, turning around and changing color each time.",
+  "hints": {
+    "tempo": "Fast",
+    "source": "LedFx"
+  },
+  "scene": {
+    "id": "ledfx-bar",
+    "name": "Bar",
+    "tags": [
+      "LedFx",
+      "House",
+      "Pop",
+      "Beat"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Bar",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 30.0,
+            "freq_hi": 250.0,
+            "trigger": "beat",
+            "beats": 1,
+            "threshold": -70.0,
+            "ceiling": -35.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 400.0,
+            "floor": 0.5,
+            "mode": "wipe",
+            "direction": "forward",
+            "speed": 700.0,
+            "width": 30.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF",
+              "#FF3399",
+              "#FF00FF",
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}
