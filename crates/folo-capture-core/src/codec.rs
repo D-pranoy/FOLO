@@ -8,7 +8,8 @@ use crate::types::{Bars, FrameFlags, MAX_HEIGHT, MAX_WIDTH, Picture, ScreenFrame
 
 /// The header's size.
 pub const HEADER_LEN: usize = 36;
-/// No message on the capture link may exceed this (ADR-0037 D2).
+/// No message on the capture link may exceed this (ADR-0037 D2). A frame's
+/// exact length is tighter (388,836 at most), so the type byte doesn't matter.
 pub const MAX_MESSAGE_BYTES: usize = 400_000;
 /// The message type byte of a screen frame on the links (`0x04`).
 pub const MESSAGE_TYPE: u8 = 0x04;

@@ -48,10 +48,16 @@ impl FramePacer {
     /// Changes the rate in place, as a repeated `capture.start` does. The
     /// sequence goes on.
     pub fn set_rate(&mut self, rate_hz: f64) {
-        let rate = rate_hz.clamp(1.0, 60.0);
-        // 1e6 / 60 up to 1e6 / 1: the cast can't overflow or lose the sign.
+        // A rate that isn't a number is taken as the slowest.
+        let rate = if rate_hz.is_nan() {
+            1.0
+        } else {
+            rate_hz.clamp(1.0, 60.0)
+        };
+        // Rounded up so that the rate is never exceeded. 1e6 / 60 up to 1e6 / 1:
+        // the cast can't overflow or lose the sign.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let interval = (1_000_000.0 / rate).floor() as u64;
+        let interval = (1_000_000.0 / rate).ceil() as u64;
         self.interval_us = interval;
     }
 
@@ -73,9 +79,13 @@ impl FramePacer {
     /// frame. With none, the last picture goes out again after
     /// [`REPEAT_AFTER`] since the last frame; it carries `held` while
     /// [`set_held`](Self::set_held) says so. Every frame takes the next
-    /// sequence number and `now_us` as its time.
+    /// sequence number and `now_us`, the time it is sent, as its time. Repeats
+    /// don't follow the rate (D5 sends them every 0.25 s), and a picture
+    /// waiting for the rate holds them back, so rates under about 4 Hz can't
+    /// keep frames inside the engine's 0.5 s limit.
     pub fn poll(&mut self, now_us: u64) -> Option<ScreenFrame> {
         let since_last = self.last_sent_us.map(|sent| now_us.saturating_sub(sent));
+        let mut repeated = false;
         let picture = if let Some(pending) = self
             .pending
             .take_if(|_| since_last.is_none_or(|s| s >= self.interval_us))
@@ -84,16 +94,19 @@ impl FramePacer {
         } else if self.pending.is_none()
             && since_last.is_some_and(|s| u128::from(s) >= REPEAT_AFTER.as_micros())
         {
+            repeated = true;
             self.last.clone()?
         } else {
             return None;
         };
         self.last = Some(picture.clone());
-        Some(self.stamp(picture, now_us))
+        Some(self.stamp(picture, now_us, repeated))
     }
 
-    fn stamp(&mut self, mut picture: Picture, now_us: u64) -> ScreenFrame {
-        picture.flags.held |= self.held;
+    fn stamp(&mut self, mut picture: Picture, now_us: u64, repeated: bool) -> ScreenFrame {
+        // `held` says the last picture is sent again because capture isn't
+        // possible; a picture that was just captured is not that.
+        picture.flags.held |= self.held && repeated;
         let sequence = self.sequence;
         self.sequence = self.sequence.wrapping_add(1);
         self.last_sent_us = Some(now_us);

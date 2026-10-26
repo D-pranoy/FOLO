@@ -138,10 +138,17 @@ fn other_aspect_ratios_fit_the_box_rounding_down() {
 }
 
 #[test]
-fn a_frame_is_never_larger_than_the_screen_and_never_empty() {
-    assert_eq!(fit_in_box(320, 200, 480, 270), (320, 200));
+fn a_small_screen_gets_the_largest_frame_that_fits_and_a_frame_is_never_empty() {
+    assert_eq!(fit_in_box(320, 200, 480, 270), (432, 270));
     assert_eq!(fit_in_box(100, 5000, 480, 270), (5, 270));
     assert_eq!(fit_in_box(5000, 1, 480, 270), (480, 1));
+}
+
+#[test]
+fn a_box_beyond_the_limits_is_cut_to_them() {
+    assert_eq!(fit_in_box(1920, 1080, 4000, 4000), (480, 270));
+    assert_eq!(fit_in_box(1920, 1080, 0, 0), (1, 1));
+    assert_eq!(fit_in_box(0, 0, 4000, 4000), (480, 270));
 }
 
 #[test]

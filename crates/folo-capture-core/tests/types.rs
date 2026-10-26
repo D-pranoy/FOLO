@@ -81,6 +81,7 @@ fn every_limit_of_a_request_is_checked() {
         matches!(request.validate(), Err(CaptureError::InvalidRequest(_)))
     };
     assert!(broken(|r| r.screen = "x".repeat(129)));
+    assert!(broken(|r| r.restore_token = Some("t".repeat(257))));
     assert!(broken(|r| r.width = 0));
     assert!(broken(|r| r.width = 481));
     assert!(broken(|r| r.height = 0));
@@ -90,6 +91,11 @@ fn every_limit_of_a_request_is_checked() {
     assert!(broken(|r| r.rate_hz = f64::NAN));
     assert!(broken(|r| r.black_bars.threshold = 0.009));
     assert!(broken(|r| r.black_bars.threshold = 0.51));
+    // The schema counts characters, not bytes.
+    let mut wide = request();
+    wide.screen = "é".repeat(128);
+    wide.restore_token = Some("é".repeat(256));
+    wide.validate().unwrap();
     let mut edge = request();
     (
         edge.width,

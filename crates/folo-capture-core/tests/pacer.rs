@@ -42,13 +42,14 @@ fn pictures_faster_than_the_rate_wait_and_the_newest_wins() {
 }
 
 #[test]
-fn the_rate_of_60_allows_a_frame_every_16_667_microseconds() {
+fn the_rate_of_60_allows_a_frame_every_16_667_microseconds_rounded_up_so_it_is_never_exceeded() {
     let mut pacer = FramePacer::new(60.0);
     pacer.push(picture(1));
     pacer.poll(0).unwrap();
     pacer.push(picture(2));
     assert!(pacer.poll(16_665).is_none());
-    assert!(pacer.poll(16_666).is_some());
+    assert!(pacer.poll(16_666).is_none());
+    assert!(pacer.poll(16_667).is_some());
 }
 
 #[test]
@@ -101,11 +102,35 @@ fn a_held_pacer_repeats_with_the_held_flag_and_a_new_picture_goes_out_unmarked_a
 }
 
 #[test]
-fn a_new_picture_pushed_while_held_still_carries_held() {
+fn a_picture_just_captured_never_carries_held() {
     let mut pacer = FramePacer::new(60.0);
     pacer.set_held(true);
     pacer.push(picture(1));
-    assert!(pacer.poll(0).unwrap().picture.flags.held);
+    assert!(!pacer.poll(0).unwrap().picture.flags.held);
+    assert!(pacer.poll(250 * MS).unwrap().picture.flags.held);
+}
+
+#[test]
+fn a_rate_that_is_not_a_number_is_the_slowest() {
+    let mut pacer = FramePacer::new(f64::NAN);
+    pacer.push(picture(1));
+    pacer.poll(0).unwrap();
+    pacer.push(picture(2));
+    assert!(pacer.poll(999_999).is_none());
+    assert!(pacer.poll(1_000_000).is_some());
+}
+
+#[test]
+fn repeats_do_not_follow_the_rate_and_a_waiting_picture_holds_them_back() {
+    let mut pacer = FramePacer::new(1.0);
+    pacer.push(picture(1));
+    pacer.poll(0).unwrap();
+    // A still screen at 1 Hz is repeated every 0.25 s (D5).
+    assert_eq!(pacer.poll(250 * MS).unwrap().sequence, 1);
+    // A new picture waits for the rate; no repeat goes out meanwhile.
+    pacer.push(picture(2));
+    assert!(pacer.poll(500 * MS).is_none());
+    assert_eq!(pacer.poll(1_250 * MS).unwrap().picture, picture(2));
 }
 
 #[test]

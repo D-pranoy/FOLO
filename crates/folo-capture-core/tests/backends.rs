@@ -329,3 +329,35 @@ fn a_replay_file_is_read_from_disk() {
     assert!(matches!(missing, Err(CaptureError::Failed(_))));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_synthetic_picture_of_a_degenerate_size_does_not_panic() {
+    for (width, height) in [(0, 0), (1, 1), (1, 7), (7, 1)] {
+        for pattern in [Pattern::Gradient, Pattern::ColorBars, Pattern::Letterbox] {
+            let picture = SyntheticBackend::render(pattern, 0, width, height);
+            assert_eq!(
+                picture.pixels.len(),
+                usize::from(width.max(1)) * usize::from(height.max(1)) * 3
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_replay_path_that_is_not_a_regular_file_is_refused_without_reading_it() {
+    let result = ReplayBackend::open(std::path::Path::new("/dev/zero"));
+    assert!(matches!(result, Err(CaptureError::Failed(why)) if why.contains("not a regular file")));
+}
+
+#[test]
+fn a_replay_file_over_the_cap_is_refused() {
+    let dir = std::env::temp_dir().join(format!("folo-capture-core-big-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("big.folr");
+    let file = std::fs::File::create(&path).unwrap();
+    file.set_len(replay::MAX_FILE_BYTES + 1).unwrap();
+    let result = ReplayBackend::open(&path);
+    assert!(matches!(result, Err(CaptureError::Failed(why)) if why.contains("longer than 64 MiB")));
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -46,10 +46,9 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md); the messa
 
 - **Format:** `rgb8`, sRGB-encoded, in the `FOLC` frame of the [source link](../specs/source-link.md#screen-frames), never compressed. Frames are never wider than 480 or higher than 270.
 - **Size:** at most 480 wide and 270 high. The node asks for twice the largest canvas among the surfaces with a Screen layer (at least 64×36, at most 480×270). The agent delivers the largest frame of the screen's aspect ratio that fits.
-- **Rate:** the highest rate those surfaces publish at, at most 60 Hz. When nothing on the screen changes, the last picture is sent again after 0.25 s, as a new frame with the send time and the next sequence number.
-- **Never larger than the screen:** a screen smaller than the box is delivered at its own size, not scaled up.
+- **Rate:** the highest rate those surfaces publish at, at most 60 Hz. When nothing on the screen changes, the last picture is sent again after 0.25 s, as a new frame with the send time and the next sequence number. Every frame, new or repeated, carries the time it is sent. Repeats are not held to `rate_hz`, and a new picture waiting for the rate holds them back, so rates under about 4 Hz can't keep frames inside the engine's 0.5 s limit.
 - **Clock:** timestamps are microseconds on the operating system's monotonic clock (`QueryPerformanceCounter`, `CLOCK_MONOTONIC`), the clock the engine stamps its own frames with.
-- **Flags:** `protected` (protected content is on screen), `hdr` (the desktop is HDR, and the frame was tone-mapped) and `held` (the agent can't capture right now, and sends its last picture again).
+- **Flags:** `protected` (protected content is on screen), `hdr` (the desktop is HDR, and the frame was tone-mapped) and `held` (the agent can't capture right now, and sends its last picture again; a picture just captured never carries it).
 - **Bars:** the black bars found, in cells, in every frame's header. The picture isn't cropped.
 
 ## Windows

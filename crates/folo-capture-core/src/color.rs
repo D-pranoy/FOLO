@@ -84,7 +84,8 @@ pub fn downscale(
         return Err(FrameError::BadHeight(to_u16(in_height.min(out_height))));
     }
     // Sizes are at most a screen's: far below 2^32.
-    let to_u32 = |cells: usize| u32::try_from(cells).map_err(|_| FrameError::BadWidth(u16::MAX));
+    let wide = |cells: usize| u32::try_from(cells).map_err(|_| FrameError::BadWidth(u16::MAX));
+    let high = |cells: usize| u32::try_from(cells).map_err(|_| FrameError::BadHeight(u16::MAX));
     let expected = in_width * in_height * 3;
     if pixels.len() != expected {
         return Err(FrameError::BadPixels {
@@ -93,8 +94,8 @@ pub fn downscale(
         });
     }
     let (across, down) = (
-        weights(to_u32(in_width)?, to_u32(out_width)?),
-        weights(to_u32(in_height)?, to_u32(out_height)?),
+        weights(wide(in_width)?, wide(out_width)?),
+        weights(high(in_height)?, high(out_height)?),
     );
     // Across first, per input row, in linear light.
     let mut rows = vec![0.0_f64; in_height * out_width * 3];

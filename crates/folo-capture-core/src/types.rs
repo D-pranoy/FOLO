@@ -12,8 +12,10 @@ pub const MAX_WIDTH: u16 = 480;
 pub const MAX_HEIGHT: u16 = 270;
 /// The most frames a second a capture may ask for.
 pub const MAX_RATE_HZ: f64 = 60.0;
-/// The longest screen id (`Screen.id`).
-pub const MAX_SCREEN_ID_BYTES: usize = 128;
+/// The longest screen id (`Screen.id`), in characters as the schema counts them.
+pub const MAX_SCREEN_ID_CHARS: usize = 128;
+/// The longest restore token.
+pub const MAX_RESTORE_TOKEN_CHARS: usize = 256;
 
 /// A screen the agent can capture (api.json's `Screen`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,8 +96,15 @@ impl CaptureRequest {
     /// [`CaptureError::InvalidRequest`] naming the first limit broken.
     pub fn validate(&self) -> Result<(), CaptureError> {
         let bad = |why: &str| Err(CaptureError::InvalidRequest(why.to_owned()));
-        if self.screen.len() > MAX_SCREEN_ID_BYTES {
-            return bad("screen id is longer than 128 bytes");
+        if self.screen.chars().count() > MAX_SCREEN_ID_CHARS {
+            return bad("screen id is longer than 128 characters");
+        }
+        let long_token = self
+            .restore_token
+            .as_ref()
+            .is_some_and(|token| token.chars().count() > MAX_RESTORE_TOKEN_CHARS);
+        if long_token {
+            return bad("restore_token is longer than 256 characters");
         }
         if !(1..=MAX_WIDTH).contains(&self.width) {
             return bad("width is not 1 to 480");

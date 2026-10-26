@@ -79,6 +79,7 @@ impl SyntheticBackend {
     /// The picture with this number, `width` × `height` cells.
     #[must_use]
     pub fn render(pattern: Pattern, index: u32, width: u16, height: u16) -> Picture {
+        let (width, height) = (width.max(1), height.max(1));
         let bar_rows = if pattern == Pattern::Letterbox {
             height / 8
         } else {

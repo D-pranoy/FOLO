@@ -16,7 +16,7 @@ pub fn requested_box(largest_canvas: (u16, u16)) -> (u16, u16) {
 
 /// The largest frame of a `screen_width` × `screen_height` screen's aspect
 /// ratio that fits `box_width` × `box_height`, rounded down so it fits, at
-/// least 1 × 1. It is never larger than the screen itself.
+/// least 1 × 1. The box is first limited to 480 × 270.
 ///
 /// A screen of an unknown size (0) gets the box.
 #[must_use]
@@ -26,20 +26,19 @@ pub fn fit_in_box(
     box_width: u16,
     box_height: u16,
 ) -> (u16, u16) {
+    let box_width = box_width.clamp(1, MAX_WIDTH);
+    let box_height = box_height.clamp(1, MAX_HEIGHT);
     if screen_width == 0 || screen_height == 0 {
-        return (box_width.max(1), box_height.max(1));
+        return (box_width, box_height);
     }
     let (sw, sh) = (u64::from(screen_width), u64::from(screen_height));
     let (bw, bh) = (u64::from(box_width), u64::from(box_height));
     // Compare the aspect ratios by cross-multiplying, to stay in integers.
-    let (mut width, mut height) = if bw * sh <= bh * sw {
+    let (width, height) = if bw * sh <= bh * sw {
         (bw, bw * sh / sw)
     } else {
         (bh * sw / sh, bh)
     };
-    if width > sw || height > sh {
-        (width, height) = (sw, sh);
-    }
     // Both are at most 480 × 270 here, so they fit a u16.
     (
         u16::try_from(width.max(1)).unwrap_or(MAX_WIDTH),

@@ -7,6 +7,7 @@
 //! the 8-byte header `FOLR`, version 1 and three zero bytes, then records of a
 //! `u32` little-endian length and that many bytes of a `FOLC` frame.
 
+use std::io::Read as _;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -135,13 +136,25 @@ impl ReplayBackend {
         let failed = |e: std::io::Error| {
             CaptureError::Failed(format!("replay file {}: {e}", path.display()))
         };
-        if std::fs::metadata(path).map_err(failed)?.len() > MAX_FILE_BYTES {
+        let file = std::fs::File::open(path).map_err(failed)?;
+        if !file.metadata().map_err(failed)?.is_file() {
+            return Err(CaptureError::Failed(format!(
+                "replay file {} is not a regular file",
+                path.display()
+            )));
+        }
+        // Bounded by the read itself: a file that grows, or a device, can't get past the cap.
+        let mut bytes = Vec::new();
+        file.take(MAX_FILE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(failed)?;
+        if bytes.len() as u64 > MAX_FILE_BYTES {
             return Err(CaptureError::Failed(format!(
                 "replay file {} is longer than 64 MiB",
                 path.display()
             )));
         }
-        Self::new(parse(&std::fs::read(path).map_err(failed)?)?, true)
+        Self::new(parse(&bytes)?, true)
     }
 
     /// How long to wait after frame `index` before the one after it.
