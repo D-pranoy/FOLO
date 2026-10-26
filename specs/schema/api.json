@@ -109,7 +109,7 @@
       "type": "object",
       "properties": {
         "zone": {"type": "string", "maxLength": 64},
-        "roles": {"description": "Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).", "type": "object", "additionalProperties": {"type": "string", "maxLength": 64}, "default": {}},
+        "roles": {"description": "Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).", "type": "object", "propertyNames": {"maxLength": 64}, "maxProperties": 64, "additionalProperties": {"type": "string", "maxLength": 64}, "default": {}},
         "keep_changes": {"description": "Merge into the zone's active scene, keeping what the user changed since it was applied (ADR-0038 D15).", "type": "boolean", "default": false}
       },
       "required": ["zone"],

@@ -4475,6 +4475,10 @@
     "roles": {
      "description": "Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).",
      "type": "object",
+     "propertyNames": {
+      "maxLength": 64
+     },
+     "maxProperties": 64,
      "additionalProperties": {
       "type": "string",
       "maxLength": 64
