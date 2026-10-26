@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
@@ -33,6 +33,15 @@ const RESET_BACKGROUND: &str = "#000000";
 /// `show.json`'s limits when the schema can't be read.
 const SCENE_LIMIT: usize = 256;
 const BINDING_LIMIT: usize = 256;
+
+/// Serialises the writes of `show.json` that also touch `applied/`, so a base
+/// written for one write isn't pruned by another's older view of the show.
+static SHOW_WRITES: Mutex<()> = Mutex::new(());
+
+/// Held from before the show is written until its bases are written and pruned.
+pub fn show_writes() -> MutexGuard<'static, ()> {
+    SHOW_WRITES.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// What an effect needs of a surface, by effect id (`min_elements`).
 static MIN_ELEMENTS: LazyLock<BTreeMap<String, u64>> = LazyLock::new(|| {
@@ -121,12 +130,16 @@ fn write_base(node: &Node, scene: &Value) {
     if let Err(why) = written {
         // The apply stands; a later `keep_changes` on it answers `no_base`
         log::error!("applied: the base of scene {id} can't be written: {why}");
+        // A stale base would be merged against as if it were current
+        let _ = fs::remove_file(&path);
     }
 }
 
 /// Removes the bases of scenes that have left `show` or lost their provenance
 /// (ADR-0038 D11).
-pub fn prune_bases(node: &Node, show: &Value) {
+pub fn prune_bases(node: &Node) {
+    let show = node.store.get(Doc::Show);
+    let show = &*show;
     let keep: BTreeSet<String> = list_of(show, "scenes")
         .iter()
         .filter(|scene| scene.get("provenance").is_some())
@@ -170,6 +183,8 @@ pub fn drop_stale_bindings(show: &mut Value, zones: &Value) {
 
 /// What the request asks of an apply of a pack item.
 struct Ask<'a> {
+    /// `zones.json`, for the zones that still exist.
+    zones: &'a Value,
     roles: &'a BTreeMap<String, String>,
     keep_changes: bool,
 }
@@ -315,13 +330,15 @@ struct Slot {
     mine: Option<Value>,
 }
 
-fn slot_of(show: &Value, zone: &str) -> Slot {
+fn slot_of(show: &Value, zones: &Value, zone: &str) -> Slot {
     let scenes = list_of(show, "scenes");
     let active = show["active"][zone].as_str().unwrap_or_default();
     let at = scenes.iter().position(|scene| scene["id"] == active);
     let elsewhere = show["active"].as_object().is_some_and(|map| {
-        map.iter()
-            .any(|(other, scene)| other != zone && scene == active)
+        // A zone that was deleted no longer holds its scene
+        map.iter().any(|(other, scene)| {
+            other != zone && scene == active && find(zones, ZONES, other).is_some()
+        })
     });
     match at {
         Some(at) if !elsewhere => Slot {
@@ -361,7 +378,7 @@ fn apply_item(
             "the zone has no surface {unknown}"
         )));
     }
-    let slot = slot_of(show, zone_id);
+    let slot = slot_of(show, ask.zones, zone_id);
     if slot.at.is_none() && list_of(show, "scenes").len() >= limit("scenes", SCENE_LIMIT) {
         return Err(Refused::Full);
     }
@@ -460,10 +477,12 @@ fn string_map(value: Option<&Value>) -> Result<BTreeMap<String, String>, Refused
         return Ok(BTreeMap::new());
     };
     let bad = || Refused::BadBody("roles maps a role to a surface id".into());
-    value
-        .as_object()
-        .ok_or_else(bad)?
-        .iter()
+    let map = value.as_object().ok_or_else(bad)?;
+    // `ApplyResult.skipped` holds at most 64 roles, of at most 64 characters
+    if map.len() > 64 || map.keys().any(|role| role.chars().count() > 64) {
+        return Err(bad());
+    }
+    map.iter()
         .map(|(role, surface)| match surface.as_str() {
             Some(id) if id.chars().count() <= 64 => Ok((role.clone(), id.to_owned())),
             _ => Err(bad()),
@@ -492,6 +511,7 @@ fn apply_request(
 ) -> Result<Response, Refused> {
     let body = object_of(body)?;
     only(&body, &["zone", "roles", "keep_changes"])?;
+    let _writing = show_writes();
     let zone_id = body
         .get("zone")
         .and_then(Value::as_str)
@@ -517,6 +537,7 @@ fn apply_request(
             zone,
             &target,
             &Ask {
+                zones: &zones,
                 roles: &roles,
                 keep_changes,
             },
@@ -526,17 +547,17 @@ fn apply_request(
         base = done.base;
         Ok::<_, Refused>(show)
     })?;
-    finish(node, &stored, &base.into_iter().collect::<Vec<_>>());
+    finish(node, &base.into_iter().collect::<Vec<_>>());
     Ok(answer(&stored, &results))
 }
 
 /// After a show write: the engine, the new bases and the bases left over.
-fn finish(node: &Node, show: &Value, bases: &[Value]) {
+fn finish(node: &Node, bases: &[Value]) {
     written(node, Doc::Show);
     for scene in bases {
         write_base(node, scene);
     }
-    prune_bases(node, show);
+    prune_bases(node);
 }
 
 /// `POST /show/reset`.
@@ -550,6 +571,7 @@ pub async fn reset(State(node): Shared, headers: HeaderMap, body: Body) -> Respo
 fn reset_request(node: &Arc<Node>, headers: &HeaderMap, body: Body) -> Result<Response, Refused> {
     let body = object_of(body)?;
     only(&body, &["zones"])?;
+    let _writing = show_writes();
     let asked = match body.get("zones") {
         None => Vec::new(),
         Some(Value::Array(list)) if list.len() <= 256 => list
@@ -566,7 +588,11 @@ fn reset_request(node: &Arc<Node>, headers: &HeaderMap, body: Body) -> Result<Re
             .filter_map(|zone| zone["id"].as_str().map(str::to_owned))
             .collect()
     } else {
+        let mut seen = BTreeSet::new();
         asked
+            .into_iter()
+            .filter(|id| seen.insert(id.clone()))
+            .collect()
     };
     // A zone that doesn't exist refuses the whole reset, before anything changes
     if ids.iter().any(|id| find(&zones, ZONES, id).is_none()) {
@@ -579,6 +605,7 @@ fn reset_request(node: &Arc<Node>, headers: &HeaderMap, body: Body) -> Result<Re
         let mut show = current.clone();
         let target = default_target(node, &show).ok_or(Refused::Absent("scene"))?;
         let ask = Ask {
+            zones: &zones,
             roles: &BTreeMap::new(),
             keep_changes: false,
         };
@@ -591,7 +618,7 @@ fn reset_request(node: &Arc<Node>, headers: &HeaderMap, body: Body) -> Result<Re
         drop_stale_bindings(&mut show, &zones);
         Ok::<_, Refused>(show)
     })?;
-    finish(node, &stored, &bases);
+    finish(node, &bases);
     restore_surfaces(node, &ids)?;
     Ok(answer(&stored, &results))
 }

@@ -896,3 +896,93 @@ async fn reset_all() {
     );
     assert_eq!(node.stop().await, 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn edges_and_concurrent_writes() {
+    let home = Home::new();
+    let node = Node::start(&home).await;
+    setup(&node).await;
+
+    // A deleted zone's active scene doesn't block an in-place apply
+    let (show, result) = applied(&node.apply("genre:edm", &json!({"zone": "z1"})).await);
+    let mine = result["scene"].as_str().unwrap().to_owned();
+    let mut shared = show.clone();
+    shared["active"]["z2"] = mine.as_str().into();
+    assert_eq!(
+        node.send("PUT", "/api/v1/show", &shared, None).await.status,
+        200
+    );
+    let gone = node
+        .call(
+            "DELETE",
+            "/api/v1/zones/z2",
+            Some("application/json"),
+            None,
+            Vec::new(),
+        )
+        .await;
+    assert_eq!(gone.status, 204);
+    let (_, again) = applied(&node.apply("genre:edm", &json!({"zone": "z1"})).await);
+    assert_eq!(again["scene"], mine.as_str(), "written in place");
+
+    // Role keys are bounded
+    let long = "r".repeat(65);
+    let answer = node
+        .apply("genre:edm", &json!({"zone": "z1", "roles": {long: "s1"}}))
+        .await;
+    assert_eq!((answer.status, answer.code()), (400, "bad_body".into()));
+
+    // 256 bindings is the limit
+    let mut full = node.show().await;
+    let entries: Vec<Value> = (0..256)
+        .map(|n| json!({"zone": "z1", "scene": format!("a/b:s{n}"), "roles": {"strip.main": "s1"}}))
+        .collect();
+    full["bindings"] = Value::Array(entries);
+    assert_eq!(
+        node.send("PUT", "/api/v1/show", &full, None).await.status,
+        200
+    );
+    let answer = node
+        .apply(
+            "genre:edm",
+            &json!({"zone": "z1", "roles": {"strip.main": "s1"}}),
+        )
+        .await;
+    assert_eq!((answer.status, answer.code()), (409, "list_full".into()));
+
+    // Applies racing each other and a show write keep every base
+    let mut clean = node.show().await;
+    clean["bindings"] = json!([]);
+    clean["scenes"] = json!([]);
+    clean["active"] = json!({});
+    assert_eq!(
+        node.send("PUT", "/api/v1/show", &clean, None).await.status,
+        200
+    );
+    let zones = ["z1", "z4", "z5", "z6"];
+    for zone in &zones[1..] {
+        let body = json!({"id": zone, "surfaces": [surface(&format!("{zone}-s"), "strip", "strip.main", 20, 1)]});
+        assert_eq!(
+            node.send("POST", "/api/v1/zones", &body, None).await.status,
+            201
+        );
+    }
+    let node = std::sync::Arc::new(node);
+    let mut tasks = Vec::new();
+    for zone in zones {
+        let node = std::sync::Arc::clone(&node);
+        tasks.push(tokio::spawn(async move {
+            node.apply("genre:edm", &json!({"zone": zone})).await.json()
+        }));
+    }
+    let mut ids = Vec::new();
+    for task in tasks {
+        let body = task.await.unwrap();
+        ids.push(body["results"][0]["scene"].as_str().unwrap().to_owned());
+    }
+    for id in &ids {
+        assert!(base_path(&home, id).is_some(), "the base of {id} survived");
+    }
+    let node = std::sync::Arc::into_inner(node).unwrap();
+    assert_eq!(node.stop().await, 0);
+}

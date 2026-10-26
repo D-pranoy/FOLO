@@ -43,7 +43,7 @@ The zones, show, providers and sources documents are read and written through th
 - A list that already holds as many items as its schema allows refuses another with 409 `list_full`.
 - `PUT /zones/{id}`, `PUT /providers/{id}` and `PUT /sources/{id}` replace the item with that id, which keeps the id in the path. There is none: 404 `not_found`.
 - `DELETE /zones/{id}` and `DELETE /providers/{id}` remove it (204), or answer 404 `not_found`.
-- **`If-Match`** names the revision of the document the item is in, as `12` or `"12"`. When the document has moved on, the write is refused with 412 `revision_mismatch` and the current revision in `details.revision`.
+- **`If-Match`** names the revision of the document the item is in, as `12` or `"12"`, at most 32 characters (a longer one matches no revision). When the document has moved on, the write is refused with 412 `revision_mismatch` and the current revision in `details.revision`.
 - A body that isn't JSON gets 400 `bad_body`; one with a [structural error](config-model.md#clamping-rules) gets 422 `structural_error`.
 - Each write gives the document its next revision and sends `config_changed` on the [live channel](#live-websocket). When zones, the show or the sources change, the node sends its engine the new configuration ([control plane](../architecture/control-plane.md#supervision)).
 

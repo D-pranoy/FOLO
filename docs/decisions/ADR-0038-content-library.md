@@ -234,5 +234,12 @@ Applying needed these choices, which D11 to D15 and D21 leave open. They are dec
 - **A merge keeps a role mine has even when it has no layers left,** and drops a role only in base that is in neither mine nor theirs.
 - **The bases are kept after the show write.** A base that can't be written is logged and the apply stands; a later `keep_changes` on that scene answers `409 no_base`. Every write of `show.json` through the API (an apply, Reset all, `PUT /show`) removes the bases of scenes that left or lost their provenance, and the bindings of zones that no longer exist.
 - **`keep_changes` into a scene another zone has active** writes a new scene, as D15 says, merged against the base of the scene it came from.
+- **Writes of `show.json` that touch `applied/` are serialised** by one lock held from the show write through the base write and the prune, so one write's older view of the show never removes another's base. A base that can't be written removes the one it would replace, so a stale base is never merged against.
+- **A zone that was deleted holds no scene:** its `active` entry doesn't stop an apply from writing in place.
+- **`roles` holds at most 64 roles of at most 64 characters,** as `ApplyResult` does.
+- **An apply that binds no role** writes the scene with no layers, as D12.5 and D11 say (skipped roles are reported, the previous content is not kept); the client's undo is writing back the show it had.
+- **Orphan bases** left by an edit of `show.json` outside the API (a hand edit and `folo reload`) are removed by the next API write of the show.
+- **Zones are read before the show's lock is taken,** so a zone edited at the same moment as an apply may be bound as it was; the next apply binds the new zone.
+- **A failed `zones.json` write in Reset all** answers the error although `show.json` was written (D21's second reset repairs it).
 - **A reference over 130 characters,** or one that names nothing, is `404 not_found` with `details.what` `scene`.
 - **Reset all with a scene of the show as `default_scene`** makes it active in each zone (D11) and still restores `master` and `background`.

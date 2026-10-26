@@ -538,6 +538,7 @@ pub async fn put_show(State(node): Shared, headers: HeaderMap, body: Body) -> Re
         Ok(body) => body,
         Err(refused) => return *refused,
     };
+    let _writing = crate::apply_api::show_writes();
     let zones = node.store.get(Doc::Zones);
     let stored = node.store.update(Doc::Show, |document| {
         check_revision(&headers, document)?;
@@ -548,7 +549,7 @@ pub async fn put_show(State(node): Shared, headers: HeaderMap, body: Body) -> Re
     match stored {
         Ok(document) => {
             written(&node, Doc::Show);
-            crate::apply_api::prune_bases(&node, &document);
+            crate::apply_api::prune_bases(&node);
             Json((*document).clone()).into_response()
         }
         Err(refused) => refused.response(),
