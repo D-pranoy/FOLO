@@ -14,6 +14,10 @@ answers rule out. Point it at a node of its own on loopback
 harness starts that `folo` itself, with a temporary home, a free loopback
 port and no effect engine, and stops it afterwards; CI runs it so.
 
+schemathesis exits 0 with errored cases (a check that errored, or a case that
+got no response), so the harness reads its NDJSON report, prints each one and
+fails unless EXPECTED_ERRORS lists its phase with a reason.
+
 `messages` checks captured WebSocket messages against specs/asyncapi.yaml.
 DIR holds one message per file, named after its AsyncAPI message
 (components/messages), optionally with --<anything> before the extension:
@@ -62,32 +66,86 @@ Json = Any
 PIXEL_BYTES = {1: 3, 2: 6, 3: 12}  # rgb8, rgb16, rgbf32: bytes per cell
 NODE_START_S = 30.0  # how long a node of its own has to answer /health
 NODE_STOP_S = 10.0
+# Errored cases schemathesis reports that are expected, by phase, with the
+# reason. Anything else fails the run: an errored case checked nothing.
+EXPECTED_ERRORS = {
+    'stateful': (
+        'schemathesis generates the last step of a stateful scenario and does not '
+        'send it; the node answers the same requests normally'
+    ),
+}
 
 
 # ---------------------------------------------------------------- API
+
+
+def errored_cases(report: Path) -> list[tuple[str, str]]:
+    """
+    The cases schemathesis counts as errored in its NDJSON report: a check
+    that errored, or a case that got no response. Returns (phase, detail).
+    """
+    errored: list[tuple[str, str]] = []
+    for line in report.read_text(encoding='utf-8').splitlines():
+        event: dict[str, Json] = json.loads(line).get('ScenarioFinished') or {}
+        recorder: dict[str, Json] = event.get('recorder') or {}
+        if 'cases' not in recorder:
+            continue
+        for case_id, case in recorder['cases'].items():
+            checks: list[Json] = recorder['checks'].get(case_id, [])
+            sent = case_id in recorder['interactions']
+            failed: list[Json] = [check for check in checks if check['status'] == 'error']
+            if sent and not failed:
+                continue
+            value: Json = case['value']
+            why = 'no response' if not sent else f'check {failed[0]["name"]} errored'
+            errored.append((event['phase'], f'{value["method"]} {value["path"]}: {why}'))
+    return errored
+
+
+def unexpected_errors(errored: list[tuple[str, str]]) -> list[str]:
+    """Prints every errored case; returns those not listed in EXPECTED_ERRORS."""
+    unexpected: list[str] = []
+    for phase, detail in errored:
+        reason = EXPECTED_ERRORS.get(phase)
+        print(f'errored ({phase}): {detail}' + (f' [expected: {reason}]' if reason else ''))
+        if reason is None:
+            unexpected.append(f'{phase}: {detail}')
+    return unexpected
 
 
 def run_api(url: str, key: str | None, extra: list[str]) -> int:
     st = shutil.which('st') or shutil.which('schemathesis')
     if st is None:
         raise SystemExit('schemathesis is needed: uv sync')
-    cmd = [
-        st,
-        '--config-file',
-        str(SCHEMATHESIS_CONFIG),
-        'run',
-        str(OPENAPI),
-        '--url',
-        url,
-        '--exclude-tag',
-        'websockets',
-        '--no-color',
-    ]
-    if key:
-        cmd += ['--header', f'Authorization: Bearer {key}']
-    # Its report has non-ASCII characters, which a Windows console can't take otherwise
-    env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
-    return subprocess.run(cmd + extra, check=False, env=env).returncode
+    with tempfile.TemporaryDirectory(prefix='folo-conformance-report-') as folder:
+        report = Path(folder) / 'events.ndjson'
+        cmd = [
+            st,
+            '--config-file',
+            str(SCHEMATHESIS_CONFIG),
+            'run',
+            str(OPENAPI),
+            '--url',
+            url,
+            '--exclude-tag',
+            'websockets',
+            '--no-color',
+            '--report',
+            'ndjson',
+            '--report-ndjson-path',
+            str(report),
+        ]
+        if key:
+            cmd += ['--header', f'Authorization: Bearer {key}']
+        # Its report has non-ASCII characters, which a Windows console can't take otherwise
+        env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
+        status = subprocess.run(cmd + extra, check=False, env=env).returncode
+        # schemathesis exits 0 with errored cases, which would pass silently
+        unexpected = unexpected_errors(errored_cases(report)) if report.exists() else []
+    if unexpected:
+        print(f'{len(unexpected)} errored case(s) not listed in EXPECTED_ERRORS', file=sys.stderr)
+        return status or 1
+    return status
 
 
 def _free_port() -> int:
