@@ -36,7 +36,7 @@ For each target, after projection ([pipeline](pipeline.md#controller-stages)): *
    - **RGBW / RGB+CCT:** extract a white channel, by `calibration.white`: `off`, `accurate` (the default) or `brighter`. The CCT channel comes from the colour's temperature.
    - **CCT:** brightness from luminance; temperature from the nearest white, clamped to the lamp's range. A fixed rule, not configurable, takes saturated colours to the warm or the cool end of the range. Palettes may include explicit whites such as `2700K`.
    - **Dimmer:** luminance.
-   - **On/off:** a threshold with hysteresis and a minimum on/off interval, to protect relays and bulbs: `calibration.onoff` holds `threshold` (default 0.5), `hysteresis` (0.1) and `min_interval_ms` (1000).
+   - **On/off:** a threshold with hysteresis and a minimum on/off interval, to protect relays and bulbs: `calibration.onoff` holds `threshold` (default 0.5), `hysteresis` (0.1) and `min_interval_ms` (1000). `hysteresis` is the **full width** of the band around `threshold`: the target switches on at `threshold + hysteresis / 2` and off at `threshold − hysteresis / 2` (each clamped to 0–1), and keeps its state in between. Past the minimum interval since its last change, a level beyond either point switches it.
    - **xy (Hue over REST):** RGB to CIE xy, clamped to the lamp's gamut. The Hue entertainment stream takes RGB, and the bridge converts.
 3. **Calibration,** per element, on the 0–255 scale:
    - **gamma:** `255 · (v / 255)^γ`
@@ -59,7 +59,7 @@ For each target, after projection ([pipeline](pipeline.md#controller-stages)): *
 4. **Latency offset:** a per-target delay line, so faster outputs can wait for slower ones (for example, WLED waiting for Hue). A target's delay is its `calibration.latency_ms` plus the largest `limits.latency_ms` among the zone's targets minus its own, between 0 and 5 s.
 5. **Flash limiter:** see below.
 
-`calibration.white` and `calibration.onoff` are new fields of the target's calibration, which the configuration model gets with the contracts change that [ADR-0036](../decisions/ADR-0036-controller-output.md#consequences) lists.
+`calibration.white` and `calibration.onoff` are fields of the target's calibration ([configuration model](../specs/config-model.md#entities-summary)).
 
 **Rate** (the sender, after the chain):
 - Streaming targets receive frames at the provider rate, **only when they changed**, plus a keepalive inside the device's timeout ([pipeline](pipeline.md#controller-stages)).
