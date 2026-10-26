@@ -628,6 +628,7 @@ name = "folo-supervisor"
 version = "0.0.0"
 dependencies = [
  "base64",
+ "folo-capture-linux",
  "folo-protocol",
  "getrandom 0.3.4",
  "log",
