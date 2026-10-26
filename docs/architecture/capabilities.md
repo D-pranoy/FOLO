@@ -59,7 +59,7 @@ For each target, after projection ([pipeline](pipeline.md#controller-stages)): *
 4. **Latency offset:** a per-target delay line, so faster outputs can wait for slower ones (for example, WLED waiting for Hue). A target's delay is its `calibration.latency_ms` plus the largest `limits.latency_ms` among the zone's targets minus its own, between 0 and 5 s.
 5. **Flash limiter:** see below.
 
-`calibration.white` and `calibration.onoff` are new fields of the target's calibration, which the configuration model gets with the contracts change that [ADR-0036](../decisions/ADR-0036-controller-output.md#consequences) lists.
+`calibration.white` and `calibration.onoff` are fields of the target's calibration ([configuration model](../specs/config-model.md#entities-summary)).
 
 **Rate** (the sender, after the chain):
 - Streaming targets receive frames at the provider rate, **only when they changed**, plus a keepalive inside the device's timeout ([pipeline](pipeline.md#controller-stages)).

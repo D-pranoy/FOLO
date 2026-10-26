@@ -74,7 +74,7 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 
 **Surface:** `id`, `kind` (`strip | canvas`), `resolution {width, height}` (strip: 1–2000 × 1; canvas: up to 1024 × 1024, published at most 128 × 72), `placement` (`none`, a `path` of 2–64 points, or a `plane {origin, u, v}`), `role` (for example `strip.main`; up to 64 characters), `background` (`#RRGGBB`, default `#000000`), `master` (0–1, default 1), `sources` (source ids in priority order) and `blend_sources` (blend every active source instead of picking one; default false).
 
-**Mapping:** `id`, `surface`, `target` (ids), `method` (`plane | path | manual`, default `manual`), `kernel {type: nearest | bilinear | area, radius (0–1 of a cell's neighbourhood, default 0.5)}`, `edge` (`clamp` (default) or `none`), `priority` (0–100, default 0), `blend` (`max` (default) or `alpha`), plus manual `ranges[]`: `{cells: {start, count}, elements: {start, count}, reversed}`.
+**Mapping:** `id`, `surface`, `target` (ids), `method` (`plane | path | manual`, default `manual`), `kernel {type: nearest | bilinear | area, radius (0–1: the area kernel's half-size as a fraction of the element's spacing, [spatial model](../architecture/spatial-model.md#sampling-kernels); default 0.5)}`, `edge` (`clamp` (default) or `none`), `priority` (0–100, default 0), `blend` (`max` (default) or `alpha`), plus manual `ranges[]`: `{cells: {start, count}, elements: {start, count}, reversed}`.
 
 **Scene:** `id`, `name`, `tags` (up to 16 of up to 24 characters), `provenance? {pack, version, item}`, `layers_by_role {role: Layer[]}` (up to 64 layers per role), `macros[]` (up to 8: `id`, `name`, `value` 0–1 (default 0.5), `targets[] {layer, param, min, max}`).
 
