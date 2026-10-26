@@ -6,6 +6,7 @@
 pub mod api;
 pub mod cli;
 pub mod client;
+pub mod defaults;
 pub mod import;
 pub mod live;
 pub mod lock;

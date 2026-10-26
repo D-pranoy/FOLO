@@ -1,6 +1,6 @@
 # Spatial model, zones and projection
 
-Status: Accepted · Implementation: Partial (activation, element positions, kernels, gather plans and mappings, run per zone by the node's output; not yet the defaults per zone type or the Hue conversion)
+Status: Accepted · Implementation: Partial (activation, defaults on creation, element positions, kernels, gather plans and mappings, run per zone by the node's output; not yet the Hue conversion)
 
 Decided in [ADR-0006](../decisions/ADR-0006-spatial-model-zones-and-projection.md) and, for activation, defaults and the details of projection, [ADR-0036](../decisions/ADR-0036-controller-output.md).
 
@@ -82,6 +82,12 @@ Defaults are applied only when a zone is created through the API or a target is 
 - `strip.<target>`: one strip surface per line target, with the target's element count as its resolution.
 - One default mapping for each new target: a manual 1:1 mapping from its `strip.<target>` surface for a line target. For any other target, a plane mapping from `canvas.screen` in a `screen` zone with a TV (area kernel, edge `clamp`, so lights beside the screen sample its nearest edge), and from `canvas.room` otherwise.
 - A new surface lists the source `local`.
+
+The node applies them in `POST /zones`, to each of `surfaces` and `mappings` the client left out of the body (an empty list counts as sent), after clamping. Edits (`PUT`), loading and migration never do. Choices the text above doesn't fix:
+- Surface and mapping ids are generated like any missing id. The roles are what scenes bind to.
+- The `canvas.room` plane is as wide and deep as the zone's `bounds` (`u = (x, 0, 0)`, `v = (0, −y, 0)`); the `canvas.screen` plane is the TV's rectangle turned by `Rz(yaw) · Rx(pitch) · Ry(roll)`, right-handed, about its centre.
+- A `strip.<target>` is unplaced (`placement` `none`), and a line target's manual mapping covers all its elements (`geometry.count`).
+- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the targets past it unmapped. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
 
 ## Mappings and projection
 

@@ -21,6 +21,7 @@ use folo_supervisor::config::LOCAL_SOURCE;
 use folo_supervisor::{RequestError, RpcError};
 use serde_json::{Value, json};
 
+use crate::defaults;
 use crate::node::Node;
 use crate::output::{ProviderAbsent, TestRefused};
 use crate::server::error;
@@ -319,22 +320,27 @@ struct Items {
     key: &'static str,
     /// The schema definition of one item.
     definition: &'static str,
+    /// Fills in what a new item gets by default, given the body as sent.
+    defaults: Option<fn(&Value, &mut Value, defaults::NewId)>,
 }
 
 const ZONES: Items = Items {
     doc: Doc::Zones,
     key: "zones",
     definition: "Zone",
+    defaults: Some(defaults::apply),
 };
 const PROVIDERS: Items = Items {
     doc: Doc::Providers,
     key: "providers",
     definition: "ProviderInstance",
+    defaults: None,
 };
 const SOURCES: Items = Items {
     doc: Doc::Sources,
     key: "sources",
     definition: "Source",
+    defaults: None,
 };
 
 /// How many items the list may hold (its schema's `maxItems`).
@@ -397,6 +403,9 @@ fn create_item(node: &Node, items: Items, body: Body) -> Response {
                 why: e.to_string(),
             }
         })?;
+        if let Some(fill) = items.defaults {
+            fill(&body, &mut item, &mut folo_store::new_id);
+        }
         let taken = |id: &Value| list(document, items).iter().any(|i| &i["id"] == id);
         while taken(&item["id"]) {
             item["id"] = Value::String(folo_store::new_id());

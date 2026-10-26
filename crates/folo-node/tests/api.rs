@@ -1593,3 +1593,75 @@ async fn a_changed_or_disabled_provider_releases_its_targets_first() {
     .await;
     assert_eq!(node.stop().await, 0);
 }
+
+// ------------------------------------------------------------------ zone defaults
+
+fn roles_of(zone: &Value) -> Vec<String> {
+    zone["surfaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|surface| surface["role"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_zone_gets_the_default_surfaces_of_its_type_on_creation_only() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let node = Running::start(&home, false).await;
+    let line = json!({"id": "strip", "kind": "line", "geometry": {"kind": "line", "count": 20}});
+    for kind in ["music", "screen", "desk", "room", "custom"] {
+        let created = node
+            .send_json(
+                "POST",
+                "/api/v1/zones",
+                &json!({"type": kind, "targets": [line]}),
+            )
+            .await;
+        assert_eq!(created.status, 201, "{kind}");
+        let zone = created.json();
+        assert_eq!(roles_of(&zone), ["canvas.room", "strip.strip"], "{kind}");
+        assert_eq!(zone["mappings"][0]["target"], "strip", "{kind}");
+        assert_eq!(zone["surfaces"][0]["sources"], json!(["local"]), "{kind}");
+    }
+    let tv = json!({"type": "screen", "reference": {"kind": "tv"}});
+    let created = node.send_json("POST", "/api/v1/zones", &tv).await.json();
+    assert_eq!(roles_of(&created), ["canvas.room", "canvas.screen"]);
+    let id = created["id"].as_str().unwrap();
+
+    // an edit never applies them again, whatever it leaves out
+    let mut edited = created.clone();
+    edited["surfaces"] = json!([]);
+    let put = node
+        .send_json("PUT", &format!("/api/v1/zones/{id}"), &edited)
+        .await;
+    assert_eq!(put.status, 200);
+    assert_eq!(put.json()["surfaces"], json!([]));
+    edited.as_object_mut().unwrap().remove("surfaces");
+    let put = node
+        .send_json("PUT", &format!("/api/v1/zones/{id}"), &edited)
+        .await;
+    assert_eq!(put.json()["surfaces"], json!([]));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_surfaces_and_mappings_a_client_sends_are_kept() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let node = Running::start(&home, false).await;
+    let line = json!({"id": "strip", "kind": "line", "geometry": {"kind": "line", "count": 20}});
+    let sent = json!({"type": "screen", "reference": {"kind": "tv"}, "targets": [line],
+        "surfaces": [{"id": "mine", "role": "strip.main"}], "mappings": []});
+    let zone = node.send_json("POST", "/api/v1/zones", &sent).await.json();
+    assert_eq!(roles_of(&zone), ["strip.main"]);
+    assert_eq!(zone["mappings"], json!([]));
+
+    let surfaces_only = json!({"targets": [line], "surfaces": []});
+    let zone = node
+        .send_json("POST", "/api/v1/zones", &surfaces_only)
+        .await
+        .json();
+    assert_eq!(zone["surfaces"], json!([]));
+    assert_eq!(zone["mappings"], json!([]));
+}
