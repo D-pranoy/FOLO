@@ -85,6 +85,7 @@ class ScreenInput:
         off it keeps nothing.
         """
         arrived = self.clock()
+        # The frame's screen index isn't compared: one screen per source in v1
         with self._lock:
             if not self.enabled:
                 return
@@ -122,8 +123,8 @@ class ScreenInput:
 
     def status(self) -> dict[str, Any]:
         """
-        What the input says about itself: state, rate, flags and bars, never
-        a pixel or a size of the picture's content (ADR-0037 D9).
+        What the input says about itself: state, rate, the size of the frame,
+        flags and bars, never a pixel (ADR-0037 D9).
         """
         now = self.clock()
         with self._lock:

@@ -107,6 +107,8 @@ The `screen` effect runs in the engine. It is a **canvas effect**: it draws a 2D
 5. **Smoothing:** each cell moves towards its new colour by `1 − e^(−dt / smoothing)` of the difference. `smoothing` 0 shows each frame as it is. The first picture appears at once, and a layer whose region changes size starts over.
 6. **Blend:** the layer's `blend` applies, inside its region, as for any layer. Its `axis` doesn't apply.
 
+The sampling of a new frame onto a layer takes about 1 ms for a 256×144 frame onto 128×72 cells, well inside the 20 ms a step has at 50 Hz; a test pins it.
+
 **Activity and rendering:**
 - Each surface with an enabled Screen layer has its own activity ([pipeline](../architecture/pipeline.md#the-executor)): active while the newest frame that isn't `held` or `protected` arrived less than 0.5 s ago (age counts from its arrival at the engine). A surface with audio layers too is active when either input is.
 - While audio plays, Screen layers render with the audio steps. While it is idle, a screen frame starts a step, so they render at the capture rate.

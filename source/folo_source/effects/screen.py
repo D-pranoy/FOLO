@@ -53,7 +53,7 @@ class Settings:
 
     @staticmethod
     def of(params: Mapping[str, Any]) -> Settings:
-        margins: Mapping[str, Any] = params.get('margins', {})
+        margins: Mapping[str, Any] = params.get('margins') or {}
         return Settings(
             mode=str(params.get('mode', 'area')),
             edge_depth=float(params.get('edge_depth', 0.15)),
@@ -99,11 +99,31 @@ def crop(frame: ScreenFrame, pixels: Values, settings: Settings) -> Values:
     ]
 
 
+def _area_along(picture: Values, wanted: int, axis: int) -> Values:
+    """
+    `picture` resampled to `wanted` cells along one axis, each the area
+    average of the cells under it. Differences of the running sum, read at
+    the cell edges, give the same weights as `area_weights()` without a
+    matrix product (256 x 144 into 128 x 72 takes 1 ms, not 15).
+    """
+    size = picture.shape[axis]
+    running = np.cumsum(picture, axis=axis)
+    zero = np.zeros_like(np.take(running, [0], axis=axis))
+    running = np.concatenate([zero, running], axis=axis)  # the sum of the first i cells
+    edges = np.arange(wanted + 1, dtype=np.float64) * (size / wanted)
+    below = np.minimum(np.floor(edges).astype(np.intp), size - 1)
+    part = edges - below  # how far into a cell each edge falls
+    shape = [1] * picture.ndim
+    shape[axis] = wanted + 1
+    cells = np.take(running, below + 1, axis=axis) - np.take(running, below, axis=axis)
+    at_edges = np.take(running, below, axis=axis) + cells * part.reshape(shape)
+    covered = np.diff(at_edges, axis=axis)
+    return covered / (size / wanted)
+
+
 def sample_area(picture: Values, rows: int, cols: int) -> Values:
     """The picture on rows x cols cells, each the area average of the cells under it."""
-    height, width = picture.shape[:2]
-    across = np.einsum('wc,rcx->rwx', area_weights(width, cols), picture)
-    return np.einsum('hr,rwx->hwx', area_weights(height, rows), across)
+    return _area_along(_area_along(picture, cols, 1), rows, 0)
 
 
 def band_weights(size: int, depth: float) -> Values:

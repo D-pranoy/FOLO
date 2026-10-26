@@ -8,6 +8,7 @@ smoothing, and the canvas on a surface.
 from __future__ import annotations
 
 import math
+import time
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,7 @@ from folo_source.effects.screen import (
 )
 from folo_source.inputs.audio.analyzer import Analyzer, Spectrum
 from folo_source.inputs.screen import STALE_US, ScreenInput
+from folo_source.publish.frames import area_weights, resample
 from folo_source.surfaces.renderer import SurfaceRenderer
 from tests import screen_frames as sf
 
@@ -436,3 +438,49 @@ def test_without_a_screen_input_a_layer_draws_nothing() -> None:
         surface_of('canvas', 2, 2), [screen_layer({'kind': 'relative'})], Spectrum.silent(), 0.01
     )
     assert not out.any()
+
+
+def test_sampling_a_large_frame_fits_the_frame_budget() -> None:
+    """256 x 144 into 128 x 72 is the largest ADR-0037 D4 asks for; 50 Hz leaves 20 ms."""
+    big = np.random.default_rng(1).random((144, 256, 3)) * 255.0
+    best = min(_timed(lambda: sample_area(big, 72, 128)) for _ in range(5))
+    assert best < 0.02, f'{best * 1000:.1f} ms'
+    best = min(_timed(lambda: sample_edge(big, 72, 128, 0.15)) for _ in range(5))
+    assert best < 0.02, f'{best * 1000:.1f} ms'
+
+
+def _timed(work: Any) -> float:
+    started = time.perf_counter()
+    work()
+    return time.perf_counter() - started
+
+
+def test_area_sampling_matches_the_published_resampling() -> None:
+    grid = np.random.default_rng(2).random((9, 14, 3)) * 255.0
+    assert np.allclose(
+        sample_area(grid, 4, 5),
+        resample(grid.astype(np.float32), 5, 4).astype(np.float64),
+        atol=1e-3,
+    )
+    weighted = np.einsum('hr,rcx->hcx', area_weights(9, 4), grid)
+    weighted = np.einsum('wc,hcx->hwx', area_weights(14, 5), weighted)
+    assert np.allclose(sample_area(grid, 4, 5), weighted, atol=1e-9)
+    assert np.allclose(
+        sample_area(grid, 20, 30),
+        np.einsum(
+            'hr,rcx->hcx', area_weights(9, 20), np.einsum('wc,rcx->rwx', area_weights(14, 30), grid)
+        ),
+        atol=1e-9,
+    )
+
+
+def test_missing_margins_are_none() -> None:
+    assert Settings.of({'margins': None}).margins == (0.0, 0.0, 0.0, 0.0)
+    assert Settings.of({}).margins == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_frames_compare_by_identity() -> None:
+    first = sf.screen_frame(sf.solid(2, 2, (1, 2, 3)))
+    same = sf.screen_frame(sf.solid(2, 2, (1, 2, 3)))
+    assert first == first and first != same  # no array comparison
+    assert len({first, same}) == 2

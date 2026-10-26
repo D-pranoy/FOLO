@@ -178,7 +178,7 @@ class Executor:
                     renderer,
                     _uses(layers, SCREEN_EFFECT_ID),
                     _uses(layers, EFFECT_ID),
-                    before.counted_from_us if before is not None else None,
+                    before.counted_from_us if before is not None and before.screen else None,
                 )
             )
         self._surfaces = surfaces

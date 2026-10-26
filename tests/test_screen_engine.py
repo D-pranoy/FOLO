@@ -124,6 +124,16 @@ def test_other_surfaces_have_no_screen_activity() -> None:
     assert not executor.screen_wanted and executor.screen_activity(clock.now) == []
 
 
+def test_a_removed_screen_layer_forgets_where_its_silence_began() -> None:
+    clock = Clock()
+    executor, _, _ = make([sf.screen_layer()], clock)
+    executor.screen_activity(clock.now)
+    executor.apply(sf.canvas_apply([audio_layer()]))
+    clock.now += 3600 * SECOND
+    executor.apply(sf.canvas_apply([sf.screen_layer()]))
+    assert executor.screen_activity(clock.now)[0]['quiet_s'] == 0.0
+
+
 def test_the_executor_renders_the_picture_into_the_canvas() -> None:
     clock = Clock()
     executor, screen, sent = make([sf.screen_layer(smoothing=0)], clock)
@@ -237,6 +247,17 @@ def test_a_malformed_frame_is_dropped_and_the_engine_carries_on(
     wait_for_canvas(node, (50, 60, 70))
     assert any('dropped a screen frame' in r.getMessage() for r in caplog.records)
     assert engine.link.connected
+
+
+def test_bad_frame_warnings_are_rate_limited(
+    node: FakeNode, engine: SourceEngine, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING)
+    for _ in range(20):
+        send_frame(node, b'junk')
+    node.wait_for(lambda: engine.link.screen_rejected >= 20)
+    warnings = [r for r in caplog.records if 'dropped a screen frame' in r.getMessage()]
+    assert len(warnings) == 1
 
 
 def test_the_surfaces_activity_is_notified(

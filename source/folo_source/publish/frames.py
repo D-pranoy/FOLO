@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from functools import cache
+from functools import lru_cache
 from typing import cast
 
 import lz4.frame as lz4_frame  # pyright: ignore[reportMissingTypeStubs]
@@ -43,6 +43,8 @@ SCREEN_RGB8 = 1  # the only pixel format of a screen frame
 SCREEN_MAX_WIDTH = 480
 SCREEN_MAX_HEIGHT = 270
 SEQUENCE_WRAP = 1 << 32
+# Sizes come from the picture a Screen layer crops, which follows the black bars
+AREA_WEIGHTS_CACHED = 64
 RGB16_SCALE = 257.0  # 255 -> 65535
 CHANNELS = 3
 
@@ -67,7 +69,7 @@ def _lz4_decompress(data: bytes) -> bytes:
         raise FrameError(f'the LZ4 payload is not an LZ4 frame: {error}') from error
 
 
-@cache
+@lru_cache(maxsize=AREA_WEIGHTS_CACHED)
 def area_weights(size: int, wanted: int) -> Weights:
     """
     The (wanted, size) matrix that resamples `size` cells to `wanted` by
@@ -224,7 +226,7 @@ def decode_signal_frame(data: bytes) -> SignalFrame:
     return SignalFrame(index, sequence, timestamp, values)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)  # compared by identity: the pixels are an array
 class ScreenFrame:
     """
     A decoded and checked screen frame. The pixels are a picture of the
