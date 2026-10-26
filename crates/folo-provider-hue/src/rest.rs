@@ -28,6 +28,8 @@ pub enum RestError {
     Unreachable(String),
     /// `401` or `403`: the application key isn't accepted.
     Unauthorized,
+    /// The bridge's certificate wasn't believed (see [`crate::trust`]).
+    Untrusted(String),
     /// `429` three times in a row.
     RateLimited,
     /// Any other status, with what the bridge said.
@@ -39,7 +41,7 @@ pub enum RestError {
 impl fmt::Display for RestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unreachable(e) => f.write_str(e),
+            Self::Unreachable(e) | Self::Untrusted(e) => f.write_str(e),
             Self::Unauthorized => f.write_str("the bridge doesn't accept the application key"),
             Self::RateLimited => f.write_str("the bridge is rate limiting requests (429)"),
             Self::Status { code, message } => write!(f, "the bridge answered {code}: {message}"),
@@ -54,7 +56,7 @@ impl From<RestError> for ProviderError {
     fn from(value: RestError) -> Self {
         match value {
             RestError::Unreachable(m) => Self::Unreachable(m),
-            RestError::Unauthorized => Self::Refused(value.to_string()),
+            RestError::Unauthorized | RestError::Untrusted(_) => Self::Refused(value.to_string()),
             _ => Self::Failed(value.to_string()),
         }
     }
@@ -103,6 +105,9 @@ impl fmt::Debug for BridgeClient {
             .finish_non_exhaustive()
     }
 }
+
+/// The most the event stream may hold of a message that isn't finished.
+const MAX_PENDING: usize = 1 << 20;
 
 /// How many times a `429` is waited out.
 const RATE_LIMIT_TRIES: u32 = 3;
@@ -355,7 +360,14 @@ impl BridgeClient {
                 Err(e) => Some(Err(unreachable(e))),
                 Ok(bytes) => {
                     pending.extend_from_slice(&bytes);
-                    take_messages(&mut pending)
+                    if pending.len() > MAX_PENDING {
+                        pending.clear();
+                        Some(Err(RestError::Malformed(
+                            "an event message is too long".into(),
+                        )))
+                    } else {
+                        take_messages(&mut pending)
+                    }
                 }
             };
             std::future::ready(out)
@@ -405,7 +417,13 @@ fn find_blank_line(bytes: &[u8]) -> Option<(usize, usize)> {
 
 fn unreachable(e: reqwest::Error) -> RestError {
     // The URL of an old-API request holds the application key
-    RestError::Unreachable(error_chain(&e.without_url()))
+    let chain = error_chain(&e.without_url());
+    match chain.find(crate::trust::UNTRUSTED_MARKER) {
+        Some(at) => {
+            RestError::Untrusted(chain[at + crate::trust::UNTRUSTED_MARKER.len()..].to_owned())
+        }
+        None => RestError::Unreachable(chain),
+    }
 }
 
 fn error_chain(error: &dyn std::error::Error) -> String {

@@ -46,6 +46,11 @@ impl Endpoint {
         if address.is_empty() {
             return Err(ProviderError::Failed("the bridge has no address".into()));
         }
+        if address.contains(['/', '@', '%', ' ', '?', '#']) {
+            return Err(ProviderError::Failed(format!(
+                "bad bridge address {address:?}"
+            )));
+        }
         if let Some(rest) = address.strip_prefix('[') {
             let (host, tail) = rest
                 .split_once(']')
@@ -63,6 +68,11 @@ impl Endpoint {
     }
 
     fn with_port(host: &str, port: Option<&str>) -> Result<Self, ProviderError> {
+        if host.is_empty() || host.contains(['/', '@', '%', ' ', '?', '#']) {
+            return Err(ProviderError::Failed(format!(
+                "bad bridge address {host:?}"
+            )));
+        }
         let mut endpoint = Self::new(host);
         if let Some(port) = port.filter(|p| !p.is_empty()) {
             endpoint.https_port = port
@@ -117,5 +127,8 @@ mod tests {
         assert_eq!(Endpoint::parse("fe80::1").unwrap().host, "fe80::1");
         assert!(Endpoint::parse("  ").is_err());
         assert!(Endpoint::parse("host:abc").is_err());
+        assert!(Endpoint::parse("host/path").is_err());
+        assert!(Endpoint::parse("user@host").is_err());
+        assert!(Endpoint::parse("fe80::1%eth0").is_err());
     }
 }

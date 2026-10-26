@@ -133,7 +133,11 @@ struct Datagrams(UdpSocket);
 
 impl Read for Datagrams {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.0.recv(buf)
+        // A read timeout is `TimedOut` on Windows, and OpenSSL retries only `WouldBlock`
+        self.0.recv(buf).map_err(|e| match e.kind() {
+            std::io::ErrorKind::TimedOut => std::io::ErrorKind::WouldBlock.into(),
+            _ => e,
+        })
     }
 }
 

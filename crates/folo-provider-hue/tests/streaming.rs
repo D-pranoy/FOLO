@@ -533,3 +533,81 @@ async fn nothing_secret_is_logged_while_connecting_and_streaming() {
     let _ = HueKind::default();
     let _: &dyn ProviderKind = &HueKind::default();
 }
+
+#[tokio::test]
+async fn another_apps_stream_is_never_stopped_by_a_release_or_a_reconnect() {
+    let bridge = FakeBridge::start().await;
+    let provider = connected(&bridge).await;
+    let out = output(&provider);
+    out.start(LAMP).await.unwrap();
+    // Another app takes the area over while ours runs
+    bridge.stream_from_another_app();
+    out.release(LAMP).await.unwrap();
+    assert_eq!(
+        bridge.area(AREA)["status"],
+        "active",
+        "their stream runs on"
+    );
+    let stops = |bridge: &FakeBridge| {
+        bridge
+            .state()
+            .requests
+            .iter()
+            .filter(|r| r.2 == json!({"action": "stop"}))
+            .count()
+    };
+    assert_eq!(stops(&bridge), 0);
+
+    // The same after a stream that failed: the area left to stop is theirs by the time we reconnect
+    bridge.state().configurations[0]["status"] = json!("inactive");
+    bridge.state().configurations[0]
+        .as_object_mut()
+        .unwrap()
+        .remove("active_streamer");
+    bridge
+        .dtls
+        .close_after
+        .store(1, std::sync::atomic::Ordering::SeqCst);
+    out.start(LAMP).await.unwrap();
+    out.send(&frame(vec![lamp(1.0, 1.0, 1.0)])).await.unwrap();
+    while out.send(&frame(vec![lamp(2.0, 2.0, 2.0)])).await.is_ok() {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    bridge.stream_from_another_app();
+    let before = stops(&bridge);
+    provider.connect().await.unwrap();
+    assert_eq!(stops(&bridge), before);
+    assert_eq!(bridge.area(AREA)["status"], "active");
+}
+
+#[tokio::test]
+async fn a_released_target_goes_dark_while_the_stream_runs_for_the_others() {
+    let bridge = FakeBridge::start().await;
+    let provider = connected(&bridge).await;
+    let out = output(&provider);
+    out.start(LAMP).await.unwrap();
+    out.start(STRIP).await.unwrap();
+    out.send(&frame(vec![
+        lamp(9.0, 9.0, 9.0),
+        strip([[5.0; 3], [6.0; 3], [7.0; 3]]),
+    ]))
+    .await
+    .unwrap();
+    out.release(LAMP).await.unwrap();
+    // The strip changes, so a packet goes out; the lamp's channel is black in it
+    out.send(&frame(vec![strip([[5.0; 3], [6.0; 3], [8.0; 3]])]))
+        .await
+        .unwrap();
+    bridge
+        .dtls
+        .eventually("two datagrams", |o| o.datagrams.len() == 2)
+        .await;
+    let expected = [
+        record(0, 0, 0, 0),
+        record(1, 5, 5, 5),
+        record(2, 6, 6, 6),
+        record(3, 8, 8, 8),
+    ]
+    .concat();
+    assert_eq!(bridge.dtls.datagrams()[1], golden(1, &expected));
+}

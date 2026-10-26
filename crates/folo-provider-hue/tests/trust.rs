@@ -149,7 +149,7 @@ async fn an_instance_connects_to_a_self_signed_bridge_after_the_pin_is_stored() 
     let provider = kind.create(&instance, Some(&support::secrets())).unwrap();
     assert!(matches!(
         provider.connect().await,
-        Err(ProviderError::Unreachable(_))
+        Err(ProviderError::Refused(m)) if m.contains("Signify")
     ));
 
     kind.pin_certificate(BRIDGE_ID, fingerprint_of(&bridge.certificate_der).unwrap());

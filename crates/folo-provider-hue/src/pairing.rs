@@ -199,7 +199,10 @@ fn read_answer(answer: &Value) -> Result<Answer, PairingError> {
 }
 
 fn unreachable(e: &RestError) -> PairingError {
-    PairingError::Unreachable(e.to_string())
+    match e {
+        RestError::Untrusted(m) => PairingError::Bridge(m.clone()),
+        _ => PairingError::Unreachable(e.to_string()),
+    }
 }
 
 /// Pairs: asks the bridge every `poll` until the button was pressed or the `window` is over,

@@ -286,7 +286,7 @@ impl Provider for HueProvider {
                 .connection
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner) = Some(connection.clone());
-            self.stop_pending(&connection.client).await;
+            self.stop_pending(&connection).await;
             Ok(())
         })
     }
@@ -303,7 +303,7 @@ impl Provider for HueProvider {
     fn disconnect(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
             if let Ok(connection) = self.connected() {
-                self.end_stream(&connection.client).await;
+                self.end_stream(&connection).await;
             } else {
                 self.discard_stream().await;
             }
@@ -329,7 +329,7 @@ impl Provider for HueProvider {
             // The bridge closes the stream after ten seconds without data
             keepalive: Duration::from_secs(5),
             // Starting is the slow call: the area's start, then the handshake
-            call_timeout: Duration::from_secs(25),
+            call_timeout: Duration::from_secs(40),
             // A release is close_notify, then the area's stop
             release_timeout: Duration::from_secs(4),
             ..DeliveryPolicy::default()

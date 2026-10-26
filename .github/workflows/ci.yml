@@ -96,6 +96,10 @@ jobs:
             echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           fi
           echo "FOLO_E2E=1" >> "$GITHUB_ENV"
+      - name: Strawberry Perl for the vendored OpenSSL (the Git perl lacks modules its build needs) (RB-13)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "OPENSSL_SRC_PERL=C:/Strawberry/perl/bin/perl.exe" >> "$GITHUB_ENV"
       - name: The openssl command for the Hue provider's DTLS interop test (RB-13); a missing one is a failure
         if: runner.os == 'Linux'
         run: echo "FOLO_OPENSSL_TESTS=1" >> "$GITHUB_ENV"
@@ -188,6 +192,10 @@ jobs:
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Strawberry Perl for the vendored OpenSSL (the Git perl lacks modules its build needs) (RB-13)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "OPENSSL_SRC_PERL=C:/Strawberry/perl/bin/perl.exe" >> "$GITHUB_ENV"
       - run: cargo build --release --locked
       - name: Smoke test
         run: ./target/release/folo --version

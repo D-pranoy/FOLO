@@ -139,18 +139,19 @@ pub async fn probe(
         capture_config(Arc::clone(&seen)).map_err(|e| ProviderError::Failed(e.to_string()))?;
     let client = BridgeClient::new(endpoint.clone(), tls, None, limits)?;
     let info = BridgeInfo::from_config(&client.public_config().await?)?;
-    let der = seen
+    let mut chain = seen
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .take()
         .ok_or_else(|| ProviderError::Failed("the bridge presented no certificate".into()))?;
+    let der = chain.remove(0);
     let certificate = summarize(&der).map_err(|e| ProviderError::Failed(e.to_string()))?;
     let judged = BridgeTrust {
         bridge_id: info.bridge_id.clone(),
         anchors: anchors.clone(),
         pinned: None,
     };
-    let trust = match judged.check(&der) {
+    let trust = match judged.check(&der, &chain) {
         Ok(()) => ProbeTrust::Trusted,
         Err(e @ TrustError::Chain(_)) => ProbeTrust::NeedsConfirmation(e),
         Err(e) => ProbeTrust::Rejected(e),

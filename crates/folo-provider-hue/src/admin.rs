@@ -89,7 +89,12 @@ fn checked_positions(item: &Value) -> Result<Vec<Value>, AdminError> {
     }
     for position in list {
         for axis in ["x", "y", "z"] {
-            let value = position.get(axis).and_then(Value::as_f64).unwrap_or(0.0);
+            let value = match position.get(axis) {
+                None => 0.0,
+                Some(v) => v
+                    .as_f64()
+                    .ok_or_else(|| invalid(format!("position {axis} must be a number")))?,
+            };
             if !(-1.0..=1.0).contains(&value) {
                 return Err(invalid(format!("position {axis} must be between -1 and 1")));
             }
@@ -497,7 +502,9 @@ impl HueProvider {
             ));
         }
         for area in &others {
-            self.stop_area(&connection.client, &area.id).await;
+            self.try_stop_area(&connection.client, &area.id)
+                .await
+                .map_err(rest)?;
         }
         Ok(json!({"stopped": listed}))
     }

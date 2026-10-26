@@ -21,6 +21,10 @@ use rustls::{ClientConfig, DigitallySignedStruct, Error, RootCertStore, Signatur
 /// The Signify roots (`root-bridge` and `Hue Root CA 01`), as PEM.
 const SIGNIFY_ROOTS_PEM: &str = include_str!("signify_roots.pem");
 
+/// Starts the message of a verifier error that says the bridge wasn't believed, so the REST
+/// client can tell it from a bridge that doesn't answer.
+pub(crate) const UNTRUSTED_MARKER: &str = "untrusted bridge: ";
+
 /// A SHA-256 fingerprint of a certificate's DER encoding.
 pub type Fingerprint = [u8; 32];
 
@@ -85,7 +89,7 @@ impl BridgeTrust {
     ///
     /// # Errors
     /// [`TrustError`] saying which check failed.
-    pub fn check(&self, der: &[u8]) -> Result<(), TrustError> {
+    pub fn check(&self, der: &[u8], intermediates: &[Vec<u8>]) -> Result<(), TrustError> {
         let cert = X509::from_der(der).map_err(|e| TrustError::Malformed(e.to_string()))?;
         let found = common_name(&cert).unwrap_or_default();
         if !found.eq_ignore_ascii_case(&self.bridge_id) {
@@ -94,17 +98,17 @@ impl BridgeTrust {
                 found,
             });
         }
-        if let Some(pinned) = self.pinned {
-            return if fingerprint(&cert) == pinned {
-                Ok(())
-            } else {
-                Err(TrustError::PinMismatch)
-            };
+        if self.pinned == Some(fingerprint(&cert)) {
+            return Ok(());
         }
-        self.verify_chain(&cert)
+        // A bridge whose firmware moved it to a Signify chain is believed again by the chain
+        match (self.verify_chain(&cert, intermediates), self.pinned) {
+            (Err(_), Some(_)) => Err(TrustError::PinMismatch),
+            (result, _) => result,
+        }
     }
 
-    fn verify_chain(&self, cert: &X509) -> Result<(), TrustError> {
+    fn verify_chain(&self, cert: &X509, intermediates: &[Vec<u8>]) -> Result<(), TrustError> {
         let mut store = X509StoreBuilder::new().map_err(|e| TrustError::Setup(e.to_string()))?;
         for root in self.anchors.certificates()? {
             store
@@ -112,7 +116,14 @@ impl BridgeTrust {
                 .map_err(|e| TrustError::Setup(e.to_string()))?;
         }
         let store = store.build();
-        let chain = Stack::new().map_err(|e| TrustError::Setup(e.to_string()))?;
+        let mut chain = Stack::new().map_err(|e| TrustError::Setup(e.to_string()))?;
+        for der in intermediates {
+            let intermediate =
+                X509::from_der(der).map_err(|e| TrustError::Malformed(e.to_string()))?;
+            chain
+                .push(intermediate)
+                .map_err(|e| TrustError::Setup(e.to_string()))?;
+        }
         let mut context = X509StoreContext::new().map_err(|e| TrustError::Setup(e.to_string()))?;
         let valid = context
             .init(&store, cert, &chain, |c| {
@@ -205,7 +216,8 @@ pub fn summarize(der: &[u8]) -> Result<CertificateSummary, TrustError> {
 }
 
 /// The certificate a probing connection saw.
-pub type SeenCertificate = Arc<Mutex<Option<Vec<u8>>>>;
+/// The certificate a probing connection saw, then the certificates the bridge sent with it.
+pub type SeenCertificate = Arc<Mutex<Option<Vec<Vec<u8>>>>>;
 
 enum Policy {
     /// The bridge checks above.
@@ -230,17 +242,22 @@ impl ServerCertVerifier for BridgeVerifier {
     fn verify_server_cert(
         &self,
         end_entity: &CertificateDer<'_>,
-        _intermediates: &[CertificateDer<'_>],
+        intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
         _now: UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, Error> {
         match &self.policy {
-            Policy::Bridge(trust) => trust
-                .check(end_entity)
-                .map_err(|e| Error::General(e.to_string()))?,
+            Policy::Bridge(trust) => {
+                let others: Vec<Vec<u8>> = intermediates.iter().map(|c| c.to_vec()).collect();
+                trust
+                    .check(end_entity, &others)
+                    .map_err(|e| Error::General(format!("{UNTRUSTED_MARKER}{e}")))?;
+            }
             Policy::Capture(seen) => {
-                *seen.lock().unwrap_or_else(PoisonError::into_inner) = Some(end_entity.to_vec());
+                let mut chain = vec![end_entity.to_vec()];
+                chain.extend(intermediates.iter().map(|c| c.to_vec()));
+                *seen.lock().unwrap_or_else(PoisonError::into_inner) = Some(chain);
             }
         }
         Ok(rustls::client::danger::ServerCertVerified::assertion())
