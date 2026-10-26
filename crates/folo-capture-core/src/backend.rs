@@ -6,6 +6,19 @@ use std::time::Duration;
 use crate::error::CaptureError;
 use crate::types::{CaptureRequest, Picture, Screen};
 
+/// What a backend reports besides its pictures, for `capture.status`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BackendStatus {
+    /// The backend can't capture now (the secure desktop, a disconnected
+    /// session, a mode change): the agent is `paused` and its frames repeat the
+    /// last picture with `held` set (ADR-0037 D13).
+    pub paused: bool,
+    /// Why, in words for the user.
+    pub message: Option<String>,
+    /// A page of the operating system's settings that lets the user fix it.
+    pub settings_uri: Option<String>,
+}
+
 /// A source of downscaled pictures of one screen. One capture at a time.
 pub trait CaptureBackend: Send {
     /// The name `capture.status` reports as `backend` (`dda`, `wgc`, `gdi`,
@@ -41,4 +54,10 @@ pub trait CaptureBackend: Send {
 
     /// Ends the capture. It does nothing when none is started.
     fn stop(&mut self);
+
+    /// Whether the backend is paused, and why. The default is a backend that
+    /// is never paused (the synthetic and replay ones).
+    fn status(&self) -> BackendStatus {
+        BackendStatus::default()
+    }
 }
