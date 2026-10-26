@@ -18,12 +18,13 @@
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
 use common::{STEP_US, core_of, golden, read_png, strip_frame, strip_zone, zones_of};
+use folo_compositor::{AmbientSettings, AmbientStyle, Reactive, ZoneAmbient};
 use folo_controller::{Media, OutputCore};
 use folo_protocol::generated::ProvidersDocument;
 use folo_provider::testing::RecordingProvider;
@@ -219,8 +220,18 @@ struct Case {
     active: String,
 }
 
-/// The largest difference per channel between the core's frames and the legacy renderer's.
-fn ambient_case(case: &Case) -> i16 {
+/// How the test's clock turns the golden steps (float seconds) into whole microseconds.
+#[derive(Clone, Copy, Debug)]
+enum Clock {
+    /// Each step rounded on its own.
+    PerStep,
+    /// The running sum of the steps, rounded.
+    Cumulative,
+}
+
+/// Each frame's largest difference per channel between the core's frames and the legacy
+/// renderer's, and how many frames are exactly equal.
+fn ambient_case(case: &Case, clock: Clock) -> (Vec<i16>, usize) {
     let input = read_png(&golden().join("ambient").join(&case.input));
     let expected = read_png(&golden().join(&case.expected));
     let leds = u32::try_from(input.width).unwrap();
@@ -245,44 +256,182 @@ fn ambient_case(case: &Case) -> i16 {
     );
     // a first step starts the clock, so the first frame moves the light by its own step, as the
     // legacy renderer's first call does
-    let mut now = 1_000_000_u64;
-    core.step(now);
-    let mut biggest = 0;
+    let start = 1_000_000_u64;
+    core.step(start);
+    let (mut now, mut elapsed) = (start, 0.0_f64);
+    let mut diffs = Vec::with_capacity(input.rows.len());
+    let mut exact = 0;
     for (i, (row, want)) in input.rows.iter().zip(&expected.rows).enumerate() {
-        now += (case.dts[i] * 1e6).round() as u64;
+        elapsed += case.dts[i];
+        now = match clock {
+            Clock::PerStep => now + (case.dts[i] * 1e6).round() as u64,
+            Clock::Cumulative => start + (elapsed * 1e6).round() as u64,
+        };
         core.activity("local", None, case.active.as_bytes()[i] == b'1', now);
         core.frame("main", "local", &strip_frame(i as u32, row), now)
             .unwrap();
         let out = core.step(now);
         let got = out.frames[INSTANCE].targets[0].colors.to_bytes();
-        for (g, w) in got.iter().zip(want) {
-            biggest = biggest.max((i16::from(*g) - i16::from(*w)).abs());
-        }
+        let biggest = got
+            .iter()
+            .zip(want)
+            .map(|(g, w)| (i16::from(*g) - i16::from(*w)).abs())
+            .max()
+            .unwrap_or(0);
+        exact += usize::from(biggest == 0);
+        diffs.push(biggest);
         assert_eq!(out.targets["z-strip"], got, "frame {i}");
     }
-    biggest
+    (diffs, exact)
 }
 
-/// The ambient light through the whole path, on the controller's clock in whole microseconds.
-/// Every case stays within ±1 per channel but `ambient-auto-paused`, which is within 4: there
-/// the legacy float sum of the steps reaches the 0.3 s pause exactly, the clock's sum of rounded
-/// microseconds lands a step later, and the fade starts one step late. The compositor's own test
-/// (`crates/folo-compositor/tests/ambient_golden.rs`) holds every case to ±1 in the legacy
-/// path's own seconds and shows the same one-step shift on a clock. A clock that reads the
-/// legacy running sum (rounded once) brings `ambient-auto-paused` to 1 but `ambient-auto-solid`
-/// to 5: on a microsecond clock some threshold lands a step off either way
-/// (`docs/architecture/pipeline.md#parity-mode`).
+/// How close below or above a threshold the legacy engine's float silence counts as a tie.
+const TIE_S: f64 = 1e-6;
+
+/// The frames a microsecond clock may legitimately place a step off the legacy engine
+/// (`docs/architecture/pipeline.md#parity-mode`): each frame where the legacy engine's float
+/// sum of silence is within [`TIE_S`] of a switch threshold (`idle_after`, and the 0.3 s pause
+/// when the player is paused and the zone switches on pause), and the fade that follows it, up
+/// to the frame after the legacy fade settles at 0 or 1 (a step's shift moves it by one frame).
+fn tie_frames(case: &Case) -> BTreeSet<usize> {
+    let mut excluded = BTreeSet::new();
+    if case.reactive != "auto" {
+        return excluded;
+    }
+    let mut thresholds = vec![case.ambient.idle_after];
+    if case.paused && case.on_pause {
+        thresholds.push(folo_compositor::PAUSE_QUIET_S);
+    }
+    // the legacy engine's own float sums, and its fade, stepped in its own seconds
+    let mut legacy = ZoneAmbient::new(ambient_settings(case));
+    let mut amounts = Vec::with_capacity(case.dts.len());
+    let mut ties = Vec::new();
+    let mut quiet = 0.0_f64;
+    for (i, &dt) in case.dts.iter().enumerate() {
+        let active = case.active.as_bytes()[i] == b'1';
+        quiet = if active { 0.0 } else { quiet + dt };
+        if !active && thresholds.iter().any(|t| (quiet - t).abs() <= TIE_S) {
+            ties.push(i);
+        }
+        legacy.step(dt, active, case.paused);
+        amounts.push(legacy.amount());
+    }
+    for tie in ties {
+        let settled = (tie + 1..amounts.len())
+            .find(|&i| amounts[i] <= 0.0 || amounts[i] >= 1.0)
+            .unwrap_or(amounts.len() - 1);
+        excluded.extend(tie..=(settled + 1).min(amounts.len() - 1));
+    }
+    excluded
+}
+
+fn ambient_settings(case: &Case) -> AmbientSettings {
+    let hex = case.ambient.color.trim_start_matches('#');
+    let byte = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).unwrap();
+    AmbientSettings {
+        reactive: match case.reactive.as_str() {
+            "on" => Reactive::On,
+            "auto" => Reactive::Auto,
+            _ => Reactive::Off,
+        },
+        color: [byte(0), byte(2), byte(4)],
+        style: if case.ambient.style == "breathe" {
+            AmbientStyle::Breathe
+        } else {
+            AmbientStyle::Solid
+        },
+        level: case.ambient.level,
+        idle_after_s: case.ambient.idle_after,
+        on_pause: case.on_pause,
+    }
+}
+
+/// The ambient light through the whole path, on the controller's clock in whole microseconds,
+/// against the legacy renderer's frames: every frame within ±1 per channel, but the frames where
+/// the legacy engine's float sum of silence ties a threshold and the fade that follows
+/// ([`tie_frames`]). There the legacy engine switched on float rounding (it reads 0.3 at one
+/// tie and 0.9999999999999999 at another, both exact on a microsecond clock), so no clock can
+/// follow it on every case. Of the two ways to turn the golden steps into microseconds, the one
+/// that keeps more frames exact is used. The compositor's own test
+/// (`crates/folo-compositor/tests/ambient_golden.rs`) holds every frame to ±1 in the legacy
+/// path's own seconds.
 #[test]
 fn the_ambient_light_matches_the_legacy_frames() {
     let manifest: Manifest =
         serde_json::from_str(&fs::read_to_string(golden().join("ambient/manifest.json")).unwrap())
             .unwrap();
+    let runs = |clock: Clock| -> Vec<(Vec<i16>, usize)> {
+        manifest
+            .cases
+            .values()
+            .map(|case| ambient_case(case, clock))
+            .collect()
+    };
+    let (per_step, cumulative) = (runs(Clock::PerStep), runs(Clock::Cumulative));
+    let exact = |runs: &[(Vec<i16>, usize)]| runs.iter().map(|r| r.1).sum::<usize>();
+    let (clock, chosen) = if exact(&per_step) >= exact(&cumulative) {
+        (Clock::PerStep, per_step)
+    } else {
+        (Clock::Cumulative, cumulative)
+    };
+    let mut excluded_frames = 0;
+    let mut beyond = 0;
     let mut checked = 0;
-    for (name, case) in &manifest.cases {
-        let biggest = ambient_case(case);
-        let bound = if name == "ambient-auto-paused" { 4 } else { 1 };
-        assert!(biggest <= bound, "{name}: {biggest} per channel");
+    for ((name, case), (diffs, _)) in manifest.cases.iter().zip(&chosen) {
+        let excluded = tie_frames(case);
+        excluded_frames += excluded.len();
+        for (i, diff) in diffs.iter().enumerate() {
+            if !excluded.contains(&i) {
+                assert!(
+                    *diff <= 1,
+                    "{name} frame {i}: {diff} per channel ({clock:?} clock)"
+                );
+            }
+        }
+        beyond += excluded.iter().filter(|&&i| diffs[i] > 1).count();
         checked += usize::from(case.expected.starts_with("renderer/"));
     }
     assert_eq!(checked, 5, "the existing renderer goldens");
+    eprintln!(
+        "{clock:?} clock: {excluded_frames} frames excluded at threshold ties, {beyond} of them beyond ±1"
+    );
+}
+
+/// The tie frames come from the manifest's legacy float sums: the 0.3 s pause in
+/// `ambient-auto-paused` (the legacy sum reads 0.3 at frame 806 and switches) and `idle_after`
+/// in `ambient-auto-solid` and `ambient-auto-breathe` (it reads 0.9999999999999999 at frame 827
+/// and doesn't), each with the fade after it.
+#[test]
+fn the_tie_frames_are_where_the_legacy_float_sum_meets_a_threshold() {
+    let manifest: Manifest =
+        serde_json::from_str(&fs::read_to_string(golden().join("ambient/manifest.json")).unwrap())
+            .unwrap();
+    let firsts: BTreeMap<&str, Vec<usize>> = manifest
+        .cases
+        .iter()
+        .map(|(name, case)| {
+            let frames = tie_frames(case);
+            // the first frame of each run of excluded frames
+            let starts = frames
+                .iter()
+                .filter(|&&i| i == 0 || !frames.contains(&(i - 1)))
+                .copied()
+                .collect();
+            (name.as_str(), starts)
+        })
+        .filter(|(_, starts): &(&str, Vec<usize>)| !starts.is_empty())
+        .collect();
+    assert_eq!(
+        firsts.get("ambient-auto-paused").map(|s| s.contains(&806)),
+        Some(true)
+    );
+    assert_eq!(
+        firsts.get("ambient-auto-solid").map(|s| s.contains(&827)),
+        Some(true)
+    );
+    assert_eq!(
+        firsts.get("ambient-auto-breathe").map(|s| s.contains(&827)),
+        Some(true)
+    );
+    eprintln!("tie runs: {firsts:?}");
 }

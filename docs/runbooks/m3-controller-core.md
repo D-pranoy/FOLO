@@ -86,7 +86,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 done bu
      - fade in 1.5 s eased, fade out 0.15 s
      - blended into the composited surface before projection, as `colour × level × master`; a fade of 0 leaves the frame byte-exact; the result is truncated
      - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when every linked player that has a media session is paused
-   - golden tests against the current engine's ambient frames (within ±1 per channel)
+   - golden tests against the current engine's ambient frames (within ±1 per channel; on the controller's clock, but for the frames where the current engine's float silence ties a threshold and the fade after them, [parity mode](../architecture/pipeline.md#parity-mode))
 4. **Adapter chain** per [capabilities](../architecture/capabilities.md#adapter-chain-per-target-in-order), in the order resolution → colour model → calibration → latency → flash limiter:
    - resolution (fitting to `address.count`), colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, the latency delay line
    - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)), by the [algorithm](../architecture/capabilities.md#algorithm)

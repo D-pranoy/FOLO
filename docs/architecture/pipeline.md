@@ -155,7 +155,7 @@ Configurations migrated from the current studio map to:
 
 **What must match:**
 - **Reactive output:** the bytes sent to Hyperion **must equal** the current engine's output for the same audio.
-- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). The tests hold the light's maths to this stepped in the current engine's own seconds. Stepped on the controller's microsecond clock, a switch the current engine's float sum of steps reaches exactly (the 0.3 s pause) can land one step later, which moves that fade by up to 4 per channel; the full path's test allows that in `ambient-auto-paused` alone.
+- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). Every frame is compared at ±1 on the controller's microsecond clock, with one exception: a frame where the current engine's float sum of silence is within 1 µs of a switch threshold (the 0.3 s pause, `idle_after`), and the fade that follows it up to the frame after that fade settles. On such a tie the current engine switches or not on float rounding (it reads 0.3 at one and 0.9999999999999999 at another, both exact in microseconds), so a clock can land a step off it. The tie frames are worked out from the golden inputs' own float sums, not listed by hand, and the light's maths is held to ±1 on every frame when stepped in the current engine's seconds. (Decision to confirm.)
 
 Golden-frame tests enforce both ([testing policy](../process/testing-policy.md)).
 
