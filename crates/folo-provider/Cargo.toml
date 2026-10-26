@@ -1,0 +1,23 @@
+[package]
+name = "folo-provider"
+description = "The provider interface and the sender that drives it (RB-08 step 6, ADR-0036)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-protocol = { path = "../folo-protocol" }
+getrandom = { version = "0.3", features = ["std"] }
+log = "0.4"
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "sync", "test-util", "time"] }
