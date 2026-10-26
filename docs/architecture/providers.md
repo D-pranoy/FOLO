@@ -24,7 +24,7 @@ Every instance offers these operations. All of them are asynchronous, and none o
 | **send** | Takes the element colours of an instance's targets for one frame. |
 | **wire key** | Gives the bytes (or a digest of them) the provider would send for a target's frame: the frame as the device receives it, after the provider's truncation and encoding. The sender compares keys to find changed frames. |
 | **release** | Gives one target's lights back: clears the priority (Hyperion), ends realtime (WLED), closes the stream (Hue). It takes the target; releasing all of an instance's targets is the instance's release. |
-| **status** | The instance's state, and a message when there is something to say. |
+| **status** | The instance's state, and a message when there is something to say. The instance's sender keeps it, from how the other calls end; a provider doesn't report it. |
 | **admin** | The basic administration of [ADR-0014](../decisions/ADR-0014-device-administration-scope.md), by action name. |
 
 - **`ElementOutput`** is the interface of `send`. A frame holds, per target, one colour per element **in the target's colour model**: on/off, dimmer, CCT, RGB, RGBW, RGB+CCT or xy ([capabilities](capabilities.md)). RGB values are on the effect engine's 0–255 scale and the provider truncates them to the bytes its device takes, which is what keeps [parity](pipeline.md#parity-mode) byte-exact.
