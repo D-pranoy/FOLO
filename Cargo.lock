@@ -592,7 +592,7 @@ name = "folo-provider"
 version = "0.0.0"
 dependencies = [
  "folo-protocol",
- "getrandom",
+ "getrandom 0.3.4",
  "log",
  "serde_json",
  "tokio",
