@@ -18,7 +18,7 @@ use std::time::Duration;
 use folo_protocol::clamp::clamp;
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq as _;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, BufReader};
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::{Instant, sleep_until, timeout};
@@ -46,6 +46,8 @@ pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const MAX_MESSAGE_BYTES: usize = 400_000;
 /// The most output of `folo-capture screens --json` that is read.
 const LISTING_MAX_BYTES: usize = 64 * 1024;
+/// How long the output of `folo-capture screens --json` is reused.
+const LISTING_KEPT: Duration = Duration::from_secs(3);
 
 /// Message type bytes (docs/specs/source-link.md#messages-inside-the-noise-channel).
 const TYPE_RPC: u8 = 0x01;
@@ -253,6 +255,9 @@ impl CaptureEndpoint {
 pub struct CaptureSupervisor {
     shared: Arc<Shared>,
     command: CaptureCommand,
+    /// The newest output of the listing command, and when it came: one
+    /// listing runs at a time, and a new one only after [`LISTING_KEPT`].
+    listing: tokio::sync::Mutex<Option<(Instant, Value)>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
@@ -283,6 +288,7 @@ impl CaptureSupervisor {
         Self {
             shared,
             command,
+            listing: tokio::sync::Mutex::new(None),
             task: Mutex::new(Some(task)),
         }
     }
@@ -372,13 +378,25 @@ impl CaptureSupervisor {
         let listed = match self.request("screens.list", json!({})).await {
             Ok(answer) => answer,
             Err(RequestError::Rpc(error)) => return Err(ListError::Rpc(error)),
-            Err(RequestError::Offline | RequestError::Timeout) => {
-                list_with_command(&self.command).await?
-            }
+            Err(RequestError::Offline | RequestError::Timeout) => self.listed_by_command().await?,
         };
         // What an agent says goes to clients: at the contract's limits
         clamp("ScreensListResult", &listed, &mut String::new)
             .map_err(|_| ListError::Failed("the screen list isn't a list of screens".into()))
+    }
+
+    /// The listing command's output, the same one for [`LISTING_KEPT`]: a page
+    /// that polls doesn't start a process each time, and none run at once.
+    async fn listed_by_command(&self) -> Result<Value, ListError> {
+        let mut kept = self.listing.lock().await;
+        if let Some((at, listed)) = &*kept
+            && at.elapsed() < LISTING_KEPT
+        {
+            return Ok(listed.clone());
+        }
+        let listed = list_with_command(&self.command).await?;
+        *kept = Some((Instant::now(), listed.clone()));
+        Ok(listed)
     }
 
     /// Sends the linked agent a JSON-RPC request and waits for its result,
@@ -433,6 +451,7 @@ impl CaptureSupervisor {
         Self {
             shared: Arc::new(Shared::new(frames, sink, restore_token, None)),
             command: CaptureCommand::find(Path::new("no such folder")),
+            listing: tokio::sync::Mutex::new(None),
             task: Mutex::new(None),
         }
     }
@@ -441,6 +460,11 @@ impl CaptureSupervisor {
     fn shared_for_tests(&self) -> Arc<Shared> {
         Arc::clone(&self.shared)
     }
+}
+
+/// A reason as `ScreenStatus.message` takes it: at most 500 characters.
+fn shorten(message: &str) -> String {
+    message.chars().take(500).collect()
 }
 
 /// The status of an agent that doesn't capture, in `ScreenStatus`'s shape.
@@ -482,22 +506,31 @@ async fn list_with_command(command: &CaptureCommand) -> Result<Value, ListError>
     process.creation_flags(CREATE_NO_WINDOW);
     remove_folo_variables(&mut process);
     let failed = |why: String| ListError::Failed(why);
-    let output = match timeout(REQUEST_TIMEOUT, process.output()).await {
+    let run = async {
+        let mut child = process.spawn()?;
+        let mut stdout = Vec::new();
+        if let Some(out) = child.stdout.take() {
+            // One byte over the limit tells it is too long, without reading the rest
+            out.take(LISTING_MAX_BYTES as u64 + 1)
+                .read_to_end(&mut stdout)
+                .await?;
+        }
+        let status = child.wait().await?;
+        std::io::Result::Ok((status, stdout))
+    };
+    let (status, stdout) = match timeout(REQUEST_TIMEOUT, run).await {
         Err(_) => return Err(failed("listing the screens took too long".into())),
         Ok(Err(error)) => return Err(failed(format!("the capture agent can't run: {error}"))),
-        Ok(Ok(output)) => output,
+        Ok(Ok(done)) => done,
     };
-    if !output.status.success() {
-        return Err(failed(format!(
-            "listing the screens failed ({})",
-            output.status
-        )));
+    if !status.success() {
+        return Err(failed(format!("listing the screens failed ({status})")));
     }
-    if output.stdout.len() > LISTING_MAX_BYTES {
+    if stdout.len() > LISTING_MAX_BYTES {
         return Err(failed("the screen list is too long".into()));
     }
-    let listing: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|_| failed("the screen list isn't JSON".into()))?;
+    let listing: Value =
+        serde_json::from_slice(&stdout).map_err(|_| failed("the screen list isn't JSON".into()))?;
     if listing["screens"].is_array() {
         Ok(listing)
     } else {
@@ -628,8 +661,10 @@ async fn session<S: LinkSocket>(
                     return Event::Unlinked;
                 };
                 last_seen = Instant::now();
-                receive(shared, message, &mut pending);
-                continue;
+                match receive(shared, message, &mut pending) {
+                    Some(reply) => Some(reply),
+                    None => continue,
+                }
             }
             changed = control.changed() => {
                 if changed.is_err() {
@@ -737,36 +772,43 @@ async fn send<S: LinkSocket>(socket: &mut S, message: Message) -> Option<Event> 
 
 /// Keeps what the agent sent: its newest status, answers to requests, and
 /// screen frames, which are passed on without being read (ADR-0037 D9).
-fn receive(shared: &Shared, message: Message, pending: &mut Pending) {
+fn receive(shared: &Shared, message: Message, pending: &mut Pending) -> Option<Vec<u8>> {
     let Message::Binary(bytes) = message else {
         log::debug!("ignored a text message after the handshake");
-        return;
+        return None;
     };
     if bytes.len() > MAX_MESSAGE_BYTES {
         log::warn!("dropped a capture message of {} bytes", bytes.len());
-        return;
+        return None;
     }
     match bytes.first().copied() {
         Some(TYPE_RPC) => match serde_json::from_slice::<Value>(&bytes[1..]) {
-            Ok(rpc) => receive_rpc(shared, rpc, pending),
+            Ok(rpc) => return receive_rpc(shared, rpc, pending),
             Err(_) => log::warn!("ignored a JSON-RPC message that isn't JSON"),
         },
         Some(TYPE_SCREEN) => shared.frames.publish(bytes),
         other => log::debug!("ignored a capture message of type {other:?}"),
     }
+    None
 }
 
-fn receive_rpc(shared: &Shared, mut rpc: Value, pending: &mut Pending) {
+fn receive_rpc(shared: &Shared, mut rpc: Value, pending: &mut Pending) -> Option<Vec<u8>> {
     if let Some(method) = rpc["method"].as_str() {
-        if rpc.get("id").is_some() {
-            log::debug!("ignored a request for {method} from the capture agent");
+        if let Some(id) = rpc.get("id") {
+            // The agent asks nothing of the node
+            log::debug!("refused a request for {method} from the capture agent");
+            let error = json!({"code": -32601, "message": "the node answers no requests"});
+            let body = json!({"jsonrpc": "2.0", "id": id, "error": error});
+            let mut out = vec![TYPE_RPC];
+            out.extend_from_slice(body.to_string().as_bytes());
+            return Some(out);
         } else if method == "capture.status" {
             let params = rpc["params"].take();
             keep_status(shared, params);
         } else {
             log::debug!("ignored a {method} notification from the capture agent");
         }
-        return;
+        return None;
     }
     let waiting = rpc["id"].as_u64().and_then(|id| pending.remove(&id));
     let error = rpc.get("error").map(|error| RpcError {
@@ -782,7 +824,7 @@ fn receive_rpc(shared: &Shared, mut rpc: Value, pending: &mut Pending) {
         }
         (Some(Waiting::Start), Some(error)) => {
             log::warn!("the capture agent refused capture.start: {}", error.message);
-            shared.lock().problem = Some(error.message);
+            shared.lock().problem = Some(shorten(&error.message));
         }
         (Some(Waiting::Start), None) => shared.lock().problem = None,
         (None, Some(error)) => log::warn!(
@@ -793,6 +835,29 @@ fn receive_rpc(shared: &Shared, mut rpc: Value, pending: &mut Pending) {
         ),
         (None, None) => {}
     }
+    None
+}
+
+/// The longest restore token (specs/schema/source-link.json).
+const MAX_TOKEN_CHARS: usize = 256;
+
+/// Keeps a restore token the agent reported: for the next capture that starts
+/// from off, and with the node through the sink. An unchanged token (the
+/// agent may repeat it with every status) and one the contract doesn't take
+/// are dropped; the message never holds the token.
+fn keep_token(shared: &Shared, token: &str) {
+    if token.chars().count() > MAX_TOKEN_CHARS || token.chars().any(char::is_control) {
+        log::warn!("ignored a restore token the contract doesn't take");
+        return;
+    }
+    {
+        let mut state = shared.lock();
+        if state.restore_token.as_deref() == Some(token) {
+            return;
+        }
+        state.restore_token = Some(token.to_owned());
+    }
+    shared.sink.restore_token(token);
 }
 
 /// Keeps the agent's `capture.status` as clients may see it: clamped to
@@ -812,9 +877,7 @@ fn keep_status(shared: &Shared, mut params: Value) {
         report.remove("restore_token");
     }
     if let Some(token) = token {
-        // Stored for the next capture that starts from off, and kept by the node
-        shared.lock().restore_token = Some(token.clone());
-        shared.sink.restore_token(&token);
+        keep_token(shared, &token);
     }
     shared.lock().report = Some(report);
 }
@@ -864,7 +927,8 @@ async fn supervise(
                     "the capture agent ({}) can't start: {error}",
                     command.program.display()
                 );
-                shared.lock().problem = Some(format!("the capture agent can't start: {error}"));
+                shared.lock().problem =
+                    Some(shorten(&format!("the capture agent can't start: {error}")));
                 end_agent(&shared);
                 if !wait_backoff(&shared, &mut control, &mut attempt, false).await {
                     return;

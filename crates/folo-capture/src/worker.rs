@@ -314,7 +314,13 @@ fn handle(agent: &mut Agent, command: Command, frames: &watch::Sender<Option<Byt
             params,
             reply,
         } => {
-            let _ = reply.send(agent.call(&method, params));
+            let before = agent.status().screen.clone();
+            let answer = agent.call(&method, params);
+            if agent.status().screen != before {
+                // The old screen's last frame must not follow a start of another
+                frames.send_replace(None);
+            }
+            let _ = reply.send(answer);
         }
         Command::Stop { done } => {
             agent.stop();

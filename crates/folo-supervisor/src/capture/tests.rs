@@ -478,3 +478,55 @@ async fn statuses_are_clamped_and_one_that_isnt_a_status_is_ignored() {
     settle().await;
     assert_eq!(rig.supervisor.screen_live()["state"], "paused");
 }
+
+#[tokio::test]
+async fn a_repeated_token_is_kept_once_and_one_the_contract_does_not_take_not_at_all() {
+    let rig = rig(Some("secret"), None);
+    let (mut agent, _server) = connect(&rig);
+    agent.outgoing.send(hello("secret")).unwrap();
+    welcome_of(agent.incoming.recv().await);
+    for _ in 0..3 {
+        agent
+            .outgoing
+            .send(status_of("capturing", Some("same-token")))
+            .unwrap();
+    }
+    agent
+        .outgoing
+        .send(status_of("capturing", Some(&"x".repeat(257))))
+        .unwrap();
+    agent
+        .outgoing
+        .send(status_of("capturing", Some("bad\ntoken")))
+        .unwrap();
+    settle().await;
+    assert_eq!(*rig.sink.tokens.lock().unwrap(), ["same-token"]);
+    assert_eq!(rig.supervisor.screen_live()["state"], "off");
+    rig.supervisor.set_wanted(Some(params()));
+    assert_eq!(rig.supervisor.screen_live()["state"], "capturing");
+}
+
+#[tokio::test]
+async fn a_long_reason_is_cut_to_what_the_contract_takes_and_the_agent_gets_no_answers_to_ask() {
+    let rig = rig(Some("secret"), None);
+    rig.supervisor.set_wanted(Some(params()));
+    let (mut agent, _server) = connect(&rig);
+    agent.outgoing.send(hello("secret")).unwrap();
+    welcome_of(agent.incoming.recv().await);
+    let start = rpc_of(agent.incoming.recv().await);
+    agent.outgoing.send(status_of("off", None)).unwrap();
+    let error = json!({"code": -32000, "message": "é".repeat(2000)});
+    let refusal = json!({"jsonrpc": "2.0", "id": start["id"], "error": error});
+    agent.outgoing.send(from_agent(&refusal)).unwrap();
+    // A request from the agent is answered -32601
+    let ask = json!({"jsonrpc": "2.0", "id": 77, "method": "screens.list", "params": {}});
+    agent.outgoing.send(from_agent(&ask)).unwrap();
+    let answer = rpc_of(agent.incoming.recv().await);
+    assert_eq!(
+        (answer["id"].clone(), answer["error"]["code"].clone()),
+        (json!(77), json!(-32601))
+    );
+    let live = rig.supervisor.screen_live();
+    assert_eq!(live["state"], "error");
+    assert_eq!(live["message"].as_str().unwrap().chars().count(), 500);
+}

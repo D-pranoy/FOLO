@@ -234,8 +234,9 @@ impl LogSink for EngineLog {
 struct CaptureLog {
     data: std::path::PathBuf,
     server_id: String,
-    /// One write of `secrets.json` at a time.
-    writing: Mutex<()>,
+    /// The newest token, and one write of `secrets.json` at a time: a write
+    /// that runs late still stores the newest.
+    newest: Arc<Mutex<Option<String>>>,
 }
 
 impl CaptureLog {
@@ -243,7 +244,19 @@ impl CaptureLog {
         Self {
             data: data.to_path_buf(),
             server_id: server_id.to_owned(),
-            writing: Mutex::new(()),
+            newest: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn store(data: &std::path::Path, server_id: &str, token: &str) {
+        let stored = folo_store::read_secrets(data).and_then(|mut secrets| {
+            secrets["capture"] = json!({"restore_token": token});
+            folo_store::write_secrets(data, &secrets, server_id)
+        });
+        // The token is never in the message (ADR-0037 D9, D14)
+        match stored {
+            Ok(_) => log::debug!("kept the capture agent's new restore token"),
+            Err(error) => log::error!("secrets.json can't take the restore token: {error}"),
         }
     }
 }
@@ -254,15 +267,23 @@ impl CaptureSink for CaptureLog {
     }
 
     fn restore_token(&self, token: &str) {
-        let _one_at_a_time = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
-        let stored = folo_store::read_secrets(&self.data).and_then(|mut secrets| {
-            secrets["capture"] = json!({"restore_token": token});
-            folo_store::write_secrets(&self.data, &secrets, &self.server_id)
-        });
-        // The token is never in the message (ADR-0037 D9, D14)
-        match stored {
-            Ok(_) => log::debug!("kept the capture agent's new restore token"),
-            Err(error) => log::error!("secrets.json can't take the restore token: {error}"),
+        *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(token.to_owned());
+        let (data, server_id, newest) = (
+            self.data.clone(),
+            self.server_id.clone(),
+            Arc::clone(&self.newest),
+        );
+        // A file write with a sync, off the link's task
+        let write = move || {
+            let mut newest = newest.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(token) = newest.take() {
+                Self::store(&data, &server_id, &token);
+            }
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::spawn_blocking(write);
+        } else {
+            write();
         }
     }
 }

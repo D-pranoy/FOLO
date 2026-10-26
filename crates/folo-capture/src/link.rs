@@ -77,6 +77,10 @@ pub async fn run(environment: &Environment, handle: &WorkerHandle, timing: Timin
         let began = Instant::now();
         let ended = connect_and_serve(environment, handle, &timing, &mut gone_since).await;
         stop_capture(handle).await;
+        if gone_since.is_some_and(|since| since > began) {
+            // A link was made: the next loss starts the backoff over
+            attempt = 0;
+        }
         match ended {
             Ended::Restarted => return EXIT_OK,
             Ended::Refused => {
@@ -142,6 +146,18 @@ async fn connect_and_serve(
         log(Level::Error, "FOLO_CAPTURE_LINK isn't a WebSocket URL");
         return Ended::Refused;
     };
+    // The token goes to this machine's node only
+    let loopback = request.uri().host().is_some_and(|host| {
+        host == "localhost"
+            || host
+                .trim_matches(['[', ']'])
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
+    });
+    if !loopback {
+        log(Level::Error, "FOLO_CAPTURE_LINK isn't a loopback address");
+        return Ended::Refused;
+    }
     request.headers_mut().insert(
         "Sec-WebSocket-Protocol",
         SUBPROTOCOL.parse().expect("a header value"),

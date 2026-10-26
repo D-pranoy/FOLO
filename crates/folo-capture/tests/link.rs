@@ -315,3 +315,13 @@ async fn a_node_that_stops_reading_gets_the_newest_frame_not_all_of_them() {
     link.call("restart", json!({"component": "capture"})).await;
     assert_eq!(exited(agent).await, EXIT_OK);
 }
+
+#[tokio::test]
+async fn a_link_that_is_not_on_this_machine_is_refused_before_the_token_is_sent() {
+    let environment = Environment {
+        link: "ws://192.0.2.1:9/api/v1/capture-link".into(),
+        token: TOKEN.into(),
+    };
+    let agent = run_agent(environment, fast());
+    assert_eq!(exited(agent).await, EXIT_FAILED);
+}
