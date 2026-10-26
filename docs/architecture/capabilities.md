@@ -33,15 +33,15 @@ For each target, after projection ([pipeline](pipeline.md#controller-stages)): *
    - Otherwise elements sample directly.
 2. **Colour model.**
    - **RGB:** pass through.
-   - **RGBW / RGB+CCT:** extract a white channel, by `calibration.white`: `off`, `accurate` (the default) or `brighter`. The CCT channel comes from the colour's temperature.
-   - **CCT:** brightness from luminance; temperature from the nearest white, clamped to the lamp's range. A fixed rule, not configurable, takes saturated colours to the warm or the cool end of the range. Palettes may include explicit whites such as `2700K`.
-   - **Dimmer:** luminance.
-   - **On/off:** a threshold with hysteresis and a minimum on/off interval, to protect relays and bulbs: `calibration.onoff` holds `threshold` (default 0.5), `hysteresis` (0.1) and `min_interval_ms` (1000). `hysteresis` is the **full width** of the band around `threshold`: the target switches on at `threshold + hysteresis / 2` and off at `threshold − hysteresis / 2` (each clamped to 0–1), and keeps its state in between. Past the minimum interval since its last change, a level beyond either point switches it.
-   - **xy (Hue over REST):** RGB to CIE xy, clamped to the lamp's gamut. The Hue entertainment stream takes RGB, and the bridge converts.
+   - **RGBW / RGB+CCT:** extract a white channel, by `calibration.white`: `off` (W is 0), `accurate` (the default: W is the smallest of R, G and B, and it is taken out of each of them, so the colour keeps its look) or `brighter` (the same W, with R, G and B left as they are). On RGB+CCT that W is the CCT channel's level, and its temperature is the colour's, as for CCT.
+   - **CCT:** brightness from luminance (Rec. 709); temperature from the nearest white, by McCamy's approximation on the colour's CIE xy, clamped to the lamp's range (black takes the middle of the range). A fixed rule, not configurable, takes saturated colours, whose `(max − min) / max` of R, G and B is at least 0.5, to the warm end of the range when R is at least B, and to the cool end otherwise. Palettes may include explicit whites such as `2700K`.
+   - **Dimmer:** luminance (Rec. 709).
+   - **On/off:** a threshold with hysteresis and a minimum on/off interval, to protect relays and bulbs: `calibration.onoff` holds `threshold` (default 0.5), `hysteresis` (0.1) and `min_interval_ms` (1000). `hysteresis` is the **full width** of the band around `threshold`: the target switches on at `threshold + hysteresis / 2` and off at `threshold − hysteresis / 2` (each clamped to 0–1), and keeps its state in between. The level is the luminance on 0–1. An element that is off switches on at a level of at least the on point, and never at 0; one that is on switches off below the off point, and always at 0. A change waits until `min_interval_ms` has passed since the element's last change; the first change doesn't wait.
+   - **xy (Hue over REST):** RGB to CIE xy, taking the values as linear sRGB with a D65 white (black is D65's white point); a point outside the lamp's gamut moves to the nearest point of the gamut's edges. The brightness component is the luminance. The Hue entertainment stream takes RGB, and the bridge converts.
 3. **Calibration,** per element, on the 0–255 scale:
    - **gamma:** `255 · (v / 255)^γ`
    - **white balance:** each of R, G and B times its factor
-   - **brightness range:** non-zero values map into `[min, max]` of the full scale, and zero stays zero. The minimum is the larger of `brightness_min` and the target's `limits.min_brightness`.
+   - **brightness range:** non-zero values map into `[min, max]` of the full scale, and zero stays zero. The minimum is the larger of `brightness_min` and the target's `limits.min_brightness`. It applies to each channel on its own, so a small non-zero channel rises to the minimum too.
    - **colour order:** a permutation of R, G and B
    - **Channels each step touches,** by colour model:
 
@@ -56,7 +56,7 @@ For each target, after projection ([pipeline](pipeline.md#controller-stages)): *
 
      The colour temperature of a CCT channel isn't touched by calibration.
    - **A target whose calibration holds only defaults skips the stage**, so the chain stays an identity for [parity](pipeline.md#parity-mode).
-4. **Latency offset:** a per-target delay line, so faster outputs can wait for slower ones (for example, WLED waiting for Hue). A target's delay is its `calibration.latency_ms` plus the largest `limits.latency_ms` among the zone's targets minus its own, between 0 and 5 s.
+4. **Latency offset:** a per-target delay line, so faster outputs can wait for slower ones (for example, WLED waiting for Hue). A target's delay is its `calibration.latency_ms` plus the largest `limits.latency_ms` among the zone's targets minus its own, between 0 and 5 s. Until the line holds a frame as old as the delay, it shows the first frame it got, so the lights start with a picture rather than black.
 5. **Flash limiter:** see below.
 
 `calibration.white` and `calibration.onoff` are fields of the target's calibration ([configuration model](../specs/config-model.md#entities-summary)).
@@ -93,6 +93,6 @@ For zones that switched the limiter on. The limiter is the chain's last stage, s
 - **A transition** is counted when a run's cumulative change reaches 0.10 and the darker end of that change is below 0.80. A run keeps counting: after a transition, its change starts again from the current luminance. Transitions are stamped with the time of the step that completes them (`now_us`), so the result doesn't depend on how many steps a second the controller takes.
 - **A flash** is a pair of counted transitions in opposite directions: a transition opens it, the next transition that opposes that one completes it, and the one after opens the next. A 3 Hz blink (six transitions a second) is therefore three flashes a second. A transition in the same direction as the one before it (a slow rise counted in several steps) neither opens nor completes a flash. A flash is stamped with the time of the transition that completes it.
 - **The window:** each element keeps its flashes of the last 1 s. A flash leaves it at 0.98 s: the last 20 ms are a tolerance for the controller's clock, so a steady 3 Hz blink isn't held by timing jitter. A transition that would complete a **fourth** flash in the window is **held**: the element's output stays at the last colour that passed, **whole**, with every channel as it was, not only the luminance. The transition that opens a fourth flash isn't held, only the one that completes it, so what the lights show can include one open flash in addition to three.
-- **Release:** while a transition is held, the output stays until the oldest flash in the window has left it. The output then jumps to the **current input**, which counts as the flash it completes; the held transitions in between are not replayed. If the input has returned to within 0.10 of the held output by then, nothing is held any more and no transition is counted.
+- **Release:** while a transition is held, the output stays until the oldest flash in the window is older than 1 s. The output then jumps to the **current input**, which counts as the flash it completes; the held transitions in between are not replayed. If the input has returned to within 0.10 of the held output by then, nothing is held any more and no transition is counted.
 - **On/off targets** hold their state in the same way: the output stays on or off until the window allows the change.
 - **Test patterns** go through the limiter as any frame does.
