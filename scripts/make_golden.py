@@ -8,10 +8,12 @@ Writes the golden files that pin today's engine (RB-01 steps 6 to 8):
 - tests/corpus/sanitize_config.json: sanitize_config inputs and outputs
 - tests/corpus/clamp_v2.json: the v2 clamper's inputs and outputs (RB-02)
 - tests/golden/migration/: sample v1 files and the documents they migrate to (RB-05)
+- tests/golden/ambient/: what the controller's ambient light gets (the reactive frames, the
+  steps and the activity) to match tests/golden/renderer/ambient-*.png (RB-08)
 
     uv run python scripts/make_golden.py [--export-builtins] [--only PART,...]
 
-The parts are renderer, beat, corpus, clamp and migration.
+The parts are renderer, beat, corpus, clamp, migration and ambient.
 
 Regenerate only when behaviour is meant to change, and say why in the pull
 request (docs/process/testing-policy.md#golden-files).
@@ -38,7 +40,7 @@ from tests import (  # noqa: E402
     sanitize_corpus,
 )
 
-PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration')
+PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration', 'ambient')
 
 
 def export_builtins() -> None:
@@ -120,6 +122,27 @@ def write_migration() -> None:
     print(f'wrote {len(migration_cases.SAMPLES)} migration samples to {out}')
 
 
+def write_ambient() -> None:
+    out = golden_cases.AMBIENT_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    cases = golden_cases.ambient_cases()
+    entries: dict[str, object] = {}
+    for case in cases:
+        inputs = golden_cases.ambient_inputs(case)
+        golden_cases.write_png(out / f'{case.name}.png', inputs.frames)
+        entries[case.name] = golden_cases.ambient_entry(case, inputs)
+    names = {f'{c.name}.png' for c in cases}
+    for stale in out.glob('*.png'):
+        if stale.name not in names:
+            stale.unlink()
+    manifest = {'cases': dict(sorted(entries.items()))}
+    golden_cases.AMBIENT_MANIFEST.write_text(
+        json.dumps(manifest, indent=1, sort_keys=True) + '\n', encoding='utf-8'
+    )
+    size = sum(p.stat().st_size for p in out.iterdir())
+    print(f'wrote {len(cases)} ambient cases to {out.relative_to(ROOT)} ({size / 1e6:.1f} MB)')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -151,6 +174,8 @@ def main() -> None:
         write_clamp_corpus()
     if 'migration' in parts:
         write_migration()
+    if 'ambient' in parts:
+        write_ambient()
 
 
 if __name__ == '__main__':
