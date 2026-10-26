@@ -574,7 +574,7 @@ paths:
       parameters:
         - name: type
           in: query
-          schema: {$ref: 'schema/api.json#/$defs/ItemType'}
+          schema: {$ref: 'schema/api.json#/$defs/ItemType', default: scenes}
       responses:
         '200':
           description: The items, built-in packs first, then by pack id, each pack's in its contents order.
@@ -762,7 +762,7 @@ paths:
     post:
       tags: [system]
       operationId: restoreBackup
-      summary: Replace the documents and the library with a backup's, at most 64 MB (admin; ADR-0038 D27)
+      summary: Replace the documents and the library with a backup's, at most 256 MB (admin; ADR-0038 D27)
       requestBody:
         required: true
         content:
@@ -871,8 +871,8 @@ components:
       name: ref
       in: path
       required: true
-      description: A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded.
-      schema: {type: string, maxLength: 160}
+      description: A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded; the limit applies to the decoded text (ADR-0038 D2).
+      schema: {type: string, maxLength: 130}
     ItemType:
       name: type
       in: path

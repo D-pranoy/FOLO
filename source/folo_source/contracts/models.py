@@ -401,8 +401,8 @@ class Event(BaseModel):
     id: Annotated[
         str,
         Field(
-            description="The job's id; for kind library, the pack's id (ADR-0038).",
-            max_length=130,
+            description="The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).",
+            max_length=65,
         ),
     ]
     state: Annotated[str, Field(max_length=32)]
@@ -921,7 +921,7 @@ class Orientation(BaseModel):
 
 
 class Item(RootModel[str]):
-    root: Annotated[str, Field(max_length=160)]
+    root: Annotated[str, Field(max_length=130)]
 
 
 class PackCategory(BaseModel):
@@ -1336,7 +1336,7 @@ class RoleBinding(BaseModel):
         str,
         Field(
             description="The scene's reference as resolved: author/pack:item, or a scene id of this document.",
-            max_length=160,
+            max_length=130,
         ),
     ] = ''
     roles: Annotated[dict[str, Ref], Field(description='Role: surface id.', validate_default=True)] = {
@@ -2151,8 +2151,8 @@ class LookItem(BaseModel):
         'version': '1.0.0',
     }
     params: dict[str, Any] = {}
-    reaction: Annotated[str, Field(max_length=160)] = ''
-    palette: Annotated[str, Field(max_length=160)] = ''
+    reaction: Annotated[str, Field(max_length=130)] = ''
+    palette: Annotated[str, Field(max_length=130)] = ''
 
 
 class MacroTarget(BaseModel):
@@ -2954,7 +2954,7 @@ class ShowDocument(BaseModel):
         str,
         Field(
             description='What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).',
-            max_length=160,
+            max_length=130,
         ),
     ] = ''
     scenes: Annotated[list[Scene], Field(max_length=256, validate_default=True)] = []

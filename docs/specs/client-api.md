@@ -15,7 +15,7 @@ The controller's API for clients: the UI, the desktop app, the Android app later
 - **Scopes:** `control` (everyday use) and `admin` (configuration, pairing, packs, updates).
 - **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header ([RFC 9110, section 15.5.6](https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed)).
 - **Concurrency:** documents carry `revision` and `server_id`. Writers may send `If-Match: <revision>`; without it, the last writer wins, as today.
-- **Body limit:** 1 MB by default; 10 MB for a pack install and 64 MB for a restore, which send `application/zip` ([library](#library)).
+- **Body limit:** 1 MB by default; 10 MB for a pack install and 256 MB for a restore, which send `application/zip` ([library](#library)).
 - **Caching:** API responses carry `Cache-Control: no-store`, and every response carries `X-Content-Type-Options: nosniff`.
 
 ### Request checks
@@ -30,7 +30,7 @@ Every request goes through these checks in order. The first that fails answers:
 | Authentication: loopback clients and the unauthenticated endpoints need no key; every other request to `/api/` does. Until client keys and sessions arrive ([RB-15](../runbooks/m7-network.md#rb-15-client-access)), no key is valid. | 401 `unauthorized` |
 | The resource exists | 404 `not_found` |
 | The resource takes the method | 405 `method_not_allowed` |
-| A mutating request sends JSON; a pack install or a restore sends `application/zip` | 415 `json_required` / `zip_required` |
+| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either (from RB-09; until then they get the JSON rule) | 415 `json_required` / `zip_required` |
 | The body fits the limit | 413 `body_too_large` |
 
 Routes that answer loopback clients only (`/system/status`, `/system/reload`) answer others with 403 `loopback_only`.
@@ -126,17 +126,18 @@ Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D1 to D10; the f
 | Request | Answer | Errors |
 |---|---|---|
 | `GET /library/packs` | 200, a `PackInfo` per pack: the built-in packs first, then by id | |
-| `POST /library/packs[?replace=true]` with a `.folopack` (`application/zip`, at most 10 MB) | 201, the installed pack's `PackInfo` | 422 `structural_error` (`details`: `path`, `reason`); 422 `incompatible` (its `folo` range); 422 `missing_dependency` (`details.requires`); 409 `reserved_id` (author `folo`); 409 `already_installed` (the same or a newer version is installed; `details`: `installed`, `offered`) |
+| `POST /library/packs[?replace=true]` with a `.folopack` (`application/zip`, at most 10 MB) | 201, the installed pack's `PackInfo` | 422 `structural_error` (`details`: `path`, `reason`); 422 `incompatible` (its `folo` range); 422 `missing_dependency` (`details.requires`); 409 `reserved_id` (author `folo` or `local`); 409 `already_installed` (the same or a newer version is installed; `details`: `installed`, `offered`); 409 `library_full` (100 packs or 128 MB) |
 | `GET /library/packs/{pack}` | 200, its manifest in the canonical form | 404 `not_found` |
 | `DELETE /library/packs/{pack}` | 204 | 404 `not_found`; 409 `protected_pack` (a built-in pack or `local/my-presets`); 409 `required_by` (`details.packs`) |
 | `GET /library/packs/{pack}/export` | 200, the canonical `.folopack` | 404 `not_found` |
 | `GET /library/packs/{pack}/items/{type}/{item}` | 200, the item | 404 `not_found` |
-| `PUT /library/packs/{pack}/items/{type}/{item}` | 200, the item as clamped and stored; its id is the one in the path | 404 `not_found` (no such pack); 409 `read_only_pack` (not a `local/*` pack); 409 `list_full` (500 items, or 60 scenes in `local/my-presets`); 400 `bad_body`; 422 `structural_error` |
+| `PUT /library/packs/{pack}/items/{type}/{item}` | 200, the item as clamped and stored; its id is the one in the path. No `If-Match`: the last writer wins. | 404 `not_found` (no such pack); 409 `read_only_pack` (not a `local/*` pack); 409 `pack_unreadable` (the pack's folder failed its checks at start); 409 `id_taken` (the id is another type's item); 409 `list_full` (500 items, or 60 scenes in `local/my-presets`); 400 `bad_body`; 422 `structural_error` |
 | `DELETE /library/packs/{pack}/items/{type}/{item}` | 204 | 404 `not_found`; 409 `read_only_pack` |
 | `GET /library/packs/{pack}/previews/{file}` | 200, the image, with the sandboxing Content Security Policy album art has | 404 `not_found` |
 | `GET /library/items?type=<type>` (default `scenes`) | 200, a `LibraryItem` per item: built-in packs first, then by pack id, each pack's items in its `contents` order | |
 
-- An install, a removal and an item write each send `event {kind: library, id: <pack id>, state: installed | removed | changed}` on the [live channel](#live-websocket), so clients reload the gallery.
+- An install, a removal, an item write and a restore each send `event {kind: library, id: <pack id>, state: installed | removed | changed | restored}` on the [live channel](#live-websocket) (`id` empty for a restore), so clients reload the gallery.
+- Paths take pack ids and references percent-encoded; their length limits apply to the decoded text.
 - Scopes, from RB-15: installing, replacing and removing packs need `admin`; the rest need `control`.
 
 ### Applying scenes and Reset all
@@ -144,19 +145,20 @@ Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D1 to D10; the f
 Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D11 to D21.
 
 - **`POST /scenes/{ref}/apply`** with `{zone, roles, keep_changes}` copies the scene `ref` names into the zone:
-  - `ref` is a pack item (`author/pack:item`), a built-in id (`fx:*`, `genre:*`, through the alias table) or a scene of the show by its id. A bare id that isn't a scene of the show names `local/my-presets:<id>`.
-  - The copy goes into the zone's active scene in place when no other zone has that scene active, else into a new scene that becomes the zone's active one. Its roles are bound to the zone's surfaces as the [content](../architecture/content.md#applying-a-scene) page says, and it carries `provenance {pack, version, item, hash}`.
+  - `ref` is read, in this order, as a pack item (`author/pack:item`), a built-in id (`fx:*`, `genre:*`, through the alias table), a scene of the show by its id, or `local/my-presets:<id>` ([ADR-0038](../decisions/ADR-0038-content-library.md) D2).
+  - **A scene of the show** only becomes the zone's active scene: nothing is copied; `roles` must be empty and `keep_changes` false, else 400 `bad_body`.
+  - **A pack item** is copied into the zone's active scene in place when no other zone has that scene active, else into a new scene that becomes the zone's active one. Its roles are bound to the zone's surfaces as [ADR-0038](../decisions/ADR-0038-content-library.md) D12 says, and it carries `provenance {pack, version, item, hash}`.
   - `roles` names a surface for a role and remembers it for this scene and zone (`bindings` in the show); `""` returns the role to automatic.
   - `keep_changes: true` merges the scene into the zone's active scene, keeping what the user changed since it was applied.
   - The answer is 200 with a `SceneApplied`: the show as written and, for the zone, the scene it now has active, where each role went and the roles skipped. Errors: 404 `not_found` (the scene or the zone; `details.what`); 409 `list_full` (256 scenes); 409 `no_base` (`keep_changes` on a scene with no base to merge against); 412 `revision_mismatch` with `If-Match`.
-- **`POST /show/reset`** with `{zones}` (empty or no body: every zone) applies the show's `default_scene` to each zone, as an apply without `roles`, and sets the `master` of the zone's surfaces to 1 and their `background` to `#000000`. An empty `default_scene`, or one that names nothing, applies `folo/core:default`. The answer is a `SceneApplied` with one result per zone; a zone that doesn't exist gets 404 `not_found` and nothing changes.
-- Both write the show once (and `zones.json` when a surface changed), with `config_changed` and the new configuration to the engine, as any [document](#documents) write.
+- **`POST /show/reset`** with `{zones}` (empty, or an empty body: every zone) applies the show's `default_scene` to each zone, as an apply without `roles`, and sets the `master` of the zone's surfaces to 1 and their `background` to `#000000`. An empty `default_scene`, or one that names nothing, applies `folo/core:default`. The answer is a `SceneApplied` with one result per zone; a zone that doesn't exist gets 404 `not_found` and nothing changes.
+- Both write the show once (`If-Match` names its revision), and Reset all then `zones.json` when a surface changed, with `config_changed` and the new configuration to the engine, as any [document](#documents) write.
 
 ### Backup and restore
 
 Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D25 to D27. Both need `admin` from RB-15.
 - **`GET /system/backup`** answers a zip archive (`folo-backup-<UTC date and time>.zip`): `folo-backup.json` (a `BackupManifest`), `zones.json`, `show.json`, `providers.json`, `sources.json`, the installed and local packs under `library/` in their canonical form, and the bases of applied scenes under `applied/`. `secrets.json`, `clients.json`, `node.toml` and the built-in packs are never in it.
-- **`POST /system/restore`** (`application/zip`, at most 64 MB) checks the whole archive first: paths and limits as for a pack (at most 10,000 entries), the manifest and its hashes, every document and every pack. A failure gets 422 `structural_error` (`details`: `path`, `reason`), or 422 `incompatible` for a newer `format` or `schema_version`, and changes nothing. Then the four documents, the installed and local packs and the bases become exactly the backup's, each document with its next revision and this node's `server_id`; secrets, clients and `node.toml` stay. The answer is 204, after `config_changed` for each document.
+- **`POST /system/restore`** (`application/zip`, at most 256 MB) checks the whole archive first: at most 10,000 entries and 512 MB uncompressed, only the paths a backup holds, the manifest and its hashes, every document, and every pack as an install checks it, in the folder its `id` names ([ADR-0038](../decisions/ADR-0038-content-library.md) D27). A failure gets 422 `structural_error` (`details`: `path`, `reason`), or 422 `incompatible` for a newer `format` or `schema_version`, and changes nothing. Then the four documents, the installed and local packs and the bases become exactly the backup's, each document with its next revision and this node's `server_id`; secrets, clients and `node.toml` stay. The answer is 204, after `config_changed` for each document and `event {kind: library, state: restored}`.
 
 ### Test patterns
 

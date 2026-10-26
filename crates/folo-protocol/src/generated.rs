@@ -3961,7 +3961,7 @@ impl<'de> ::serde::Deserialize<'de> for ErrorErrorMessage {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
-    ///The job's id; for kind library, the pack's id (ADR-0038).
+    ///The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).
     pub id: EventId,
     pub kind: EventKind,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -3970,7 +3970,7 @@ pub struct Event {
     pub progress: ::std::option::Option<f64>,
     pub state: EventState,
 }
-///The job's id; for kind library, the pack's id (ADR-0038).
+///The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct EventId(::std::string::String);
@@ -3990,8 +3990,8 @@ impl ::std::str::FromStr for EventId {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 130usize {
-            return Err("longer than 130 characters".into());
+        if value.chars().count() > 65usize {
+            return Err("longer than 65 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -7422,8 +7422,8 @@ impl ::std::str::FromStr for LookItemPalette {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -7481,8 +7481,8 @@ impl ::std::str::FromStr for LookItemReaction {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -10234,8 +10234,8 @@ impl ::std::str::FromStr for PackCategoryItemsItem {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -14136,8 +14136,8 @@ impl ::std::str::FromStr for RoleBindingScene {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -15071,8 +15071,8 @@ impl ::std::str::FromStr for ShowDocumentDefaultScene {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }

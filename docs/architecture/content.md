@@ -31,19 +31,11 @@ Each level refers to the levels below it by id. A scene can swap only its palett
 
 Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D11 to D16.
 
-- **The copy** goes into the zone's active scene in place, when no other zone has that scene active, and otherwise into a new scene that becomes the zone's active one. It carries the item's name, tags and macros, its layers bound and scaled as below, and `provenance {pack, version, item, hash}`. The node keeps the copy as written in `applied/<scene id>.json`, the base for a later merge.
-- **Binding,** for each of the scene's roles in order, each surface of the zone taken at most once:
-  1. an override: the surface the request names, else the one remembered for this scene and zone
-  2. the surface with the same role, first in `zones.json` order
-  3. a surface of the same kind (`strip.*` roles a strip, `canvas.*` roles a canvas): the one whose cell count is nearest the scene's `led_count` when it has one, else the one with the most cells; ties in `zones.json` order. Other roles (`points.*`) match by steps 1 and 2 only.
-  4. a surface qualifies in steps 2 and 3 only with at least as many cells as the role's effects need (`min_elements` in the catalog)
-  5. the item's `fallbacks` for the role; then, for a `strip.*` role, `canvas.room`, else the zone's first canvas
-  6. otherwise the role is skipped and the answer says so
-
-  The copy lists a bound role's layers under the bound surface's role, which is how the engine finds them, so surfaces that share a role share layers.
+- **A scene of the show** is only made the zone's active scene. **A pack item's copy** goes into the zone's active scene in place, when no other zone has that scene active, and otherwise into a new scene that becomes the zone's active one. It carries the item's name, tags and macros, its layers bound and scaled as below, and `provenance {pack, version, item, hash}`. The node keeps the copy as written in `applied/` (named by a hash of the scene's id), the base for a later merge.
+- **Binding:** overrides first (the request's, then those remembered for this scene and zone), then for each role in byte order of its name: the surface with the same role, else one of the same kind nearest the scene's size, else the item's fallbacks, then `canvas.room` for a strip role; a surface must have enough cells for the role's effects, and no two roles bind to surfaces that share a role. Roles left over are skipped and reported. The rules in full are [ADR-0038](../decisions/ADR-0038-content-library.md) D12. The copy lists a bound role's layers under the bound surface's role, which is how the engine finds them.
 - **Remembered overrides** are the show's `bindings`, per zone and scene. Naming a surface for a role remembers it; naming `""` returns the role to automatic.
 - **Scaling:** `cells` regions of a scene with a `led_count` are scaled to the bound surface's width as the studio scales saved presets (`scaleSegments()`), halves rounding up. `relative` and `rect` regions need nothing.
-- **Re-apply, keeping my changes:** a three-way merge of the scene now (mine), the base kept at the last apply, and the item as an apply would write it now (theirs). A value mine left as it was takes theirs; a value mine changed stays. Layers and macros are matched by id; a list is one value; layers the user added stay, layers they removed stay removed, and new layers of the item arrive.
+- **Re-apply, keeping my changes:** a three-way merge of the scene now (mine), the base kept at the last apply, and the item as an apply would write it now (theirs): a value mine left as it was takes theirs, a value mine changed stays, and theirs becomes the next base. The rules for layers, macros and lists are [ADR-0038](../decisions/ADR-0038-content-library.md) D15.
 - **Macros** are evaluated by clients, which write the parameters a knob drives. The node and the engine ignore them.
 
 ## Simplicity and control
@@ -67,11 +59,11 @@ Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D11 to D16.
 
   | Pack | Holds |
   |---|---|
-  | `folo/core` | 9 palettes, 25 reactions (the reactive presets, with their groups as hints), the scene `default` (today's reset segments) and the menu's 8 categories |
+  | `folo/core` | 9 palettes, 25 reactions (the reactive presets, with their groups as hints), the scene `default` (today's reset segments) and the menu's 8 categories (`mine` filled by rule with the local packs' scenes) |
   | `folo/genres` | 14 scenes, one per genre preset |
   | `folo/effects` | 32 scenes: the 14 effects and the 18 LedFx-inspired effects |
 
-- **Stable ids** replace links by name: `genre:edm` becomes `folo/genres:edm`, `fx:beat-sync` becomes `folo/effects:beat-sync`. The **alias table** (`packs/aliases.json`) keeps every existing `fx:*` and `genre:*` id working, in `default_scene` and when applying. A bare id names a scene of the show, else a saved preset in `local/my-presets`.
+- **Stable ids** replace links by name: `genre:edm` becomes `folo/genres:edm`, `fx:beat-sync` becomes `folo/effects:beat-sync`. The **alias table** (`packs/aliases.json`) keeps every existing `fx:*` and `genre:*` id working, in `default_scene` and when applying. A bare id names a scene of the show, else a saved preset in `local/my-presets` ([ADR-0038](../decisions/ADR-0038-content-library.md) D2).
 - **As data:** each built-in scene has one role, `strip.main`, and one `audio-visualizer` layer per segment its builder makes, placed by a `relative` region with `snap: nearest` at the builder's fractions, so it gives the builder's LEDs at every length. Until the UI's switch-over removes `web/`, `scripts/build_packs.py` generates the packs from the builders, and CI checks they are up to date and equivalent (the built-in golden frames byte for byte, and the layers at lengths from 1 to 2000).
 - The seven bands and six colour ranges of the editors stay in the UI.
 - **Reset all** moves to the controller (`POST /show/reset`), so it works from any client and without a UI: each zone gets the default scene, else `folo/core:default`, with master 1 and a black background.

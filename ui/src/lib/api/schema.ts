@@ -190,7 +190,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded. */
+                /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded; the limit applies to the decoded text (ADR-0038 D2). */
                 ref: components["parameters"]["SceneRef"];
             };
             cookie?: never;
@@ -835,7 +835,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Replace the documents and the library with a backup's, at most 64 MB (admin; ADR-0038 D27) */
+        /** Replace the documents and the library with a backup's, at most 256 MB (admin; ADR-0038 D27) */
         post: operations["restoreBackup"];
         delete?: never;
         options?: never;
@@ -3436,7 +3436,7 @@ export interface components {
         Id: string;
         /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
         Pack: string;
-        /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded. */
+        /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded; the limit applies to the decoded text (ADR-0038 D2). */
         SceneRef: string;
         ItemType: components["schemas"]["ItemType"];
         Item: string;
@@ -3734,7 +3734,7 @@ export interface operations {
                 "If-Match"?: components["parameters"]["IfMatch"];
             };
             path: {
-                /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded. */
+                /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded; the limit applies to the decoded text (ADR-0038 D2). */
                 ref: components["parameters"]["SceneRef"];
             };
             cookie?: never;

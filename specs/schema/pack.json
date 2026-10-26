@@ -46,7 +46,7 @@
         "id": {"$ref": "common.json#/$defs/Id", "default": ""},
         "name": {"$ref": "common.json#/$defs/Name", "default": "Category"},
         "description": {"type": "string", "maxLength": 500, "default": ""},
-        "items": {"description": "Item references (author/pack:item), in order.", "type": "array", "items": {"type": "string", "maxLength": 160}, "maxItems": 500, "default": []}
+        "items": {"description": "Item references (author/pack:item), in order.", "type": "array", "items": {"type": "string", "maxLength": 130}, "maxItems": 500, "default": []}
       },
       "additionalProperties": false
     },
@@ -103,8 +103,8 @@
         "name": {"$ref": "common.json#/$defs/Name", "default": "Look"},
         "effect": {"$ref": "show.json#/$defs/EffectRef", "default": {}},
         "params": {"type": "object", "default": {}},
-        "reaction": {"type": "string", "maxLength": 160, "default": ""},
-        "palette": {"type": "string", "maxLength": 160, "default": ""}
+        "reaction": {"type": "string", "maxLength": 130, "default": ""},
+        "palette": {"type": "string", "maxLength": 130, "default": ""}
       },
       "additionalProperties": false
     },

@@ -9,11 +9,11 @@ Behaviour specifications of effects and of the scenes built on them, written so 
 The six moving modes and the 18 LedFx-inspired effects were ported with reference to LedFx's source, which is GPL-3.0. Each is rewritten before the first public binary release:
 
 1. **Specified:** someone who hasn't read LedFx's code or FOLO's port of it writes `docs/specs/effects/<id>.md` from observation (LedFx running, or FOLO's output) and LedFx's documentation. The specification says what the item draws, from which inputs, with which parameters and edge cases, precisely enough for golden tests. Its pull request names the writer's role (not their name) and states that rule was kept.
-2. **Rewritten:** someone given only the specification (a person, or a fresh agent session) reimplements the item, without the current code of that mode or scene. Its pull request says so. The goldens of what changed are regenerated, a behaviour change a maintainer approves.
+2. **Rewritten:** someone given only the specification (a person, or an agent session) reimplements the item. They work in a checkout without the item's current code (the mode code of `source/folo_source/effects/visualizers.py`, `web/`, and the scene in `packs/folo/effects/`), as a sparse checkout or a branch where it is removed, with no web access. Its pull request says so, and a maintainer reviews it for structure that follows LedFx rather than the specification (a model's training may have seen LedFx's public code). The goldens of what changed are regenerated, a behaviour change a maintainer approves.
 
 The descriptions of the rewritten content keep "LedFx-inspired".
 
-**The gate is a test.** `tests/test_clean_room_gate.py` checks that the table below names exactly the scenes tagged `LedFx` in the built-in packs and the engine's moving modes (`MOTION_MODES`), and that every row past `ported` has its specification file. With `FOLO_RELEASE_GATE=1`, which the release workflow sets, it fails unless every row is `rewritten`, so no public binary is built before that.
+**The gate is a test.** `tests/test_clean_room_gate.py` checks that the table below names exactly the scenes tagged `LedFx` in the built-in packs and the engine's moving modes (`MOTION_MODES`), and that every row past `ported` has its specification file. With `FOLO_RELEASE_GATE=1`, which every publishing workflow sets (`release.yml` and `docker.yml`, `edge` images included), it fails unless every row is `rewritten`, so no public binary is published before that.
 
 **Statuses:** `ported` (as today), `specified` (the specification is merged) and `rewritten` (reimplemented from it).
 

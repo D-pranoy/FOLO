@@ -119,7 +119,7 @@ Status: Accepted · Implementation: Not started
    4. Upload artifacts, `SHA256SUMS`, `latest.json`, `folo-update.json` and signatures.
    5. Attest build provenance for every artifact.
    6. Publish after the `release` environment's approval.
-4. **`docker.yml`:** multi-arch push to `ghcr.io/d-pranoy/folo` with tags `X.Y.Z`, `X.Y`, `latest` (stable) and `edge` (the default branch, `v1` during the rebuild); provenance (max mode), SBOM, attestations.
+4. **`docker.yml`:** multi-arch push to `ghcr.io/d-pranoy/folo` with tags `X.Y.Z`, `X.Y`, `latest` (stable) and `edge` (the default branch, `v1` during the rebuild); provenance (max mode), SBOM, attestations. It runs the clean-room rewrite gate with `FOLO_RELEASE_GATE=1` before any push, `edge` included, so no image is published until the gate is closed ([ADR-0038](../decisions/ADR-0038-content-library.md) D24).
 5. **`release-please.yml`:** the release PR and changelog; versions kept in sync across `package.json`, `Cargo.toml` and `tauri.conf.json`.
    - Pull requests and tags made with the default `GITHUB_TOKEN` don't trigger workflows: release PRs would get no CI, and its tags wouldn't start `release.yml`.
    - So the workflow uses a GitHub App installation token (for example through `actions/create-github-app-token`, pinned to a SHA). The repository owner creates a small FOLO release App and stores its app id and private key as secrets ([governance](../process/governance.md#key-custody)).
