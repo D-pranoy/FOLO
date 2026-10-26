@@ -75,7 +75,7 @@ Decided in [ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md), wh
 - It applies to all content, including third-party packs and screen sync.
 - **Warnings:** FOLO shows a photosensitive epilepsy warning on the first run, beside each zone's switch while it's off, and in Settings, which can turn it on for all zones. Built-in effects that flash quickly carry a "Flashing" badge ([user interface](ui.md#photosensitivity)).
 
-A target's chain, and so its limiter's history and its delay line, is kept when the configuration changes but leaves the target's calibration, capabilities, element count, delay and its zone's limiter setting as they were, so an edit elsewhere can't let a fourth flash through. A chain belongs to a zone: a target that another zone starts driving starts with a new one.
+**The limiter's history outlives changes of settings.** A target's chain is kept when the configuration changes but leaves the target's calibration, capabilities, element count, delay and its zone's limiter setting as they were. When any of them changes, the new chain takes over the old one's history: each element's run and the flashes in its window. A zone that takes a target (the same id) over from another zone takes its history too. So no edit or hand-over can let a fourth flash through. Two targets with different ids on overlapping addresses keep separate histories; the activation check keeps them out of two active zones at once, and a test pattern on one is refused while the other is driven.
 
 ### Algorithm
 

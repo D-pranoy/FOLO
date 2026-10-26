@@ -126,14 +126,14 @@ Decided in [ADR-0036](../decisions/ADR-0036-controller-output.md) D3 to D6, with
 | `position` | Each element shows its position in the zone's box as red, green and blue: `(x + bx/2) / bx`, `(y + by/2) / by` and `z / bz`, each × 255. An element without a position (an unplaced path) is dark. |
 
 - A pattern replaces what its targets show: the frames come in place of the projected ones, so they go through the adapters (the [flash limiter](../architecture/capabilities.md#flash-limiter) included) and appear on the `target:<id>` topics. A target running a pattern is driven, so it is started and released like one ([providers](../architecture/providers.md#lifecycle)).
-- A new test on targets that already run one **replaces** it.
+- A new test on targets that already run one **replaces** it. A pattern ends early when another active zone comes to drive its target.
 - A target that **another active zone drives** is refused with 409 `target_busy`, with the refused targets in `details.targets`, and nothing starts. "Drives" uses the [shared-target](../architecture/spatial-model.md#zone-activation-rules) rule: the same target id, or overlapping addresses on its provider instance. The targets of an inactive zone can be tested.
 - A zone or target that isn't there gets 404 `not_found`. A body that isn't a `TestRequest` (an unknown field, a pattern that isn't listed, `seconds` outside 1–60) gets 400 `bad_body`; an empty body takes the defaults.
 
 ### Providers
 
 - **Discovery:** `POST /providers/discover` answers the devices every registered provider kind found, as a list of `DiscoveredDevice`s: empty until a provider arrives. It changes no configuration ([providers](../architecture/providers.md#describe-discover-and-administration)).
-- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`. An instance that is disabled has no provider running and gets 409 `provider_disabled`; one that isn't in `providers.json` gets 404 `not_found`.
+- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`. An instance that is disabled has no provider running and gets 409 `provider_disabled`; one that isn't in `providers.json` gets 404 `not_found`; a body the action can't take gets 400 `bad_body`. In the source role the controller's configuration is dormant ([control plane](../architecture/control-plane.md)): no provider runs, so administration answers 409 `provider_disabled` for every instance and test patterns 404 `not_found`.
 - **States:** `ProviderStatus.state` here and `ProviderLive.state` on the live channel are two lists for one thing, mapped as in [providers](../architecture/providers.md#states): `stopped` is `off`, `connecting` is `disconnected`, `connected` and `error` are the same. A kind without an implementation is `stopped` here and `off` on the live channel, where its `message` says "arrives with RB-NN" (`ProviderStatus` has no message).
 
 ### Requests to sources
@@ -161,7 +161,7 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
   | `levels:<source>` | `levels` messages, one per surface of the source |
   | `spectrum:<source>` | signal frames: the source's [spectrum](source-link.md#signal-frames) |
   | `surface:<id>` | surface frames: the surface's pixels |
-  | `target:<id>` | surface frames: the target's projected element colours after the ambient light and before the adapters (`rgb8`, one row of as many cells as the target has elements) |
+  | `target:<id>` | surface frames: the target's projected element colours after the ambient light and before the adapters (`rgb8`, one row of as many cells as the target has elements; the timestamp is the controller's clock, and a frame is sent when the colours change) |
 
 - **Server → client:**
   - JSON messages: `status`, `levels`, `config_changed {document, revision}`, `event` (job progress, update states), and `subscribed`, which acknowledges a subscription and gives each binary topic its frame index.

@@ -268,7 +268,10 @@ fn ambient_case(case: &Case) -> i16 {
 /// the legacy float sum of the steps reaches the 0.3 s pause exactly, the clock's sum of rounded
 /// microseconds lands a step later, and the fade starts one step late. The compositor's own test
 /// (`crates/folo-compositor/tests/ambient_golden.rs`) holds every case to ±1 in the legacy
-/// path's own seconds and shows the same one-step shift on a clock.
+/// path's own seconds and shows the same one-step shift on a clock. A clock that reads the
+/// legacy running sum (rounded once) brings `ambient-auto-paused` to 1 but `ambient-auto-solid`
+/// to 5: on a microsecond clock some threshold lands a step off either way
+/// (`docs/architecture/pipeline.md#parity-mode`).
 #[test]
 fn the_ambient_light_matches_the_legacy_frames() {
     let manifest: Manifest =

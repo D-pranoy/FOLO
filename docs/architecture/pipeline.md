@@ -136,7 +136,7 @@ Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR
      - A zone is **quiet** while none of the sources feeding it reports `active` in its latest `activity` notification, which is instantaneous: the loudest bin, without gain, at or above −70 dB now. The controller counts `quiet_s` on its own clock and ignores the sources' own `quiet_s`.
      - It is **paused** when at least one linked source of the zone has a media session (state `playing`, `paused` or `stopped`) and all of those report `paused`. A zone fed only by sources without a session, such as a game or a line-in, is never paused.
      - A zone with no source at all is quiet from the moment it starts, so its ambient light shows.
-     - A zone that becomes active starts reactive, with its silence counted from then on.
+     - A zone that becomes active starts reactive, with its silence counted from then on, and its targets' delay lines start empty, so frames from before it went off don't come out.
    - **The ambient light** is a colour × level, solid or breathing (30–100% over 8 s). It fades in over 1.5 s (eased) and back out over 0.15 s, so the first beat after a pause still shows.
    - **Where it is blended:** into each of the zone's composited surfaces, before projection. The ambient colour is `colour × level × master` of that surface (times the breathing factor, 0.3 to 1, for `breathe`), and the composite, which already carries `master`, is mixed towards it by the fade. That equals the current engine's `mix(segments, ambient) × master`, whose frames the golden tests compare within ±1. The result is truncated to `rgb8`. A fade of 0 leaves the frame untouched, byte for byte.
    - It replaces the earlier "idle scene or black" fallback, and it shows even when no source is connected.
@@ -155,7 +155,7 @@ Configurations migrated from the current studio map to:
 
 **What must match:**
 - **Reactive output:** the bytes sent to Hyperion **must equal** the current engine's output for the same audio.
-- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
+- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). The tests hold the light's maths to this stepped in the current engine's own seconds. Stepped on the controller's microsecond clock, a switch the current engine's float sum of steps reaches exactly (the 0.3 s pause) can land one step later, which moves that fade by up to 4 per channel; the full path's test allows that in `ambient-auto-paused` alone.
 
 Golden-frame tests enforce both ([testing policy](../process/testing-policy.md)).
 

@@ -350,27 +350,28 @@ impl Supervisor {
     /// The configuration the engine gets, without its revision; `None`
     /// sends nothing, as in the source role before its controller sends one.
     pub fn set_config(&self, config: Option<Value>) {
-        let mut moved = false;
-        self.shared.config.send_if_modified(|current| {
-            if *current == config {
-                false
-            } else {
-                moved = surfaces_of(current.as_ref()) != surfaces_of(config.as_ref());
-                *current = config;
-                true
-            }
-        });
         // Frames and levels are kept by surface index: once the surfaces
-        // move, what was received under an index may be another surface's
-        if moved {
-            let mut state = self.shared.lock();
-            state
-                .received
-                .frames
-                .retain(|(kind, _), _| *kind != SURFACE_FRAME);
-            state.received.levels.clear();
-            state.apply_pending = true;
+        // move, what was received under an index may be another surface's.
+        // They are dropped, and surface frames refused until the engine
+        // answers the new configuration, before it is published, so the link
+        // can't send and clear that before the flag is set
+        {
+            let current = self.shared.config.borrow();
+            if *current == config {
+                return;
+            }
+            if surfaces_of(current.as_ref()) != surfaces_of(config.as_ref()) {
+                drop(current);
+                let mut state = self.shared.lock();
+                state
+                    .received
+                    .frames
+                    .retain(|(kind, _), _| *kind != SURFACE_FRAME);
+                state.received.levels.clear();
+                state.apply_pending = true;
+            }
         }
+        self.shared.config.send_replace(config);
     }
 
     /// The worker's state.

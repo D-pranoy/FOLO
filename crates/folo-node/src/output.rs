@@ -22,7 +22,7 @@ use folo_store::Doc;
 use folo_supervisor::Stamped;
 use folo_supervisor::config::LOCAL_SOURCE;
 use serde_json::Value;
-use tokio::task::JoinSet;
+use tokio::task::JoinHandle;
 use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::live::ConfigSummary;
@@ -49,17 +49,15 @@ enum InstanceState {
     /// Its kind refused to make it.
     Failed(String),
     Running(Box<Running>),
-    /// Its sender starts once the one it replaces has stopped.
+    /// Its sender starts once the ones it had before have stopped.
     Starting(Box<Starting>),
 }
 
-/// An instance whose sender is about to start.
+/// An instance whose sender starts once every sender it had before has stopped.
 struct Starting {
     key: (Value, Vec<SenderTarget>),
     provider: Arc<dyn Provider>,
     config: SenderConfig,
-    /// The sender it replaces, until the output task stops it.
-    retiring: Option<SenderHandle>,
 }
 
 /// What the engine's link sent that the output task has taken.
@@ -99,8 +97,9 @@ pub struct Output {
     core: Mutex<OutputCore>,
     configured: Mutex<Configured>,
     instances: Mutex<BTreeMap<String, InstanceState>>,
-    /// Senders being stopped: an instance that changed or went away releases its targets.
-    retiring: Mutex<JoinSet<()>>,
+    /// Senders being stopped, by instance: an instance that changed, went away or was disabled
+    /// releases its targets, and a sender of the same instance starts only once they're done.
+    retiring: Mutex<HashMap<String, Vec<JoinHandle<()>>>>,
     intake: Mutex<Intake>,
     published: Mutex<Published>,
 }
@@ -128,7 +127,7 @@ impl Output {
             core: Mutex::new(OutputCore::new()),
             configured: Mutex::new(Configured::default()),
             instances: Mutex::new(BTreeMap::new()),
-            retiring: Mutex::new(JoinSet::new()),
+            retiring: Mutex::new(HashMap::new()),
             intake: Mutex::new(Intake::default()),
             published: Mutex::new(Published::default()),
         }
@@ -163,7 +162,6 @@ impl Output {
                 _ = stop.wait_for(|stopping| *stopping) => break,
             }
             node.output.step(&node);
-            node.output.start_pending().await;
         }
     }
 
@@ -176,6 +174,7 @@ impl Output {
         self.take_engine_data(node, &mut core, now);
         let mut out = core.step(now);
         drop(core);
+        self.start_ready();
         for (id, state) in locked(&self.instances).iter() {
             if let InstanceState::Running(running) = state {
                 // An instance this step leaves out drives nothing: the empty frame releases it
@@ -186,7 +185,7 @@ impl Output {
                 running.sender.submit(frame);
             }
         }
-        self.publish(out.targets, out.zones);
+        self.publish(now, out.targets, out.zones);
     }
 
     /// Applies the zones and the providers when either changed: the core's plans and chains,
@@ -223,6 +222,13 @@ impl Output {
                     log::warn!("zone {zone}: {}: {} (skipped)", issue.path, issue.message);
                 }
             }
+            // A pattern ends when another active zone now drives its target, on overlapping
+            // addresses too (the core ends those that share the id)
+            for (zone, target) in core.patterns() {
+                if zones::busy(&zones_doc, &zone, &target) {
+                    core.stop_pattern(&target);
+                }
+            }
         }
         drop(configured);
         self.reconcile(node, &providers_doc, &zones);
@@ -240,7 +246,7 @@ impl Output {
             .as_array()
             .into_iter()
             .flatten()
-            .map(|p| (p.clone(), serde_json::from_value(p.clone()).ok()))
+            .map(|p| (p.clone(), folo_provider::instance_of(p).ok()))
             .collect();
         let mut secrets: Option<Value> = None;
         let mut held = locked(&self.instances);
@@ -262,22 +268,27 @@ impl Output {
             held.insert(id, state);
         }
         // Instances that went away, or stopped running, release their targets
-        for (_, state) in before {
-            let sender = match state {
-                InstanceState::Running(running) => Some(running.sender),
-                InstanceState::Starting(starting) => starting.retiring,
-                _ => None,
-            };
-            if let Some(sender) = sender {
-                locked(&self.retiring).spawn(sender.shutdown());
+        for (id, state) in before {
+            if let InstanceState::Running(running) = state {
+                self.retire(&id, running.sender);
             }
         }
     }
 
+    /// Stops a sender on a task of its own: it releases its targets and disconnects, and the
+    /// instance's next sender waits for it.
+    fn retire(&self, id: &str, sender: SenderHandle) {
+        locked(&self.retiring)
+            .entry(id.to_owned())
+            .or_default()
+            .push(tokio::spawn(sender.shutdown()));
+    }
+
     /// An enabled instance of a registered kind: its running sender kept when nothing it was
-    /// made from changed, or a new one to start. A sender that is replaced is stopped first, so
-    /// its releases can't undo what its successor starts; the output task does both
-    /// ([`start_pending`](Self::start_pending)). The provider is kept when only the targets changed.
+    /// made from changed, or a new one to start. A sender that is replaced is stopped on a task
+    /// of its own, and its successor starts only once it has, so its releases can't undo what
+    /// the successor starts ([`start_ready`](Self::start_ready)). The provider is kept when only
+    /// the targets changed.
     fn instance_state(
         &self,
         instance: &ProviderInstance,
@@ -287,7 +298,6 @@ impl Output {
         previous: Option<InstanceState>,
     ) -> InstanceState {
         let id = instance.id.as_str();
-        // what ran before: its key, its provider and the sender to stop before a new one starts
         let (old_key, old_provider, old_sender) = match previous {
             Some(InstanceState::Running(running)) => {
                 let Running {
@@ -298,13 +308,7 @@ impl Output {
                 (Some(key), Some(provider), Some(sender))
             }
             Some(InstanceState::Starting(starting)) => {
-                let Starting {
-                    key,
-                    provider,
-                    retiring,
-                    ..
-                } = *starting;
-                (Some(key), Some(provider), retiring)
+                (Some(starting.key), Some(starting.provider), None)
             }
             _ => (None, None, None),
         };
@@ -319,7 +323,7 @@ impl Output {
                 Err(error) => {
                     log::warn!("provider {id}: {error}");
                     if let Some(sender) = old_sender {
-                        locked(&self.retiring).spawn(sender.shutdown());
+                        self.retire(id, sender);
                     }
                     return InstanceState::Failed(error.to_string());
                 }
@@ -327,47 +331,39 @@ impl Output {
         };
         let config = SenderConfig::from_instance(instance, provider.delivery_policy(), targets);
         let key = (raw, config.targets.clone());
-        if old_key.as_ref() == Some(&key)
-            && let Some(sender) = old_sender
-        {
-            return InstanceState::Running(Box::new(Running {
-                key,
-                provider,
-                sender,
-            }));
+        // Only a running sender is kept, and only when nothing it was made from changed
+        if let Some(sender) = old_sender {
+            if old_key.as_ref() == Some(&key) {
+                return InstanceState::Running(Box::new(Running {
+                    key,
+                    provider,
+                    sender,
+                }));
+            }
+            self.retire(id, sender);
         }
         InstanceState::Starting(Box::new(Starting {
             key,
             provider,
             config,
-            retiring: old_sender,
         }))
     }
 
-    /// Starts the senders waiting to: each after the sender it replaces has released its
-    /// targets. Only the output task calls it.
-    async fn start_pending(&self) {
-        let mut stopping = JoinSet::new();
-        let mut waiting = false;
-        for state in locked(&self.instances).values_mut() {
-            if let InstanceState::Starting(starting) = state {
-                waiting = true;
-                if let Some(sender) = starting.retiring.take() {
-                    stopping.spawn(sender.shutdown());
-                }
-            }
-        }
-        if !waiting {
-            return;
-        }
-        while stopping.join_next().await.is_some() {}
+    /// Starts the senders of the instances whose earlier senders have all stopped, and forgets
+    /// the stops that are done. It never waits: a slow device delays only its own instance.
+    fn start_ready(&self) {
+        // instances before retiring, as `reconcile` takes them
         let mut instances = locked(&self.instances);
+        let mut retiring = locked(&self.retiring);
+        retiring.retain(|_, stops| {
+            stops.retain(|stop| !stop.is_finished());
+            !stops.is_empty()
+        });
         for (id, state) in instances.iter_mut() {
             let InstanceState::Starting(starting) = state else {
                 continue;
             };
-            if starting.retiring.is_some() {
-                // replaced again meanwhile: the next step stops that one first
+            if retiring.contains_key(id) {
                 continue;
             }
             *state = match spawn_sender(Arc::clone(&starting.provider), starting.config.clone()) {
@@ -417,6 +413,15 @@ impl Output {
             };
             (frames, newer("activity"), newer("media"), received.updates)
         });
+        // A configuration published while the frames were read may have renumbered them:
+        // nothing is taken, and the next step reads them again under the new numbering
+        let moved = node
+            .supervisor
+            .with_config(|config| config.map(ConfigSummary::of).unwrap_or_default())
+            != summary;
+        if moved {
+            return;
+        }
         intake.update = newest;
         for (index, bytes) in frames {
             let Some(surface) = summary.surfaces.get(usize::from(index)) else {
@@ -449,7 +454,12 @@ impl Output {
     }
 
     /// Keeps the step's target frames, as `FOLS` bytes, and the zones' state for the live channel.
-    fn publish(&self, targets: BTreeMap<String, Vec<u8>>, zones: BTreeMap<String, ZoneLive>) {
+    fn publish(
+        &self,
+        now: u64,
+        targets: BTreeMap<String, Vec<u8>>,
+        zones: BTreeMap<String, ZoneLive>,
+    ) {
         let mut published = locked(&self.published);
         published.zones = zones;
         published.targets.retain(|id, _| targets.contains_key(id));
@@ -464,7 +474,7 @@ impl Output {
             let sequence = published.sequences.entry(id.clone()).or_insert(0);
             *sequence = sequence.wrapping_add(1);
             let width = u16::try_from(bytes.len() / 3).unwrap_or(u16::MAX);
-            let frame = SurfaceFrame::new(0, *sequence, 0, width, 1, Pixels::Rgb8(bytes));
+            let frame = SurfaceFrame::new(0, *sequence, now, width, 1, Pixels::Rgb8(bytes));
             let Ok(encoded) = encode_surface(&frame) else {
                 continue;
             };
@@ -562,18 +572,18 @@ impl Output {
     /// times its `release_timeout`).
     pub async fn shutdown(&self) {
         let instances = std::mem::take(&mut *locked(&self.instances));
-        let mut stopping = std::mem::take(&mut *locked(&self.retiring));
-        for (_, state) in instances {
-            let sender = match state {
-                InstanceState::Running(running) => Some(running.sender),
-                InstanceState::Starting(starting) => starting.retiring,
-                _ => None,
-            };
-            if let Some(sender) = sender {
-                stopping.spawn(sender.shutdown());
+        for (id, state) in instances {
+            if let InstanceState::Running(running) = state {
+                self.retire(&id, running.sender);
             }
         }
-        while stopping.join_next().await.is_some() {}
+        let stopping: Vec<JoinHandle<()>> = std::mem::take(&mut *locked(&self.retiring))
+            .into_values()
+            .flatten()
+            .collect();
+        for stop in stopping {
+            let _ = stop.await;
+        }
     }
 }
 

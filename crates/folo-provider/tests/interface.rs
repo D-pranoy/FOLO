@@ -217,6 +217,38 @@ fn admin_errors_carry_their_http_answer() {
     assert_eq!(missing.to_string(), "arrives with RB-12");
     let device: AdminError = ProviderError::Unreachable("no answer".to_owned()).into();
     assert_eq!((device.status(), device.code()), (502, "provider_error"));
+    let bad = AdminError::BadRequest("brightness must be 0-255".to_owned());
+    assert_eq!((bad.status(), bad.code()), (400, "bad_body"));
+}
+
+/// The untagged settings union would read WLED settings without `transport` and `timeout_s` as
+/// Hyperion's; `instance_of` reads them as the instance's kind says.
+#[test]
+fn settings_are_read_as_the_instances_kind() {
+    let wled =
+        json!({"id": "w", "kind": "wled", "settings": {"kind": "wled", "host": "strip.local"}});
+    let untagged: folo_protocol::generated::ProviderInstance =
+        serde_json::from_value(wled.clone()).unwrap();
+    assert!(matches!(
+        untagged.settings,
+        folo_protocol::generated::ProviderSettings::HyperionSettings(_)
+    ));
+    let instance = folo_provider::instance_of(&wled).unwrap();
+    let folo_protocol::generated::ProviderSettings::WledSettings(settings) = instance.settings
+    else {
+        panic!("not WLED's settings");
+    };
+    assert_eq!(settings.host.as_str(), "strip.local");
+    let hue = json!({"id": "h", "kind": "hue", "settings": {"kind": "hue"}});
+    assert!(matches!(
+        folo_provider::instance_of(&hue).unwrap().settings,
+        folo_protocol::generated::ProviderSettings::HueSettings(_)
+    ));
+    let hyperion = json!({"id": "y", "kind": "hyperion"});
+    assert!(matches!(
+        folo_provider::instance_of(&hyperion).unwrap().settings,
+        folo_protocol::generated::ProviderSettings::HyperionSettings(_)
+    ));
 }
 
 #[test]

@@ -145,11 +145,12 @@ impl ZoneOutput {
             })
             .collect();
         let ambient_settings = AmbientSettings::from_zone(zone);
+        let comes_on = zone.active && before.as_ref().is_some_and(|b| !b.active);
         let (mut compositor, ambient, mut kept) = match before {
             Some(before) => {
                 let mut ambient = before.ambient;
                 // a zone that comes on starts reactive, with its silence counted from now
-                if zone.active && !before.active {
+                if comes_on {
                     ambient = ZoneAmbient::new(ambient_settings);
                 } else {
                     ambient.configure(ambient_settings);
@@ -182,18 +183,29 @@ impl ZoneOutput {
                     limiter,
                 ]);
                 let layout = element_layout(target);
-                let reused = kept
+                let before = kept
                     .iter()
-                    .position(|t| t.id == *target.id && t.settings == settings)
+                    .position(|t| t.id == *target.id)
                     .map(|at| kept.swap_remove(at));
-                let (chain, projected) = match reused {
-                    Some(t) if t.projected.len() == layout.len() => (t.chain, t.projected),
-                    Some(t) => (t.chain, vec![[0.0; 3]; layout.len()]),
-                    None => (
-                        AdapterChain::new(target, limiter, delay),
-                        vec![[0.0; 3]; layout.len()],
-                    ),
+                let (mut chain, projected) = match before {
+                    Some(t) if t.settings == settings => (t.chain, t.projected),
+                    // new settings: a new chain, which carries on with the old one's flashes
+                    Some(mut t) => {
+                        let mut chain = AdapterChain::new(target, limiter, delay);
+                        chain.inherit_limiter(&mut t.chain);
+                        (chain, t.projected)
+                    }
+                    None => (AdapterChain::new(target, limiter, delay), Vec::new()),
                 };
+                let projected = if projected.len() == layout.len() {
+                    projected
+                } else {
+                    vec![[0.0; 3]; layout.len()]
+                };
+                // frames from before the zone went off mustn't come out of the delay line
+                if comes_on {
+                    chain.clear_delay();
+                }
                 TargetSlot {
                     id: target.id.as_str().to_owned(),
                     instance: target.provider.instance.as_str().to_owned(),
@@ -240,6 +252,9 @@ pub struct OutputCore {
     zones: Vec<ZoneOutput>,
     patterns: HashMap<String, Running>,
     media: HashMap<String, Media>,
+    /// The zone that last drove each target, so a zone taking a target over takes its flash
+    /// limiter's history too.
+    drivers: HashMap<String, String>,
 }
 
 impl OutputCore {
@@ -274,13 +289,31 @@ impl OutputCore {
         for gone in before.keys() {
             self.projector.forget(gone);
         }
+        // a pattern ends with its zone or target, and when another active zone now drives its
+        // target (overlapping addresses under another id are the caller's to end: `stop_pattern`)
         let zones = &self.zones;
         self.patterns.retain(|target, running| {
-            zones
-                .iter()
-                .any(|z| z.id == running.zone && z.targets.iter().any(|t| t.id == *target))
+            let has = |z: &ZoneOutput| z.targets.iter().any(|t| t.id == *target);
+            zones.iter().any(|z| z.id == running.zone && has(z))
+                && !zones
+                    .iter()
+                    .any(|z| z.id != running.zone && z.active && has(z))
         });
         issues
+    }
+
+    /// The running patterns: their zone and target.
+    #[must_use]
+    pub fn patterns(&self) -> Vec<(String, String)> {
+        self.patterns
+            .iter()
+            .map(|(target, running)| (running.zone.clone(), target.clone()))
+            .collect()
+    }
+
+    /// Ends the pattern on `target`, if one runs.
+    pub fn stop_pattern(&mut self, target: &str) {
+        self.patterns.remove(target);
     }
 
     /// The first effectively active zone with the surface `surface`, which is the one the
@@ -351,11 +384,18 @@ impl OutputCore {
             .iter()
             .find(|z| z.id == zone)
             .ok_or(PatternError::UnknownZone)?;
+        // display targets are validated, never executed (ADR-0036 D12)
+        let runs = |t: &&TargetSlot| t.layout.shape() != Shape::Display;
         if targets.is_empty() {
-            return Ok(found.targets.iter().map(|t| t.id.clone()).collect());
+            return Ok(found
+                .targets
+                .iter()
+                .filter(runs)
+                .map(|t| t.id.clone())
+                .collect());
         }
         for id in targets {
-            if !found.targets.iter().any(|t| t.id == *id) {
+            if !found.targets.iter().filter(runs).any(|t| t.id == *id) {
                 return Err(PatternError::UnknownTarget(id.clone()));
             }
         }
@@ -398,6 +438,7 @@ impl OutputCore {
     /// and adapted; the running patterns in place of their targets' colours.
     pub fn step(&mut self, now_us: u64) -> StepOutput {
         self.patterns.retain(|_, running| now_us < running.until_us);
+        self.hand_over();
         let mut out = StepOutput::default();
         let mut outputs: BTreeMap<String, Vec<TargetOutput>> = BTreeMap::new();
         let mut buffer = Vec::new();
@@ -456,6 +497,9 @@ impl OutputCore {
                 else {
                     continue;
                 };
+                if target.layout.shape() == Shape::Display {
+                    continue;
+                }
                 let mut colours = vec![[0.0; 3]; target.layout.len()];
                 running.pattern.render(
                     now_us.saturating_sub(running.started_us),
@@ -471,6 +515,51 @@ impl OutputCore {
             .map(|(instance, targets)| (instance, ElementFrame::new(now_us, targets)))
             .collect();
         out
+    }
+}
+
+impl OutputCore {
+    /// Which zone drives each target this step: the zone of its pattern, else the active zone
+    /// that has it. A target another zone drove before passes its limiter's history on, so a
+    /// take-over can't open a fresh window on the same lights.
+    fn hand_over(&mut self) {
+        let mut now: HashMap<String, usize> = HashMap::new();
+        for (index, zone) in self.zones.iter().enumerate() {
+            for target in &zone.targets {
+                let pattern = self.patterns.get(&target.id).map(|r| r.zone.as_str());
+                let drives = match pattern {
+                    Some(owner) => owner == zone.id,
+                    None => zone.active,
+                };
+                if drives {
+                    now.entry(target.id.clone()).or_insert(index);
+                }
+            }
+        }
+        for (target, &to) in &now {
+            let from = self
+                .drivers
+                .get(target)
+                .and_then(|id| self.zones.iter().position(|z| z.id == *id));
+            if let Some(from) = from.filter(|from| *from != to) {
+                let (a, b) = if from < to {
+                    let (left, right) = self.zones.split_at_mut(to);
+                    (&mut left[from], &mut right[0])
+                } else {
+                    let (left, right) = self.zones.split_at_mut(from);
+                    (&mut right[0], &mut left[to])
+                };
+                // `a` drove it, `b` drives it now
+                let old = a.targets.iter_mut().find(|t| t.id == *target);
+                let new = b.targets.iter_mut().find(|t| t.id == *target);
+                if let (Some(old), Some(new)) = (old, new) {
+                    new.chain.inherit_limiter(&mut old.chain);
+                }
+            }
+        }
+        for (target, to) in now {
+            self.drivers.insert(target, self.zones[to].id.clone());
+        }
     }
 }
 

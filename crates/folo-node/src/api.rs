@@ -784,6 +784,14 @@ async fn admin(node: &Node, id: &str, action: &str, method: AdminMethod, body: V
             let book = kind.map_or("RB-10", runbook);
             return admin_error(&AdminError::NotImplemented { runbook: book });
         }
+        // In the source role the controller's configuration is dormant: nothing runs
+        Err(ProviderAbsent::Off | ProviderAbsent::Unknown) if node.role != "controller" => {
+            return error(
+                StatusCode::CONFLICT,
+                "provider_disabled",
+                "the controller is dormant in the source role",
+            );
+        }
         Err(ProviderAbsent::Off) => {
             return error(
                 StatusCode::CONFLICT,
@@ -812,6 +820,7 @@ fn admin_error(failure: &AdminError) -> Response {
             json!({"runbook": runbook}),
         ),
         AdminError::UnknownAction(action) => (format!("no action {action}"), json!({})),
+        AdminError::BadRequest(why) => (why.clone(), json!({})),
         AdminError::Provider(why) => (why.to_string(), json!({})),
     };
     let body = json!({"error": {"code": failure.code(), "message": message, "details": details}});

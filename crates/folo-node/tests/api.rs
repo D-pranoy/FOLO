@@ -21,7 +21,7 @@ use folo_protocol::generated::{
     MediaState, NodeStatus, ProviderInstance, ProviderInstanceKind, ProviderSecrets, State,
     SystemSettings, Zone, ZoneActivation,
 };
-use folo_provider::testing::{Event, RecordingKind, RecordingProvider};
+use folo_provider::testing::{Event, Op, RecordingKind, RecordingProvider};
 use folo_provider::{
     AdminError, AdminMethod, BoxFuture, DeliveryPolicy, DescribedTarget, ElementOutput, Provider,
     ProviderError, ProviderKind, Registry,
@@ -1534,5 +1534,62 @@ async fn discovery_and_administration_go_through_the_registry() {
         .collect();
     assert_eq!(kinds[1], "stopped", "a kind without an implementation");
     assert_eq!(kinds[2], "stopped", "disabled");
+    assert_eq!(node.stop().await, 0);
+}
+
+/// A provider instance whose settings change gets a new sender only after the old one has
+/// released its target and disconnected; a disabled one releases its target too.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_changed_or_disabled_provider_releases_its_targets_first() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let kind = std::sync::Arc::new(RecordingKind::new(
+        ProviderInstanceKind::Hyperion,
+        Vec::new(),
+    ));
+    let mut registry = Registry::new();
+    registry.register(kind.clone());
+    let node = Running::start_with(&home, true, registry).await;
+    assign_lamp(&node).await;
+    let first = recorder(&kind).await;
+    recorded(&first, "the start", |events| {
+        events.contains(&Event::Start("lamp".into()))
+    })
+    .await;
+
+    // a slow device: the release takes a while, and the output goes on meanwhile
+    first.set_delay(Op::Release, Duration::from_millis(400));
+    let changed = json!({"id": "rec", "name": "Recorder", "kind": "hyperion", "rate_hz": 30, "settings": {"kind": "hyperion"}});
+    let put = node
+        .send_json("PUT", "/api/v1/providers/rec", &changed)
+        .await;
+    assert_eq!(put.status, 200);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let second = loop {
+        let created = kind.created();
+        if created.len() == 2 && !created[1].events().is_empty() {
+            break std::sync::Arc::clone(&created[1]);
+        }
+        assert!(Instant::now() < deadline, "no new sender");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    };
+    // the new provider acted only after the old one had released and disconnected
+    let old = first.events();
+    assert!(old.contains(&Event::Release("lamp".into())));
+    assert_eq!(old.last(), Some(&Event::Disconnect));
+    recorded(&second, "the new start", |events| {
+        events.contains(&Event::Start("lamp".into()))
+    })
+    .await;
+
+    let disabled = json!({"id": "rec", "name": "Recorder", "kind": "hyperion", "enabled": false, "settings": {"kind": "hyperion"}});
+    let put = node
+        .send_json("PUT", "/api/v1/providers/rec", &disabled)
+        .await;
+    assert_eq!(put.status, 200);
+    recorded(&second, "the release when disabled", |events| {
+        events.contains(&Event::Release("lamp".into())) && events.last() == Some(&Event::Disconnect)
+    })
+    .await;
     assert_eq!(node.stop().await, 0);
 }

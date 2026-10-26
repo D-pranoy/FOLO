@@ -294,3 +294,130 @@ fn a_step_of_a_three_hundred_led_strip_is_measured() {
     let per_step = start.elapsed() / steps;
     eprintln!("one step of a 300-LED strip: {per_step:?}");
 }
+
+/// Edges in what `target` shows while a 10 Hz black-and-white strobe runs for a second, with
+/// `change` applied to the core halfway.
+fn strobe_edges(
+    core: &mut OutputCore,
+    target: &str,
+    mut change: impl FnMut(&mut OutputCore),
+) -> usize {
+    let mut edges = 0;
+    let mut last = None;
+    for i in 0..60u32 {
+        let now = 1_000_000 + u64::from(i) * STEP_US;
+        if i == 30 {
+            change(core);
+        }
+        let value = if (i / 3) % 2 == 0 { 255 } else { 0 };
+        core.activity("local", None, true, now);
+        core.frame("main", "local", &strip_frame(i, &[value; 3]), now)
+            .unwrap();
+        let shown = bytes(&core.step(now), target)[0];
+        edges += usize::from(last.is_some_and(|l| l != shown));
+        last = Some(shown);
+    }
+    edges
+}
+
+/// New calibration for the target makes a new chain, which carries on with the old one's
+/// flashes: a slider moved during a strobe can't open a fresh window.
+#[test]
+fn a_calibration_edit_keeps_the_flash_limiters_history() {
+    let extra = json!({"flash_limiter": {"enabled": true}});
+    let zones = [strip_zone("z", 1, INSTANCE, &extra)];
+    let mut edited = zones.clone();
+    edited[0].targets[0].calibration.gamma = 1.1;
+    let mut core = core_of(&zones);
+    let edges = strobe_edges(&mut core, "z-strip", |core| {
+        core.configure(2, &edited);
+    });
+    assert!(edges <= 7, "{edges} edges in a second");
+}
+
+/// A zone that takes a target over takes its limiter's history too.
+#[test]
+fn a_take_over_keeps_the_flash_limiters_history() {
+    let extra = json!({"flash_limiter": {"enabled": true}});
+    let mut a = strip_zone("a", 1, INSTANCE, &extra);
+    let mut b = strip_zone(
+        "b",
+        1,
+        INSTANCE,
+        &json!({"flash_limiter": {"enabled": true}, "active": false}),
+    );
+    // the same lamp in both zones
+    a.targets[0].id = "lamp".parse().unwrap();
+    a.mappings[0].target = "lamp".parse().unwrap();
+    b.targets[0].id = "lamp".parse().unwrap();
+    b.mappings[0].target = "lamp".parse().unwrap();
+    let mut swapped = [a.clone(), b.clone()];
+    swapped[0].active = false;
+    swapped[1].active = true;
+    let mut core = core_of(&[a, b]);
+    let edges = strobe_edges(&mut core, "lamp", |core| {
+        core.configure(2, &swapped);
+    });
+    assert!(edges <= 7, "{edges} edges in a second");
+}
+
+#[test]
+fn a_pattern_ends_when_another_zone_comes_on_for_its_target() {
+    let mut on = line_zone(false);
+    on.id = "other".parse().unwrap();
+    on.active = true;
+    let mut core = core_of(&[line_zone(false)]);
+    core.start_pattern("room", &["bar".to_owned()], Pattern::Sweep, 30.0, 0)
+        .unwrap();
+    assert_eq!(core.patterns(), [("room".to_owned(), "bar".to_owned())]);
+    core.configure(2, &[line_zone(false), on]);
+    assert_eq!(core.patterns(), Vec::<(String, String)>::new());
+    // the zone that now drives it shows its own (projected, here black) colours
+    assert_eq!(bytes(&core.step(1_000), "bar"), [0; 12]);
+}
+
+#[test]
+fn patterns_leave_display_targets_alone() {
+    let z = zone(json!({
+        "id": "z",
+        "targets": [
+            {"id": "screen", "kind": "display", "provider": {"instance": INSTANCE}, "geometry": {"kind": "display"}},
+            {"id": "lamp", "kind": "point", "provider": {"instance": INSTANCE}, "geometry": {"kind": "point"}},
+        ],
+    }));
+    let mut core = core_of(&[z]);
+    assert_eq!(
+        core.start_pattern("z", &[], Pattern::Identify, 5.0, 0),
+        Ok(vec!["lamp".to_owned()])
+    );
+    assert_eq!(
+        core.start_pattern("z", &["screen".to_owned()], Pattern::Identify, 5.0, 0),
+        Err(PatternError::UnknownTarget("screen".into()))
+    );
+    assert!(!core.step(0).targets.contains_key("screen"));
+}
+
+/// A zone that comes on again starts its delay lines empty, so frames from before it went off
+/// don't come out after.
+#[test]
+fn a_zone_that_comes_on_again_forgets_its_delayed_frames() {
+    let mut z = strip_zone("z", 1, INSTANCE, &json!({}));
+    z.targets[0].calibration.latency_ms = 200.0;
+    let mut off = z.clone();
+    off.active = false;
+    let mut core = core_of(std::slice::from_ref(&z));
+    let mut now = 1_000_000;
+    for i in 0..30 {
+        now += STEP_US;
+        core.frame("main", "local", &strip_frame(i, &[10; 3]), now)
+            .unwrap();
+        core.step(now);
+    }
+    core.configure(2, std::slice::from_ref(&off));
+    core.step(now + STEP_US);
+    core.configure(3, std::slice::from_ref(&z));
+    now += 2 * STEP_US;
+    core.frame("main", "local", &strip_frame(100, &[200; 3]), now)
+        .unwrap();
+    assert_eq!(bytes(&core.step(now), "z-strip"), [200; 3]);
+}
