@@ -1,6 +1,6 @@
 # M6 Screen
 
-Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; step 6: the capture link, the agent's link client and the node's side; step 7: the engine's screen input, `CanvasEffect`, the Screen effect, the render trigger and the per-surface screen activity; step 9: the replay-driven end-to-end test; the backends and the bar detector follow)
+Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; step 6: the capture link, the agent's link client and the node's side; step 7: the engine's screen input, `CanvasEffect`, the Screen effect, the render trigger and the per-surface screen activity; step 9 (the replay end-to-end part); the backends and the bar detector follow)
 
 ## RB-14: Display capture and Screen effect
 

@@ -179,16 +179,27 @@ fn the_fixture_is_what_the_replay_writer_builds() {
 
 // ------------------------------------------------------------------ the run
 
+/// Removes the node's home when the test ends, however it ends.
+struct RemoveOnDrop(PathBuf);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 fn every_file(dir: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) {
-    for entry in std::fs::read_dir(dir).unwrap().flatten() {
-        let path = entry.path();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
         if path.is_dir() {
             every_file(&path, out);
-        } else if let Ok(bytes) = std::fs::read(&path) {
+        } else {
+            // An unreadable file would be a vacuous pass, so it fails the test
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             out.push((path, bytes));
         }
     }
@@ -203,6 +214,14 @@ fn agent_program() -> PathBuf {
     };
     let exe = std::env::current_exe().unwrap();
     let beside = exe.parent().and_then(Path::parent).unwrap().join(name);
+    // `cargo test -p folo-node` doesn't build another package's binary, and an
+    // old one in target/ must not be used
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let built = std::process::Command::new(cargo)
+        .args(["build", "--locked", "-p", "folo-capture"])
+        .status()
+        .expect("cargo runs");
+    assert!(built.success(), "cargo build -p folo-capture failed");
     assert!(
         beside.is_file(),
         "{} isn't built: cargo build -p folo-capture",
@@ -341,12 +360,12 @@ async fn want_capture(port: u16) {
 }
 
 /// Reads the canvas frames: black until the first picture, then the two normal
-/// frames' canvases in turn, never the held or protected ones'. Returns the
-/// frames from the first picture on, and the text messages.
-async fn read_canvas(canvas: &mut Socket, normal: &[Vec<u8>]) -> (Vec<Vec<u8>>, Vec<String>) {
-    // frames' canvases in turn, never the held or protected ones'
+/// frames' canvases in turn, never the held or protected ones'. Returns everything
+/// the socket was sent.
+async fn read_canvas(canvas: &mut Socket, normal: &[Vec<u8>]) -> Received {
     let mut frames_seen: Vec<Vec<u8>> = Vec::new();
     let mut texts = Vec::new();
+    let mut binary = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(90);
     let mut shown = (false, false);
     while !(shown.0 && shown.1 && frames_seen.len() >= 40) {
@@ -364,6 +383,7 @@ async fn read_canvas(canvas: &mut Socket, normal: &[Vec<u8>]) -> (Vec<Vec<u8>>, 
             .unwrap();
         match message {
             Message::Binary(bytes) => {
+                binary.push(bytes.to_vec());
                 let Some(payload) = canvas_payload(&bytes) else {
                     continue;
                 };
@@ -393,11 +413,12 @@ async fn read_canvas(canvas: &mut Socket, normal: &[Vec<u8>]) -> (Vec<Vec<u8>>, 
         "once drawn the canvas is always a normal frame's"
     );
 
-    (frames_seen, texts)
+    Received { texts, binary }
 }
 
-/// Raw bytes the effect can't copy to a canvas: every marker, and a row of
-/// each frame's pixels.
+/// Raw bytes the effect can't copy to a canvas: every marker, the whole payload of the
+/// marker-only frames, a row of each frame's pixels and the markers as hex
+/// and as a printed list.
 fn forbidden_bytes() -> Vec<(String, Vec<u8>)> {
     let mut forbidden: Vec<(String, Vec<u8>)> = Vec::new();
     for (name, marker, cells) in [
@@ -407,6 +428,18 @@ fn forbidden_bytes() -> Vec<(String, Vec<u8>)> {
         ("margin", MARGIN_MARKER, usize::from(MARGIN_LEFT)),
     ] {
         forbidden.push((format!("{name} marker"), marker.repeat(cells)));
+        // A leak written as text: hex, or a printed list of the bytes
+        let hex: String = marker.map(|b| format!("{b:02x}")).join("");
+        forbidden.push((format!("{name} marker in hex"), hex.into_bytes()));
+        let list = marker.map(|b| b.to_string()).join(", ");
+        forbidden.push((format!("{name} marker as a list"), list.into_bytes()));
+    }
+    // The whole payload of the frames that are only markers
+    for frame in &frames()[1..3] {
+        forbidden.push((
+            "a marker frame's payload".to_owned(),
+            frame.picture.pixels.clone(),
+        ));
     }
     for (index, frame) in frames().iter().enumerate() {
         let row = &frame.picture.pixels[usize::from(BARS) * 96..(usize::from(BARS) + 1) * 96];
@@ -443,6 +476,26 @@ async fn api_answers(port: u16) -> Vec<(String, Vec<u8>)> {
     seen
 }
 
+/// The status messages said the screen was capturing and that protected
+/// content was on it (the engine's newest-wins slot may skip any one frame,
+/// so this is the proof the protected frames were sent).
+fn assert_screen_reported(texts: &[String]) {
+    let screens: Vec<Value> = texts
+        .iter()
+        .map(|text| serde_json::from_str::<Value>(text).unwrap())
+        .filter(|m| m["type"] == "status")
+        .map(|m| m["data"]["sources"]["local"]["screen"].clone())
+        .collect();
+    assert!(
+        screens.iter().any(|s| s["state"] == "capturing"),
+        "no status message said the screen was capturing"
+    );
+    assert!(
+        screens.iter().any(|s| s["protected"] == true),
+        "no status message reported protected content"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_canvas_the_engine_publishes_is_what_the_replayed_frames_draw() {
     if std::env::var("FOLO_E2E").as_deref() != Ok("1") {
@@ -459,6 +512,7 @@ async fn the_canvas_the_engine_publishes_is_what_the_replayed_frames_draw() {
 
     let home = std::env::temp_dir().join(format!("folo-replay-e2e-{}", folo_store::new_id()));
     std::fs::create_dir_all(&home).unwrap();
+    let _cleanup = RemoveOnDrop(home.clone());
     let port = StdListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
@@ -504,22 +558,17 @@ async fn the_canvas_the_engine_publishes_is_what_the_replayed_frames_draw() {
     ));
     want_capture(port).await;
 
-    let (frames_seen, texts) = read_canvas(&mut canvas, &normal).await;
+    let canvas_received = read_canvas(&mut canvas, &normal).await;
 
     // The agent is capturing, and the status says so without pixels
-    let status = status(port).await.unwrap();
-    assert_eq!(status["workers"]["folo-capture"]["state"], "running");
+    let node_status = status(port).await.unwrap();
+    assert_eq!(node_status["workers"]["folo-capture"]["state"], "running");
 
     let mut seen = api_answers(port).await;
     tokio::time::sleep(Duration::from_secs(1)).await;
     let _ = stop_others.send(());
     let others = others.await.unwrap();
-    let capturing = others.texts.iter().any(|text| {
-        let message: Value = serde_json::from_str(text).unwrap();
-        message["type"] == "status"
-            && message["data"]["sources"]["local"]["screen"]["state"] == "capturing"
-    });
-    assert!(capturing, "no status message said the screen was capturing");
+    assert_screen_reported(&others.texts);
     for (index, text) in others.texts.iter().enumerate() {
         seen.push((format!("live message {index}"), text.clone().into_bytes()));
     }
@@ -535,11 +584,11 @@ async fn the_canvas_the_engine_publishes_is_what_the_replayed_frames_draw() {
     assert_eq!(code, 0);
 
     // The canvas connection carried only the canvas: none of the markers
-    for (index, text) in texts.iter().enumerate() {
+    for (index, text) in canvas_received.texts.iter().enumerate() {
         seen.push((format!("canvas message {index}"), text.clone().into_bytes()));
     }
-    for (index, frame) in frames_seen.iter().enumerate().take(20) {
-        seen.push((format!("canvas frame {index}"), frame.clone()));
+    for (index, bytes) in canvas_received.binary.iter().enumerate() {
+        seen.push((format!("canvas frame {index}"), bytes.clone()));
     }
     let mut files = Vec::new();
     every_file(&home, &mut files);
@@ -554,5 +603,4 @@ async fn the_canvas_the_engine_publishes_is_what_the_replayed_frames_draw() {
             assert!(!contains(bytes, needle), "{name} in {what}");
         }
     }
-    let _ = std::fs::remove_dir_all(&home);
 }
