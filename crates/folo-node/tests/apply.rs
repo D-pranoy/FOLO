@@ -986,3 +986,91 @@ async fn edges_and_concurrent_writes() {
     let node = std::sync::Arc::into_inner(node).unwrap();
     assert_eq!(node.stop().await, 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_apply_that_binds_nothing_is_refused() {
+    let home = Home::new();
+    let node = Node::start(&home).await;
+    setup(&node).await;
+    let empty = node
+        .send(
+            "POST",
+            "/api/v1/zones",
+            &json!({"id": "bare", "surfaces": []}),
+            None,
+        )
+        .await;
+    assert_eq!(empty.status, 201);
+
+    // The zone's own scene is kept
+    let (show, result) = applied(&node.apply("genre:edm", &json!({"zone": "z1"})).await);
+    let id = result["scene"].as_str().unwrap().to_owned();
+    let mut with_bare = show.clone();
+    with_bare["active"]["bare"] = id.as_str().into();
+    assert_eq!(
+        node.send("PUT", "/api/v1/show", &with_bare, None)
+            .await
+            .status,
+        200
+    );
+    let before = node.show().await;
+    let answer = node.apply("genre:ambient", &json!({"zone": "bare"})).await;
+    assert_eq!((answer.status, answer.code()), (409, "no_surface".into()));
+    assert_eq!(answer.details()["zone"], "bare");
+    assert_eq!(answer.details()["skipped"], json!(["strip.main"]));
+    assert_eq!(
+        node.show().await,
+        before,
+        "the show is unchanged, revision included"
+    );
+
+    // Reset all refuses as a whole, and writes nothing
+    let reset = node
+        .send("POST", "/api/v1/show/reset", &json!({}), None)
+        .await;
+    assert_eq!((reset.status, reset.code()), (409, "no_surface".into()));
+    assert_eq!(node.show().await, before);
+    let one = node
+        .send(
+            "POST",
+            "/api/v1/show/reset",
+            &json!({"zones": ["z1"]}),
+            None,
+        )
+        .await;
+    assert_eq!(one.status, 200);
+    assert_eq!(node.stop().await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn keeping_changes_into_a_scene_another_zone_has_active() {
+    let home = Home::new();
+    let node = Node::start(&home).await;
+    setup(&node).await;
+    let (show, result) = applied(&node.apply("genre:edm", &json!({"zone": "z1"})).await);
+    let id = result["scene"].as_str().unwrap().to_owned();
+    let mut mine = show.clone();
+    mine["scenes"][0]["name"] = "Mine".into();
+    mine["active"]["z2"] = id.as_str().into();
+    assert_eq!(
+        node.send("PUT", "/api/v1/show", &mine, None).await.status,
+        200
+    );
+
+    let (merged, result) = applied(
+        &node
+            .apply("genre:edm", &json!({"zone": "z1", "keep_changes": true}))
+            .await,
+    );
+    let new = result["scene"].as_str().unwrap();
+    assert_ne!(new, id, "z2 keeps the original");
+    assert_eq!(scene_of(&merged, new)["name"], "Mine");
+    assert_eq!(scene_of(&merged, &id)["name"], "Mine");
+    assert_eq!(merged["active"]["z1"], new);
+    assert_eq!(merged["active"]["z2"], id.as_str());
+    assert!(
+        base_path(&home, new).is_some(),
+        "the new scene has its own base"
+    );
+    assert_eq!(node.stop().await, 0);
+}

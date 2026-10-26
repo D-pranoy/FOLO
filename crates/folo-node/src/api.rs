@@ -240,6 +240,11 @@ pub(crate) enum Refused {
     Absent(&'static str),
     /// `409 no_base`: nothing to merge against.
     NoBase,
+    /// `409 no_surface`: no role of the scene could be bound in the zone.
+    NoSurface {
+        zone: String,
+        skipped: Vec<String>,
+    },
     /// `400 bad_body`, with the reason.
     BadBody(String),
     /// An answer already made, such as an unreadable body's.
@@ -290,6 +295,14 @@ impl Refused {
                 "no_base",
                 "the zone's scene has no applied copy of this item to merge against",
             ),
+            Self::NoSurface { zone, skipped } => {
+                let body = json!({"error": {
+                    "code": "no_surface",
+                    "message": "no role of the scene could be bound to a surface of the zone",
+                    "details": {"zone": zone, "skipped": skipped},
+                }});
+                (StatusCode::CONFLICT, Json(body)).into_response()
+            }
             Self::BadBody(reason) => error(StatusCode::BAD_REQUEST, "bad_body", &reason),
             Self::Raw(response) => *response,
         }

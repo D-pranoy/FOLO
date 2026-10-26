@@ -391,6 +391,13 @@ fn apply_item(
         item: &scene.item,
     };
     let copy = copy::build(&source, &slot.id, &surfaces, &overrides, &min_elements);
+    // Nothing bound would write a scene with no layers over the zone's own
+    if copy.roles.is_empty() {
+        return Err(Refused::NoSurface {
+            zone: zone_id.to_owned(),
+            skipped: copy.skipped,
+        });
+    }
     let theirs = clamped_scene(&copy.scene)?;
     let written = if ask.keep_changes {
         merged(node, &slot, (pack, item), &theirs)?
