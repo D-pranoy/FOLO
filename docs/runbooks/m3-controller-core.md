@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 step 5 has zone activation)
+Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done; RB-08's default surfaces per zone type, the last bullet of step 5, are left for a follow-up)
 
 ## RB-06: Node core
 
@@ -94,20 +94,20 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 step 5 
 5. **Zone activation and test patterns:**
    - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation)) (done: `folo-node`'s `zones` module and the two endpoints)
    - the engine's `config.apply` assigns the surfaces of active zones only (done: the node passes the effective flags; the live channel reports them)
-   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns))
-   - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults))
+   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns)) (done: `folo-controller`'s patterns, the node's two endpoints)
+   - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults)) (not done yet)
 6. **Provider interface** ([providers](../architecture/providers.md)):
    - discover, describe (targets with capabilities), connect (the control connection), start (realtime output for a target), send, wire key (what the sender compares), release (per target), status, admin
    - `ElementOutput` now; `RasterOutput` reserved
    - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
    - a recording provider for tests
-   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...`
+   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...` (done: `folo-node`'s `output` module; the node takes a registry, which has no kind until RB-10)
 7. **Tests:**
    - geometry unit tests
    - projection golden images (frames stacked into PNGs in `tests/golden/projection/`, written when `FOLO_BLESS=1` is set)
    - ambient inputs from `scripts/make_golden.py --only ambient`, checked against the **existing** `tests/golden/renderer/ambient-*.png` frames; no existing golden is regenerated
    - adapter unit tests, flash limiter tests
-   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames
+   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames (done: `crates/folo-controller/tests/parity.rs`, through a sender to a recording provider too, and with the migrated configurations)
 
 **Done when:** golden images and adapter tests are green, and parity-path frames equal the engine's output.
 

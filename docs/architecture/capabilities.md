@@ -1,6 +1,6 @@
 # Capabilities, adapters and the flash limiter
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (the adapter chain and the flash limiter, run per target by the node's output; whether the limiter works on real lights is a device check)
 
 Decided in [ADR-0007](../decisions/ADR-0007-capabilities-adapters-and-flash-limiter.md). [ADR-0036](../decisions/ADR-0036-controller-output.md) supersedes the order of stages in ADR-0007 D2 and fixes what each stage computes.
 
@@ -74,6 +74,8 @@ Decided in [ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md), wh
 - **A per-zone setting, off by default.** Switched on, it is applied after rendering and limits large luminance transitions to at most **3 flashes per second**, following WCAG 2.3.1 ("three flashes or below threshold").
 - It applies to all content, including third-party packs and screen sync.
 - **Warnings:** FOLO shows a photosensitive epilepsy warning on the first run, beside each zone's switch while it's off, and in Settings, which can turn it on for all zones. Built-in effects that flash quickly carry a "Flashing" badge ([user interface](ui.md#photosensitivity)).
+
+A target's chain, and so its limiter's history and its delay line, is kept when the configuration changes but leaves the target's calibration, capabilities, element count, delay and its zone's limiter setting as they were, so an edit elsewhere can't let a fourth flash through. A chain belongs to a zone: a target that another zone starts driving starts with a new one.
 
 ### Algorithm
 

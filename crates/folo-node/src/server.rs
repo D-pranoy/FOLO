@@ -84,8 +84,8 @@ pub fn router(node: Arc<Node>) -> Router {
         )
         .route(&v1("/zones/{id}/activate"), post(api::activate_zone))
         .route(&v1("/zones/{id}/deactivate"), post(api::deactivate_zone))
-        .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/test"), later_post("RB-08"))
+        .route(&v1("/zones/{id}/identify"), post(api::identify_zone))
+        .route(&v1("/zones/{id}/test"), post(api::test_zone))
         .route(&v1("/show"), get(api::show).put(api::put_show))
         .route(&v1("/scenes/{id}/apply"), later_post("RB-09"))
         .route(&v1("/effects"), get(api::effects))
@@ -99,10 +99,10 @@ pub fn router(node: Arc<Node>) -> Router {
                 .put(api::put_provider)
                 .delete(api::delete_provider),
         )
-        .route(&v1("/providers/discover"), later_post("RB-08"))
+        .route(&v1("/providers/discover"), post(api::discover_providers))
         .route(
             &v1("/providers/{id}/admin/{action}"),
-            later_get("RB-08").post(later("RB-08")),
+            get(api::get_provider_admin).post(api::post_provider_admin),
         )
         .route(&v1("/providers/{id}/hue/pair"), later_post("RB-13"))
         .route(&v1("/sources"), get(api::sources))
@@ -576,7 +576,7 @@ mod tests {
     async fn later_subsystems_answer_501_with_their_run_book() {
         let request = Request::builder()
             .method(Method::POST)
-            .uri("/api/v1/zones/desk/identify")
+            .uri("/api/v1/scenes/desk/apply")
             .header(header::HOST, "localhost")
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from("{}"))
@@ -584,7 +584,7 @@ mod tests {
         let (status, _, body) = ask("", "127.0.0.1:50000", request).await;
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         assert_eq!(body["error"]["code"], "not_implemented");
-        assert_eq!(body["error"]["details"]["runbook"], "RB-08");
+        assert_eq!(body["error"]["details"]["runbook"], "RB-09");
     }
 
     #[test]

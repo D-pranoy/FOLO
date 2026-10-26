@@ -336,9 +336,35 @@ impl OutputCore {
         self.media.remove(source);
     }
 
+    /// The targets a pattern on `targets` of `zone` would run on: those, or all of the zone's
+    /// when `targets` is empty.
+    ///
+    /// # Errors
+    /// [`PatternError`] for a zone or target that isn't configured.
+    pub fn pattern_targets(
+        &self,
+        zone: &str,
+        targets: &[String],
+    ) -> Result<Vec<String>, PatternError> {
+        let found = self
+            .zones
+            .iter()
+            .find(|z| z.id == zone)
+            .ok_or(PatternError::UnknownZone)?;
+        if targets.is_empty() {
+            return Ok(found.targets.iter().map(|t| t.id.clone()).collect());
+        }
+        for id in targets {
+            if !found.targets.iter().any(|t| t.id == *id) {
+                return Err(PatternError::UnknownTarget(id.clone()));
+            }
+        }
+        Ok(targets.to_vec())
+    }
+
     /// Runs `pattern` on `targets` of `zone` (all of its targets when empty) for `seconds`,
-    /// replacing a pattern they run. Whether another active zone drives a target is the
-    /// caller's check (`409 target_busy`).
+    /// replacing a pattern they run, and returns the targets. Whether another active zone drives
+    /// a target is the caller's check (`409 target_busy`).
     ///
     /// # Errors
     /// [`PatternError`] for a zone or target that isn't configured; nothing starts then.
@@ -350,21 +376,7 @@ impl OutputCore {
         seconds: f64,
         now_us: u64,
     ) -> Result<Vec<String>, PatternError> {
-        let found = self
-            .zones
-            .iter()
-            .find(|z| z.id == zone)
-            .ok_or(PatternError::UnknownZone)?;
-        let chosen: Vec<String> = if targets.is_empty() {
-            found.targets.iter().map(|t| t.id.clone()).collect()
-        } else {
-            for id in targets {
-                if !found.targets.iter().any(|t| t.id == *id) {
-                    return Err(PatternError::UnknownTarget(id.clone()));
-                }
-            }
-            targets.to_vec()
-        };
+        let chosen = self.pattern_targets(zone, targets)?;
         // 1–60 s by the contract: far below 2^64 µs
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let until_us = now_us.saturating_add((seconds.clamp(0.0, 60.0) * 1e6) as u64);

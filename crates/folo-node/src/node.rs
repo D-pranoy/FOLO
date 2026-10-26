@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use folo_identity::{Identity, fingerprint};
+use folo_provider::Registry;
 use folo_settings::{Launch, Layered, changes};
 use folo_store::{Doc, Store};
 use folo_supervisor::config::local_config;
@@ -20,7 +21,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, live, lock, logs, server, zones};
+use crate::{import, live, lock, logs, output, server, zones};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -43,6 +44,8 @@ pub struct Node {
     pub supervisor: Supervisor,
     /// The live channel's connections.
     pub live: live::Hub,
+    /// The controller's output: the zones' targets, the provider senders (RB-08).
+    pub output: output::Output,
 }
 
 impl Node {
@@ -184,6 +187,7 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         store: Store::open(dir).expect("the test's data folder opens"),
         supervisor,
         live: live::Hub::default(),
+        output: output::Output::new(Registry::new()),
     })
 }
 
@@ -266,6 +270,18 @@ pub async fn run_with(
     engine: Option<EngineCommand>,
     stop: impl Future<Output = ()> + Send,
 ) -> u8 {
+    run_with_providers(location, args, engine, Registry::new(), stop).await
+}
+
+/// [`run_with`] with the provider kinds in `registry`. The built-in kinds arrive with their run
+/// books (RB-10, RB-12, RB-13); tests register a recording provider.
+pub async fn run_with_providers(
+    location: &LocationArgs,
+    args: &RunArgs,
+    engine: Option<EngineCommand>,
+    registry: Registry,
+    stop: impl Future<Output = ()> + Send,
+) -> u8 {
     let launch = if args.managed {
         Launch::Managed
     } else {
@@ -278,7 +294,7 @@ pub async fn run_with(
         eprintln!("--managed takes no other flags (ADR-0034 D2)");
         return EXIT_USAGE;
     }
-    match start(location, flags, launch, engine).await {
+    match start(location, flags, launch, engine, registry).await {
         Ok((node, listeners, _lock)) => serve_until(node, listeners, stop).await,
         Err(failure) => {
             if log::max_level() == log::LevelFilter::Off {
@@ -299,6 +315,7 @@ async fn start(
     flags: Vec<(&'static str, String)>,
     launch: Launch,
     engine: Option<EngineCommand>,
+    registry: Registry,
 ) -> Result<(Arc<Node>, Vec<TcpListener>, lock::HomeLock), Failure> {
     let place = locate(location, &flags, launch)?;
     let folders = &place.folders;
@@ -359,6 +376,7 @@ async fn start(
         store,
         supervisor,
         live: live::Hub::default(),
+        output: output::Output::new(registry),
     });
     node.check_zones();
     node.supervisor.set_config(node.engine_config());
@@ -436,13 +454,15 @@ async fn bind(layered: &Layered) -> Result<(Vec<TcpListener>, SocketAddr), Failu
     Ok((listeners, addresses[0]))
 }
 
-/// Serves until `stop`, then stops the engine, the server and the store.
+/// Serves until `stop`, then stops the output, the engine, the server and the store.
 async fn serve_until(
     node: Arc<Node>,
     listeners: Vec<TcpListener>,
     stop: impl Future<Output = ()> + Send,
 ) -> u8 {
     let (halt, halted) = tokio::sync::watch::channel(false);
+    let (output_halt, output_halted) = tokio::sync::watch::channel(false);
+    let output_task = tokio::spawn(output::Output::run(Arc::clone(&node), output_halted));
     let mut servers = tokio::task::JoinSet::new();
     for listener in listeners {
         let mut halted = halted.clone();
@@ -459,7 +479,10 @@ async fn serve_until(
         }
     }
     node.live.stop();
-    node.supervisor.shutdown().await;
+    // The output stops stepping, then its senders release their targets while the engine stops
+    let _ = output_halt.send(true);
+    let _ = output_task.await;
+    tokio::join!(node.supervisor.shutdown(), node.output.shutdown());
     let _ = halt.send(true);
     if tokio::time::timeout(SERVER_STOP, async {
         while servers.join_next().await.is_some() {}

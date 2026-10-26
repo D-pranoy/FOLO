@@ -15,7 +15,7 @@ RB-08 builds the controller half of the pipeline: surfaces are composed per zone
   - where a zone's origin is, where line and grid elements sit, what the kernels compute, how several mappings combine, and what a new zone gets by default
   - what each adapter stage computes, and the exact rule of the flash limiter
   - what `target:<id>` frames carry, the test patterns, and the controller's clock
-- **What the code has today.** The node answers `identify`, `test`, `discover` and `admin` with `501` (`activate` and `deactivate` work since RB-08 step 5, and the live channel reports each zone's effective state), reports every provider `off`, and the supervisor keeps the newest raw frame per surface without waking anyone when one arrives ([control plane](../architecture/control-plane.md#supervision)).
+- **What the code has today.** The decisions below are implemented: `folo-geometry` (layouts and the projector), `folo-compositor` (the compositor and the zone's ambient light), `folo-adapters` (the chain and the flash limiter), `folo-provider` (the interface and the sender) and `folo-controller` (the output core that steps them per zone); the node runs the output task, the senders of the registered provider kinds, the test patterns, discovery and administration, and the live channel's `target:` topics, zones' reactive state and provider states. No provider kind is registered until RB-10, and default surfaces per zone type (D13) aren't applied yet.
 
 ## Decision
 

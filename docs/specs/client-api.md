@@ -53,7 +53,6 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/zones/{id}/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
 | `/scenes/{id}/apply`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
@@ -62,7 +61,8 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 Until then:
 - `GET /system` reports `start_at_sign_in` as `false` (until [RB-19](../runbooks/m8-release.md#rb-19-desktop-app)), and the service's `installed` and `running` as whether this node was launched with `--service` (until [RB-20](../runbooks/m8-release.md#rb-20-windows-service-and-installer)).
-- On the live channel, every zone reports `active` false, `ambient` 0 and `quiet_s` 0, every provider reports `off`, and `target:` topics carry nothing (until RB-08). Sources other than `local` report `offline` (until RB-16).
+- On the live channel, sources other than `local` report `offline` (until RB-16).
+- No provider kind is registered until RB-10, RB-12 and RB-13 bring them: every instance reports `off` with "arrives with RB-NN", discovery answers an empty list and administration answers 501.
 
 ## Resources
 
@@ -121,18 +121,19 @@ Decided in [ADR-0036](../decisions/ADR-0036-controller-output.md) D3 to D6, with
 
 | Pattern | What the lights show |
 |---|---|
-| `identify` | White at 25%, pulsing between 0 and 25% at 1 Hz. `/identify` always runs this pattern and ignores `pattern`. |
-| `sweep` | One element lit white at 25%, moving along the target's elements in their order: one pass in 2 s, repeating until `seconds` is over. The others are dark. |
+| `identify` | White at 25%, pulsing between 0 and 25% at 1 Hz: a raised cosine, dark at the start of each second and at 25% halfway. `/identify` always runs this pattern and ignores `pattern`. |
+| `sweep` | One element lit white at 25%, moving along the target's elements in their order: one pass in 2 s (element `⌊N · t / 2 s⌋` of `N` lights at `t` into the pass), repeating until `seconds` is over. The others are dark. |
 | `position` | Each element shows its position in the zone's box as red, green and blue: `(x + bx/2) / bx`, `(y + by/2) / by` and `z / bz`, each × 255. An element without a position (an unplaced path) is dark. |
 
 - A pattern replaces what its targets show: the frames come in place of the projected ones, so they go through the adapters (the [flash limiter](../architecture/capabilities.md#flash-limiter) included) and appear on the `target:<id>` topics. A target running a pattern is driven, so it is started and released like one ([providers](../architecture/providers.md#lifecycle)).
 - A new test on targets that already run one **replaces** it.
-- A target that **another active zone drives** is refused with 409 `target_busy`. The targets of an inactive zone can be tested.
+- A target that **another active zone drives** is refused with 409 `target_busy`, with the refused targets in `details.targets`, and nothing starts. "Drives" uses the [shared-target](../architecture/spatial-model.md#zone-activation-rules) rule: the same target id, or overlapping addresses on its provider instance. The targets of an inactive zone can be tested.
+- A zone or target that isn't there gets 404 `not_found`. A body that isn't a `TestRequest` (an unknown field, a pattern that isn't listed, `seconds` outside 1–60) gets 400 `bad_body`; an empty body takes the defaults.
 
 ### Providers
 
 - **Discovery:** `POST /providers/discover` answers the devices every registered provider kind found, as a list of `DiscoveredDevice`s: empty until a provider arrives. It changes no configuration ([providers](../architecture/providers.md#describe-discover-and-administration)).
-- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`.
+- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`. An instance that is disabled has no provider running and gets 409 `provider_disabled`; one that isn't in `providers.json` gets 404 `not_found`.
 - **States:** `ProviderStatus.state` here and `ProviderLive.state` on the live channel are two lists for one thing, mapped as in [providers](../architecture/providers.md#states): `stopped` is `off`, `connecting` is `disconnected`, `connected` and `error` are the same. A kind without an implementation is `stopped` here and `off` on the live channel, where its `message` says "arrives with RB-NN" (`ProviderStatus` has no message).
 
 ### Requests to sources
