@@ -1046,6 +1046,22 @@ async fn zones_are_activated_with_conflicts_and_take_over() {
         .await;
     assert_eq!(empty.json()["conflicts"], json!([a]));
 
+    // A zone the check suppressed takes its target over too, and the holder goes
+    let extra = add_zone(&node, &zone_on("e", "wled", 6, 2)).await;
+    let d = add_zone(&node, &zone_on("d", "wled", 0, 8)).await;
+    assert_eq!(
+        toggle(&node, &d, "activate", &nothing).await["conflicts"],
+        json!([a])
+    );
+    let taken = toggle(&node, &d, "activate", &json!({"take_over": true})).await;
+    assert_eq!(taken["active"], true);
+    assert!(!stored_active(&node, &a).await);
+    assert!(
+        !stored_active(&node, &extra).await,
+        "extra was suppressed, and goes too"
+    );
+    toggle(&node, &a, "activate", &json!({"take_over": true})).await;
+
     for verb in ["activate", "deactivate"] {
         let missing = node
             .send_json("POST", &format!("/api/v1/zones/nope/{verb}"), &nothing)

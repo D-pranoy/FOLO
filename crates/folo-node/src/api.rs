@@ -237,6 +237,8 @@ enum Refused {
     NotFound,
     /// The list holds as many items as its schema allows.
     Full,
+    /// Nothing to write: the request is answered with this `200` body.
+    Answered(Value),
 }
 
 impl From<StoreError> for Refused {
@@ -265,6 +267,7 @@ impl Refused {
                 (StatusCode::PRECONDITION_FAILED, Json(body)).into_response()
             }
             Self::NotFound => error(StatusCode::NOT_FOUND, "not_found", "no such item"),
+            Self::Answered(body) => Json(body).into_response(),
             Self::Full => error(
                 StatusCode::CONFLICT,
                 "list_full",
@@ -506,8 +509,8 @@ pub async fn delete_zone(State(node): Shared, Path(id): Path<String>) -> Respons
 // ---------------------------------------------------------------- zone activation
 
 /// A `ZoneActivation` answer (specs/schema/api.json).
-fn activation(zone: &str, active: bool, conflicts: &[String]) -> Response {
-    Json(json!({"zone": zone, "active": active, "conflicts": conflicts})).into_response()
+fn activation_of(zone: &str, active: bool, conflicts: &[String]) -> Value {
+    json!({"zone": zone, "active": active, "conflicts": conflicts})
 }
 
 /// `take_over` from the body of `POST /zones/{id}/activate`, which may be
@@ -534,17 +537,27 @@ fn take_over_of(body: Body) -> Result<bool, Refusal> {
     })
 }
 
-/// Writes the zones `change` returns and answers with the zone's effective
-/// state: the stored flag moves, the revision with it, and `config_changed`
-/// follows (docs/specs/client-api.md#zone-activation).
-fn write_activation(node: &Node, id: &str, change: impl FnOnce(&Value) -> Value) -> Response {
-    let stored = node
-        .store
-        .update(Doc::Zones, |document| Ok::<_, Refused>(change(document)));
-    match stored {
+/// Decides and writes an activation change under the store's lock: `change`
+/// returns the new zones, or `Refused::Answered` with the answer when
+/// nothing is to be written (no revision moves then). The answer after a
+/// write is the zone's effective state, with the conflicts that remain.
+/// A change is a write of `active` to `zones.json`, which gives it the next
+/// revision and sends `config_changed` (docs/specs/client-api.md#zone-activation).
+fn write_activation(
+    node: &Node,
+    id: &str,
+    change: impl FnOnce(&Value) -> Result<Value, Refused>,
+) -> Response {
+    match node.store.update(Doc::Zones, change) {
         Ok(document) => {
             written(node, Doc::Zones);
-            activation(id, zones::check(&document).is_active(id), &[])
+            let active = zones::check(&document).is_active(id);
+            let conflicts = if active {
+                Vec::new()
+            } else {
+                zones::conflicts(&document, id)
+            };
+            Json(activation_of(id, active, &conflicts)).into_response()
         }
         Err(refused) => refused.response(),
     }
@@ -555,35 +568,35 @@ pub async fn activate_zone(State(node): Shared, Path(id): Path<String>, body: Bo
         Ok(flag) => flag,
         Err(refused) => return *refused,
     };
-    let document = node.store.get(Doc::Zones);
-    if find(&document, ZONES, &id).is_none() {
-        return Refused::NotFound.response();
-    }
-    if zones::check(&document).is_active(&id) {
-        return activation(&id, true, &[]);
-    }
-    let conflicts = zones::conflicts(&document, &id);
-    if !conflicts.is_empty() && !take_over {
-        return activation(&id, false, &conflicts);
-    }
-    write_activation(&node, &id, |current| {
-        if take_over {
-            zones::take_over(current, &id)
-        } else {
-            zones::set_active(current, &id, true)
+    write_activation(&node, &id, |document| {
+        if find(document, ZONES, &id).is_none() {
+            return Err(Refused::NotFound);
         }
+        if zones::check(document).is_active(&id) {
+            return Err(Refused::Answered(activation_of(&id, true, &[])));
+        }
+        let conflicts = zones::conflicts(document, &id);
+        if !conflicts.is_empty() && !take_over {
+            return Err(Refused::Answered(activation_of(&id, false, &conflicts)));
+        }
+        Ok(if take_over {
+            zones::take_over(document, &id)
+        } else {
+            zones::set_active(document, &id, true)
+        })
     })
 }
 
 pub async fn deactivate_zone(State(node): Shared, Path(id): Path<String>) -> Response {
-    let document = node.store.get(Doc::Zones);
-    let Some(zone) = find(&document, ZONES, &id) else {
-        return Refused::NotFound.response();
-    };
-    if zone["active"] == false {
-        return activation(&id, false, &[]);
-    }
-    write_activation(&node, &id, |current| zones::set_active(current, &id, false))
+    write_activation(&node, &id, |document| {
+        let Some(zone) = find(document, ZONES, &id) else {
+            return Err(Refused::NotFound);
+        };
+        if zone["active"] == false {
+            return Err(Refused::Answered(activation_of(&id, false, &[])));
+        }
+        Ok(zones::set_active(document, &id, false))
+    })
 }
 
 pub async fn show(State(node): Shared) -> Json<Value> {

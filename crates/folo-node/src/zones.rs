@@ -244,6 +244,16 @@ mod tests {
     }
 
     #[test]
+    fn channels_and_led_ranges_on_one_instance_never_share() {
+        let hue = json!({"id": "h", "provider": {"instance": "p", "address": {"channels": [0]}}});
+        let zones = doc(vec![
+            zone("a", true, vec![leds("t1", "p", 0, 10)]),
+            zone("b", true, vec![hue]),
+        ]);
+        assert_eq!(check(&zones).active, ["a", "b"]);
+    }
+
+    #[test]
     fn a_zone_that_lost_does_not_hold_targets_for_later_zones() {
         let zones = doc(vec![
             zone("a", true, vec![leds("t1", "p", 0, 10)]),
