@@ -435,11 +435,20 @@ fn finish(
         .collect();
     manifest["files"] = file_hashes(files.iter().chain(previews.iter()));
     files.insert(MANIFEST.to_owned(), disk_form(&manifest));
+    // The files are indented, so they can be larger than the bytes that came in
+    if let Some((path, _)) = files
+        .iter()
+        .find(|(_, b)| b.len() as u64 > limits::JSON_FILE)
+    {
+        return Err(structural(
+            path,
+            format!("is larger than {} bytes once stored", limits::JSON_FILE),
+        ));
+    }
     let sizes: BTreeMap<String, u64> = previews
         .iter()
         .map(|(p, b)| (p.clone(), b.len() as u64))
         .collect();
-    let bytes = files.values().map(|b| b.len() as u64).sum::<u64>() + sizes.values().sum::<u64>();
     let mut pack = Pack {
         id,
         builtin,
@@ -448,10 +457,18 @@ fn finish(
         files,
         previews: sizes,
         hash: String::new(),
-        bytes,
+        bytes: 0,
     };
-    let archive = archive::write(&canonical_entries(&pack, &previews)?)?;
-    pack.hash = hex(&Sha256::digest(&archive));
+    let canonical = canonical_entries(&pack, &previews)?;
+    pack.hash = hex(&Sha256::digest(&archive::write(&canonical)?));
+    // The library's 128 MB is counted in canonical form (ADR-0038 D1)
+    pack.bytes = canonical.values().map(|b| b.len() as u64).sum();
+    if pack.bytes > limits::ARCHIVE_UNCOMPRESSED {
+        return Err(structural(
+            "",
+            format!("more than {} bytes", limits::ARCHIVE_UNCOMPRESSED),
+        ));
+    }
     Ok(Assembled { pack, previews })
 }
 

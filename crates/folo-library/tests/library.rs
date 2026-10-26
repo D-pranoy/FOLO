@@ -691,3 +691,83 @@ fn changes_are_announced_once_each() {
         Vec::<folo_library::LibraryEvent>::new()
     );
 }
+
+// ------------------------------------------------------------------ the review's findings
+
+#[test]
+fn a_write_that_grows_past_1_mb_once_indented_is_refused_and_leaves_the_pack_readable() {
+    let dir = scratch("grows");
+    let library = open(&dir, "0.0.0");
+    let mine = "local/my-presets";
+    library
+        .put_item(mine, ItemType::Scenes, "keep", scene("keep"))
+        .unwrap();
+    // About 600 KB compact, several MB indented
+    let numbers: Vec<u8> = vec![1; 300_000];
+    let body = json!({"scene": {"name": "heavy"}, "hints": {"numbers": numbers}});
+    assert!(serde_json::to_vec(&body).unwrap().len() < 1024 * 1024);
+    let error = library
+        .put_item(mine, ItemType::Scenes, "heavy", body)
+        .unwrap_err();
+    assert_eq!((error.status(), code(&error)), (422, "structural_error"));
+    drop(library);
+    let again = open(&dir, "0.0.0");
+    assert!(
+        again.item(mine, ItemType::Scenes, "keep").is_ok(),
+        "the pack still reads"
+    );
+    assert!(
+        again
+            .put_item(mine, ItemType::Scenes, "next", scene("next"))
+            .is_ok()
+    );
+}
+
+#[test]
+fn pack_ids_that_are_device_names_are_refused() {
+    let library = open(&scratch("device"), "0.0.0");
+    for id in ["con/x", "acme/aux", "lpt1/nul"] {
+        let error = library
+            .install(&zip(&entries(id, "1.0.0")), false)
+            .unwrap_err();
+        assert_eq!(code(&error), "structural_error", "{id}");
+    }
+}
+
+#[test]
+fn a_removal_is_not_undone_by_recovery_but_an_interrupted_replacement_is() {
+    let dir = scratch("recover");
+    let library = open(&dir, "0.0.0");
+    install(&library, "acme/stay", "1.0.0").unwrap();
+    install(&library, "acme/lost", "1.0.0").unwrap();
+    drop(library);
+    let root = dir.join("library");
+    let trash = root.join(".trash");
+    std::fs::create_dir_all(&trash).unwrap();
+    // A removal that couldn't finish deleting, and a replacement interrupted between its two moves
+    std::fs::create_dir_all(trash.join("gone~1/scenes")).unwrap();
+    std::fs::rename(root.join("acme/lost"), trash.join("acme~lost~7")).unwrap();
+    let again = open(&dir, "0.0.0");
+    assert!(
+        ids(&again).contains(&"acme/lost".to_owned()),
+        "the interrupted replacement came back"
+    );
+    assert!(ids(&again).contains(&"acme/stay".to_owned()));
+    assert!(
+        !root.join(".trash").exists()
+            || std::fs::read_dir(root.join(".trash"))
+                .unwrap()
+                .next()
+                .is_none()
+    );
+}
+
+#[test]
+fn a_newer_version_ignores_build_metadata() {
+    let library = open(&scratch("build-meta"), "0.0.0");
+    install(&library, "acme/pack", "1.0.0+a").unwrap();
+    assert_eq!(
+        code(&install(&library, "acme/pack", "1.0.0+b").unwrap_err()),
+        "already_installed"
+    );
+}

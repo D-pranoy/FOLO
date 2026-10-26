@@ -133,10 +133,12 @@ pub fn classify(path: &str) -> Result<Entry, String> {
 /// Whether `id` is a pack id, `author/name`: `[a-z0-9-]`, 1 to 32 characters each.
 #[must_use]
 pub fn valid_pack_id(id: &str) -> bool {
+    // The id is a folder path, so Windows' device names are refused here too
     let part = |p: &str| {
         (1..=32).contains(&p.len())
             && p.chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && !RESERVED_NAMES.contains(&p)
     };
     id.split_once('/').is_some_and(|(a, n)| part(a) && part(n))
 }
@@ -209,6 +211,9 @@ mod tests {
             "b".repeat(32)
         )));
         for bad in [
+            "con/x",
+            "a/aux",
+            "lpt1/lpt2",
             "core",
             "a/b/c",
             "A/b",

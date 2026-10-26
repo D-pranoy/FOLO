@@ -217,3 +217,7 @@ The service's implementation needed these choices, which D1 to D10 leave open. T
 - **Writes go through `library/.staging/`;** a replaced folder waits in `library/.trash/` until its replacement is in place, and a node that starts finds an interrupted replacement and puts the old folder back.
 - **Events** are numbered in memory (the newest 256); a live connection is sent those after it connected.
 - **The zip exemption** is for the method and path of each zip route (today `POST /library/packs`); a zip route sent anything else is `415 zip_required`, and every other mutating request keeps the JSON rule.
+- **Sizes are checked on what is stored.** The library writes indented files, so a file that fits 1 MB as it came in can exceed it once stored; an install or item write whose stored file is over 1 MB, or whose canonical form is over 32 MB, is `422 structural_error`, and nothing is written. The library's 128 MB is counted in canonical form, item writes included (a write past it is `409 list_full`).
+- **A newer version** is one whose SemVer precedence is higher: build metadata (`+a`, `+b`) doesn't make a version newer.
+- **Pack ids that are Windows device names** (`con`, `aux`, …) as an author or a name are not valid pack ids, because the id is a folder path.
+- **Removals and replacements leave different traces:** a removed pack's folder waits in `.trash/gone~…` and recovery deletes it; a replaced one waits under its own id and recovery puts it back when the replacement never arrived. Files are flushed to disk before the swap.

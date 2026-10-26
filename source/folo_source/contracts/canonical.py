@@ -32,6 +32,13 @@ class NotCanonicalError(ValueError):
 
 def to_canonical(value: Json) -> str:
     """The value serialised by the JSON Canonicalization Scheme."""
+    try:
+        return _canonical(value)
+    except UnicodeEncodeError as error:
+        raise NotCanonicalError('a string holds a lone surrogate') from error
+
+
+def _canonical(value: Json) -> str:
     if value is None:
         return 'null'
     if value is True:
@@ -39,17 +46,20 @@ def to_canonical(value: Json) -> str:
     if value is False:
         return 'false'
     if isinstance(value, (int, float)):
-        return _number(float(value))
+        try:
+            return _number(float(value))
+        except OverflowError as error:
+            raise NotCanonicalError(f'{value} is beyond the largest number') from error
     if isinstance(value, str):
         return _string(value)
     if isinstance(value, list):
         items = cast('list[Json]', value)
-        return '[' + ','.join(to_canonical(item) for item in items) + ']'
+        return '[' + ','.join(_canonical(item) for item in items) + ']'
     if isinstance(value, dict):
         mapping = cast('dict[str, Json]', value)
         # UTF-16 code units, which is not the order of UTF-8 bytes beyond the BMP
         keys = sorted(mapping, key=lambda key: key.encode('utf-16-be'))
-        return '{' + ','.join(f'{_string(key)}:{to_canonical(mapping[key])}' for key in keys) + '}'
+        return '{' + ','.join(f'{_string(key)}:{_canonical(mapping[key])}' for key in keys) + '}'
     raise NotCanonicalError(f'{type(value).__name__} is not JSON')
 
 
@@ -59,6 +69,7 @@ def item_hash(value: Json) -> str:
 
 
 def _string(text: str) -> str:
+    text.encode('utf-8')  # a lone surrogate raises here
     out: list[str] = []
     for char in text:
         if char in _ESCAPES:

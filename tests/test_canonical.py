@@ -35,3 +35,12 @@ def test_hash_ignores_key_order_and_number_spelling() -> None:
 def test_non_finite_numbers_have_no_canonical_form(text: str) -> None:
     with pytest.raises(NotCanonicalError):
         to_canonical(loads(text))
+
+
+def test_huge_integers_and_lone_surrogates_have_no_canonical_form() -> None:
+    with pytest.raises(NotCanonicalError):
+        to_canonical(10**400)
+    with pytest.raises(NotCanonicalError):
+        to_canonical('\ud800')
+    with pytest.raises(NotCanonicalError):
+        to_canonical({'\ud800': 1})

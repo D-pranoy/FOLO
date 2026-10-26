@@ -54,6 +54,12 @@ struct Inner {
     packs: BTreeMap<String, Pack>,
     /// Folders that failed their checks at start: left as they are.
     unreadable: BTreeSet<String>,
+}
+
+/// The numbered events, apart from the packs so that reading them (the live
+/// channel does, many times a second) never waits for a write.
+#[derive(Default)]
+struct EventLog {
     events: Vec<LibraryEvent>,
     seq: u64,
 }
@@ -63,6 +69,7 @@ pub struct Library {
     root: PathBuf,
     node_version: Version,
     inner: Mutex<Inner>,
+    events: Mutex<EventLog>,
 }
 
 impl Library {
@@ -80,15 +87,29 @@ impl Library {
         let library = Self {
             root,
             node_version,
-            inner: Mutex::new(Inner {
-                packs,
-                unreadable,
-                events: Vec::new(),
-                seq: 0,
-            }),
+            inner: Mutex::new(Inner { packs, unreadable }),
+            events: Mutex::new(EventLog::default()),
         };
         library.create_my_presets();
         library
+    }
+
+    fn events_lock(&self) -> MutexGuard<'_, EventLog> {
+        self.events.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn announce(&self, id: &str, state: State) {
+        let mut log = self.events_lock();
+        log.seq += 1;
+        let seq = log.seq;
+        log.events.push(LibraryEvent {
+            seq,
+            id: id.to_owned(),
+            state: state.name(),
+        });
+        if log.events.len() > EVENTS_KEPT {
+            log.events.remove(0);
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -175,12 +196,11 @@ impl Library {
     /// [`LibraryError::NotFound`] when the pack has no such preview.
     pub fn preview(&self, pack: &str, file: &str) -> Result<(Vec<u8>, &'static str), LibraryError> {
         let path = format!("previews/{file}");
-        {
-            let inner = self.lock();
-            let found = inner.packs.get(pack).ok_or_else(|| not_found(pack))?;
-            if !found.previews.contains_key(&path) {
-                return Err(not_found(&format!("{pack} preview {file}")));
-            }
+        // Read while holding the lock, so a replace or removal can't move the folder meanwhile
+        let inner = self.lock();
+        let found = inner.packs.get(pack).ok_or_else(|| not_found(pack))?;
+        if !found.previews.contains_key(&path) {
+            return Err(not_found(&format!("{pack} preview {file}")));
         }
         let bytes = disk::read_preview(&disk::folder(&self.root, pack), &path)?;
         Ok((bytes, media_type(file)))
@@ -192,17 +212,17 @@ impl Library {
     ///
     /// [`LibraryError::NotFound`] when there is no such pack.
     pub fn export(&self, id: &str) -> Result<Vec<u8>, LibraryError> {
-        let pack = self
-            .lock()
-            .packs
-            .get(id)
-            .cloned()
-            .ok_or_else(|| not_found(id))?;
-        let previews = self.previews_of(&pack)?;
-        archive::write(&pack::canonical_entries(&pack, &previews)?)
+        let inner = self.lock();
+        let pack = inner.packs.get(id).ok_or_else(|| not_found(id))?;
+        let previews = self.previews_of(pack)?;
+        archive::write(&pack::canonical_entries(pack, &previews)?)
     }
 
     fn previews_of(&self, pack: &Pack) -> Result<Entries, LibraryError> {
+        // The built-in packs are embedded, not on disk
+        if pack.builtin {
+            return Ok(Entries::new());
+        }
         let dir = disk::folder(&self.root, &pack.id);
         pack.previews
             .keys()
@@ -221,13 +241,13 @@ impl Library {
     /// The number of the newest event.
     #[must_use]
     pub fn last_event(&self) -> u64 {
-        self.lock().seq
+        self.events_lock().seq
     }
 
     /// The events after number `seq`.
     #[must_use]
     pub fn events_since(&self, seq: u64) -> Vec<LibraryEvent> {
-        self.lock()
+        self.events_lock()
             .events
             .iter()
             .filter(|e| e.seq > seq)
@@ -260,7 +280,7 @@ impl Library {
         let id = pack.id.clone();
         inner.packs.insert(id.clone(), pack);
         inner.unreadable.remove(&id);
-        announce(&mut inner, &id, State::Installed);
+        self.announce(&id, State::Installed);
         Ok(info)
     }
 
@@ -307,7 +327,7 @@ impl Library {
         }
         disk::remove(&self.root, id)?;
         inner.packs.remove(id);
-        announce(&mut inner, id, State::Removed);
+        self.announce(id, State::Removed);
         Ok(())
     }
 
@@ -371,11 +391,23 @@ impl Library {
             pack: edited,
             previews,
         } = pack::assemble(entries, Some(pack), false)?;
+        // An edit can't take the library past its size either
+        let others: u64 = inner
+            .packs
+            .values()
+            .filter(|p| !p.builtin && p.id != pack)
+            .map(|p| p.bytes)
+            .sum();
+        if others + edited.bytes > limits::LIBRARY_BYTES {
+            return Err(LibraryError::ListFull {
+                reason: "the library holds 128 MB".to_owned(),
+            });
+        }
         let mut files = edited.files.clone();
         files.extend(previews);
         disk::place(&self.root, pack, &files)?;
         inner.packs.insert(pack.to_owned(), edited);
-        announce(inner, pack, State::Changed);
+        self.announce(pack, State::Changed);
         Ok(&inner.packs[pack])
     }
 }
@@ -395,19 +427,6 @@ fn editable<'a>(inner: &'a Inner, id: &str) -> Result<&'a Pack, LibraryError> {
 fn not_found(what: &str) -> LibraryError {
     LibraryError::NotFound {
         what: what.to_owned(),
-    }
-}
-
-fn announce(inner: &mut Inner, id: &str, state: State) {
-    inner.seq += 1;
-    let seq = inner.seq;
-    inner.events.push(LibraryEvent {
-        seq,
-        id: id.to_owned(),
-        state: state.name(),
-    });
-    if inner.events.len() > EVENTS_KEPT {
-        inner.events.remove(0);
     }
 }
 
@@ -486,7 +505,7 @@ fn check_conflict(inner: &Inner, pack: &Pack, replace: bool) -> Result<(), Libra
         Version::parse(pack.version()),
         Version::parse(installed.version()),
     ) {
-        (Ok(offered), Ok(have)) => offered > have,
+        (Ok(offered), Ok(have)) => offered.cmp_precedence(&have).is_gt(),
         _ => false,
     };
     if newer || replace {

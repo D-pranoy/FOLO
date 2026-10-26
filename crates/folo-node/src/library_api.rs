@@ -59,8 +59,11 @@ fn item_type(name: &str) -> Result<ItemType, Refusal> {
     })
 }
 
-pub async fn packs(State(node): Shared) -> Json<Value> {
-    Json(Value::Array(node.library.packs()))
+pub async fn packs(State(node): Shared) -> Response {
+    match blocking(&node, |library| Ok(library.packs())).await {
+        Ok(packs) => Json(Value::Array(packs)).into_response(),
+        Err(response) => *response,
+    }
 }
 
 /// `POST /library/packs[?replace=true]` with a `.folopack`.
@@ -105,9 +108,9 @@ pub async fn install(
 }
 
 pub async fn pack(State(node): Shared, Path(pack): Path<String>) -> Response {
-    match node.library.manifest(&pack) {
+    match blocking(&node, move |library| library.manifest(&pack)).await {
         Ok(manifest) => Json(manifest).into_response(),
-        Err(failure) => refused(&failure),
+        Err(response) => *response,
     }
 }
 
@@ -148,9 +151,9 @@ pub async fn item(
         Ok(kind) => kind,
         Err(response) => return *response,
     };
-    match node.library.item(&pack, kind, &item) {
+    match blocking(&node, move |library| library.item(&pack, kind, &item)).await {
         Ok(value) => Json(value).into_response(),
-        Err(failure) => refused(&failure),
+        Err(response) => *response,
     }
 }
 
@@ -234,5 +237,8 @@ pub async fn items(State(node): Shared, Query(query): Query<Vec<(String, String)
             "type is palettes, reactions, looks, scenes or zone-templates",
         );
     };
-    Json(Value::Array(node.library.items(kind))).into_response()
+    match blocking(&node, move |library| Ok(library.items(kind))).await {
+        Ok(items) => Json(Value::Array(items)).into_response(),
+        Err(response) => *response,
+    }
 }

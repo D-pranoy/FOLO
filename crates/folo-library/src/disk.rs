@@ -2,6 +2,7 @@
 //! staging folder so a pack is never half written (ADR-0038 D1, D3, D8).
 
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +16,8 @@ use crate::names::{self, Entry, ItemType, MANIFEST, PREVIEWS};
 pub const STAGING: &str = ".staging";
 /// Where a replaced pack waits until its replacement is in place.
 pub const TRASH: &str = ".trash";
+/// The trash entries of removed packs start with this.
+const GONE: &str = "gone~";
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// The files of the pack folder `dir`, by path below it.
@@ -114,7 +117,10 @@ fn write_all(dir: &Path, files: &Entries) -> Result<(), LibraryError> {
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(target, bytes)?;
+        // Flushed before the swap, so a power loss can't leave a folder of empty files
+        let mut file = fs::File::create(target)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
     }
     fs::create_dir_all(dir)?;
     Ok(())
@@ -154,9 +160,8 @@ fn swap(root: &Path, id: &str, staged: &Path) -> Result<(), LibraryError> {
 /// [`LibraryError::Io`] when it can't be removed.
 pub fn remove(root: &Path, id: &str) -> Result<(), LibraryError> {
     let target = folder(root, id);
-    let trash = root
-        .join(TRASH)
-        .join(format!("{}~{}", id.replace('/', "~"), unique()));
+    // `gone~` entries are removals: recovery deletes them instead of restoring the pack
+    let trash = root.join(TRASH).join(format!("{GONE}{}", unique()));
     fs::create_dir_all(root.join(TRASH))?;
     fs::rename(&target, &trash)?;
     let _ = fs::remove_dir_all(&trash);
@@ -172,6 +177,10 @@ pub fn recover(root: &Path) {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with(GONE) {
+            let _ = fs::remove_dir_all(entry.path());
+            continue;
+        }
         let id = name.split('~').take(2).collect::<Vec<_>>().join("/");
         let target = folder(root, &id);
         if !target.exists() && names::valid_pack_id(&id) {
@@ -199,7 +208,8 @@ pub fn pack_folders(root: &Path) -> Vec<(String, PathBuf)> {
     };
     for author in authors.flatten() {
         let author_name = author.file_name().to_string_lossy().into_owned();
-        if author_name.starts_with('.') || !author.path().is_dir() {
+        // `file_type` doesn't follow links, so a linked folder isn't a pack folder
+        if author_name.starts_with('.') || !author.file_type().is_ok_and(|t| t.is_dir()) {
             continue;
         }
         let Ok(packs) = fs::read_dir(author.path()) else {
@@ -207,7 +217,7 @@ pub fn pack_folders(root: &Path) -> Vec<(String, PathBuf)> {
         };
         for pack in packs.flatten() {
             let id = format!("{author_name}/{}", pack.file_name().to_string_lossy());
-            if pack.path().is_dir() {
+            if pack.file_type().is_ok_and(|t| t.is_dir()) {
                 found.push((id, pack.path()));
             }
         }
