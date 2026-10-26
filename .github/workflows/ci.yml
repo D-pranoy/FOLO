@@ -96,6 +96,9 @@ jobs:
             echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           fi
           echo "FOLO_E2E=1" >> "$GITHUB_ENV"
+      - name: The openssl command for the Hue provider's DTLS interop test (RB-13); a missing one is a failure
+        if: runner.os == 'Linux'
+        run: echo "FOLO_OPENSSL_TESTS=1" >> "$GITHUB_ENV"
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
