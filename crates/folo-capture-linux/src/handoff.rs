@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 use crate::scale::PixelLayout;
 
 /// One buffer's pixels as the compositor laid them out.
-#[derive(Debug)]
 pub struct RawFrame {
     pub layout: PixelLayout,
     pub width: usize,
@@ -24,7 +23,7 @@ pub struct RawFrame {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct Slot {
     newest: Option<RawFrame>,
     /// A buffer to fill next, so frames of one size don't allocate.
@@ -32,7 +31,7 @@ struct Slot {
     closed: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Handoff {
     slot: Mutex<Slot>,
     arrived: Condvar,

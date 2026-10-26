@@ -48,19 +48,24 @@ pub enum StreamEvent {
 /// The stream's threads, to stop and join.
 pub struct StreamHandle {
     stop: pw::channel::Sender<()>,
-    stream_thread: JoinHandle<()>,
-    scaling_thread: JoinHandle<()>,
+    stream_thread: Option<JoinHandle<()>>,
+    scaling_thread: Option<JoinHandle<()>>,
     handoff: Arc<Handoff>,
 }
 
-impl StreamHandle {
-    /// Stops the stream's loop and the scaling thread, and waits for both.
-    pub fn stop(self) {
+// Dropping the handle stops the stream's loop and the scaling thread and waits
+// for both, so no path out of the session can leave them running.
+impl Drop for StreamHandle {
+    fn drop(&mut self) {
         // If the loop is already gone, there is nothing left to stop.
         let _ = self.stop.send(());
-        let _ = self.stream_thread.join();
+        if let Some(thread) = self.stream_thread.take() {
+            let _ = thread.join();
+        }
         self.handoff.close();
-        let _ = self.scaling_thread.join();
+        if let Some(thread) = self.scaling_thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -107,8 +112,8 @@ pub fn spawn(
     match stream_thread {
         Ok(stream_thread) => Ok(StreamHandle {
             stop,
-            stream_thread,
-            scaling_thread,
+            stream_thread: Some(stream_thread),
+            scaling_thread: Some(scaling_thread),
             handoff,
         }),
         Err(error) => {
@@ -308,7 +313,12 @@ fn on_buffer(
     };
     // The compositor sends empty buffers when only the cursor moved, which
     // isn't part of the stream.
-    if used == 0 {
+    if used == 0
+        || plane
+            .chunk()
+            .flags()
+            .contains(spa::buffer::ChunkFlags::CORRUPTED)
+    {
         return;
     }
     let format = *negotiated.lock().unwrap_or_else(PoisonError::into_inner);
@@ -332,6 +342,10 @@ fn on_buffer(
         return;
     }
     let needed = (height - 1) * stride + width * layout.bytes_per_pixel();
+    // A chunk shorter than the picture is a partial write: show the last whole one.
+    if used < needed {
+        return;
+    }
     if let Some(pixels) = bytes.get(offset..offset + needed) {
         handoff.put(layout, (width, height), stride, pixels);
     }

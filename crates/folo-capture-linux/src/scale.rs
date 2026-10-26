@@ -47,7 +47,7 @@ impl PixelLayout {
 }
 
 /// A buffer as PipeWire describes it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct SourceImage<'a> {
     pub layout: PixelLayout,
     pub width: usize,
@@ -55,6 +55,18 @@ pub struct SourceImage<'a> {
     /// Bytes from one row to the next, at least `width × bytes_per_pixel`.
     pub stride: usize,
     pub data: &'a [u8],
+}
+
+// The sizes only: a stray `{:?}` must not print the screen's pixels.
+impl std::fmt::Debug for SourceImage<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SourceImage")
+            .field("layout", &self.layout)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("stride", &self.stride)
+            .finish_non_exhaustive()
+    }
 }
 
 /// For each output cell along one axis, the input cells under it and how much

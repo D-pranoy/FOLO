@@ -63,6 +63,8 @@ fn unescape_unit_part(text: &str) -> String {
 /// portal has no host registry: `app-<escaped id>-<random>.scope`.
 #[must_use]
 pub fn transient_scope_name(random: &str) -> String {
+    // A "-" in the random part would read as another part of the name.
+    let random: String = random.chars().filter(char::is_ascii_alphanumeric).collect();
     format!("app-{}-{random}.scope", escape_unit_part(APP_ID))
 }
 

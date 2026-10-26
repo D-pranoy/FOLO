@@ -44,3 +44,14 @@ fn services_launchers_and_other_units() {
         assert_eq!(app_id_from_cgroup(cgroup), None, "{cgroup:?}");
     }
 }
+
+#[test]
+fn a_dash_in_the_random_part_cannot_split_the_name() {
+    let name = transient_scope_name("ab-cd");
+    assert_eq!(
+        name,
+        r"app-io.github.d\x2dpranoy.folo\x2dcapture-abcd.scope"
+    );
+    let cgroup = format!("0::/app.slice/{name}\n");
+    assert_eq!(app_id_from_cgroup(&cgroup).as_deref(), Some(APP_ID));
+}

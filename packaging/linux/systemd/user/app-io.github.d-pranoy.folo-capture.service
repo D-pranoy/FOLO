@@ -26,5 +26,6 @@ After=graphical-session.target
 [Service]
 Type=simple
 ExecStart=/usr/lib/folo/folo-capture run
-Restart=on-failure
-RestartSec=2
+# No restart: without the node's launch token the agent exits with status 2, and
+# restarting it would only loop. Set the policy with the launch (RB-19, RB-20).
+Restart=no

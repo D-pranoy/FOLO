@@ -17,14 +17,18 @@ use ashpd::zbus::Connection;
 use ashpd::zbus::connection::Builder;
 use folo_capture_core::types::CaptureState;
 use futures_util::StreamExt as _;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::watch;
 
 use crate::appid::{self, Registration, UNKNOWN_HINT};
 use crate::notify;
 use crate::shared::Shared;
 use crate::stream::{self, StreamEvent};
 
-/// The oldest ScreenCast interface that keeps restore tokens.
+/// How long a stop request lets the capture wind down by itself.
+const STOP_GRACE: Duration = Duration::from_secs(2);
+
+/// The oldest `ScreenCast` interface that keeps restore tokens.
 pub const MINIMUM_PORTAL_VERSION: u32 = 4;
 
 /// Where the portal is, and how soon an answer counts as a dialog.
@@ -49,15 +53,9 @@ impl Default for PortalSettings {
     }
 }
 
-/// What the backend can ask of the thread.
-#[derive(Debug)]
-pub enum Command {
-    Stop,
-}
-
 /// The portal thread, to stop and join.
 pub struct Worker {
-    commands: UnboundedSender<Command>,
+    stop: watch::Sender<bool>,
     thread: JoinHandle<()>,
 }
 
@@ -70,7 +68,7 @@ impl Worker {
     /// Asks the thread to close the session and waits for it.
     pub fn stop(self) {
         // A thread that has ended has nothing left to close.
-        let _ = self.commands.send(Command::Stop);
+        let _ = self.stop.send(true);
         let _ = self.thread.join();
     }
 }
@@ -85,19 +83,19 @@ pub fn spawn(
     shared: Arc<Shared>,
     restore_token: Option<String>,
 ) -> Result<Worker, String> {
-    let (commands, receiver) = unbounded_channel();
+    let (stop, receiver) = watch::channel(false);
     let thread = thread::Builder::new()
         .name("folo-capture-portal".to_owned())
         .spawn(move || work(&settings, &shared, restore_token, receiver))
         .map_err(|error| format!("can't start the portal thread: {error}"))?;
-    Ok(Worker { commands, thread })
+    Ok(Worker { stop, thread })
 }
 
 fn work(
     settings: &PortalSettings,
     shared: &Arc<Shared>,
     restore_token: Option<String>,
-    mut commands: UnboundedReceiver<Command>,
+    mut stop: watch::Receiver<bool>,
 ) {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -109,7 +107,20 @@ fn work(
             return;
         }
     };
-    let outcome = runtime.block_on(capture(settings, shared, restore_token, &mut commands));
+    // A stop request ends the capture wherever it is. The work handles it
+    // itself where it can (closing the session first); in a call to a portal
+    // that doesn't answer it gets `STOP_GRACE`, and is then dropped, which
+    // closes the connection and so the portal's session.
+    let outcome = runtime.block_on(async {
+        let work = capture(settings, shared, restore_token, stop.clone());
+        tokio::pin!(work);
+        tokio::select! {
+            outcome = &mut work => outcome,
+            _ = stop.changed() => {
+                tokio::time::timeout(STOP_GRACE, &mut work).await.unwrap_or(Ok(()))
+            }
+        }
+    });
     match outcome {
         Ok(()) => shared.set_state(CaptureState::Off),
         Err(message) => shared.fail(message),
@@ -144,7 +155,7 @@ async fn capture(
     settings: &PortalSettings,
     shared: &Arc<Shared>,
     restore_token: Option<String>,
-    commands: &mut UnboundedReceiver<Command>,
+    stop: watch::Receiver<bool>,
 ) -> Result<(), String> {
     let connection = connect(settings).await?;
     let cgroup = settings
@@ -176,7 +187,7 @@ async fn capture(
         &screencast,
         &session,
         restore_token,
-        commands,
+        stop,
     )
     .await;
     // Closing is best effort: the session may be gone already.
@@ -193,7 +204,7 @@ async fn share(
     screencast: &Screencast,
     session: &PortalSession,
     restore_token: Option<String>,
-    commands: &mut UnboundedReceiver<Command>,
+    mut stop: watch::Receiver<bool>,
 ) -> Result<(), String> {
     let mut closed = session
         .receive_closed()
@@ -217,7 +228,7 @@ async fn share(
         screencast,
         session,
         restore_token.is_some(),
-        commands,
+        &mut stop,
     )
     .await?
     else {
@@ -246,15 +257,12 @@ async fn share(
         .await
         .map_err(|error| describe("can't open the PipeWire remote", &error))?;
     let (events, mut stream_events) = unbounded_channel();
-    let handle =
+    let _handle =
         stream::spawn(remote, node_id, shared, &events).map_err(|error| error.to_string())?;
-    let outcome = loop {
+    loop {
         tokio::select! {
-            command = commands.recv() => {
-                // A dropped sender is a stop too.
-                let _ = command;
-                break Ok(());
-            }
+            // A dropped sender is a stop too.
+            _ = stop.changed() => break Ok(()),
             ended = closed.next() => {
                 let _ = ended;
                 break Err("the desktop ended the screen share".to_owned());
@@ -265,9 +273,7 @@ async fn share(
                 None => break Err("the PipeWire stream ended".to_owned()),
             },
         }
-    };
-    handle.stop();
-    outcome
+    }
 }
 
 /// Calls `Start`, which returns when the user has chosen (or at once when the
@@ -279,7 +285,7 @@ async fn start(
     screencast: &Screencast,
     session: &PortalSession,
     had_token: bool,
-    commands: &mut UnboundedReceiver<Command>,
+    stop: &mut watch::Receiver<bool>,
 ) -> Result<Option<Streams>, String> {
     let pending = screencast.start(session, None, StartCastOptions::default());
     tokio::pin!(pending);
@@ -304,7 +310,7 @@ async fn start(
                     tokio::spawn(notify::reprompt(connection.clone()));
                 }
             }
-            _ = commands.recv() => return Ok(None),
+            _ = stop.changed() => return Ok(None),
         }
     }
 }

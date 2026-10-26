@@ -138,26 +138,37 @@ fn the_environment_is_checked_before_the_backend() {
 /// Whether this build of the agent has the Linux portal backend.
 const PORTAL_BUILT: bool = cfg!(all(target_os = "linux", feature = "portal"));
 
-/// The backends that can't be opened here: the Windows ones everywhere, and
-/// the platform's own where it has no crate yet.
-fn unbuilt_backends() -> Vec<&'static str> {
-    let mut backends = vec!["dda", "wgc", "gdi"];
+/// The backends that can't be opened here, with what their message says: the
+/// Windows ones everywhere, and the platform's own where it isn't built.
+fn unbuilt_backends() -> Vec<(&'static str, &'static str)> {
+    let mut backends = vec![
+        ("dda", "dda backend isn't built yet"),
+        ("wgc", "wgc backend isn't built yet"),
+        ("gdi", "gdi backend isn't built yet"),
+    ];
     if !PORTAL_BUILT {
-        backends.extend(["auto", "portal"]);
+        let portal = if cfg!(target_os = "linux") {
+            "built into this binary"
+        } else {
+            "portal backend is for Linux"
+        };
+        let auto = if cfg!(target_os = "linux") {
+            "built into this binary"
+        } else {
+            "platform's capture backend isn't built yet"
+        };
+        backends.extend([("auto", auto), ("portal", portal)]);
     }
     backends
 }
 
 #[test]
 fn a_backend_that_is_not_built_yet_exits_with_1_and_says_so() {
-    for backend in unbuilt_backends() {
+    for (backend, said) in unbuilt_backends() {
         let output = agent(&["--backend", backend, "run"], &linked());
         assert_eq!(code(&output), 1, "{backend}");
         let text = stderr(&output);
-        assert!(
-            text.contains("built yet") || text.contains("for Linux") || text.contains("built into"),
-            "{backend}: {text}"
-        );
+        assert!(text.contains(said), "{backend}: {text}");
         assert!(
             !text.contains(SECRET_TOKEN),
             "the token stays out of the output"
@@ -261,15 +272,12 @@ fn screens_without_json_prints_a_line_per_screen() {
 
 #[test]
 fn screens_on_a_backend_that_is_not_built_exits_with_1() {
-    for backend in unbuilt_backends() {
+    for (backend, said) in unbuilt_backends() {
         let output = agent(&["screens", "--json", "--backend", backend], &[]);
         assert_eq!(code(&output), 1, "{backend}");
         assert_eq!(output.stdout, b"", "{backend}");
         let text = stderr(&output);
-        assert!(
-            text.contains("built yet") || text.contains("for Linux") || text.contains("built into"),
-            "{backend}: {text}"
-        );
+        assert!(text.contains(said), "{backend}: {text}");
     }
 }
 
