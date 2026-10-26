@@ -186,6 +186,12 @@ pub(crate) struct State {
     pub status: WorkerStatus,
     /// What the linked engine sent.
     pub received: Received,
+    /// The surfaces moved and the engine hasn't been sent its new `config.apply` yet.
+    pub apply_pending: bool,
+    /// The id of the `config.apply` sent last, until the engine answers it. While either is
+    /// set, surface frames are dropped: they may be numbered for the surfaces before
+    /// (ADR-0036 D6).
+    pub apply_id: Option<u64>,
 }
 
 pub(crate) struct Shared {
@@ -198,6 +204,11 @@ pub(crate) struct Shared {
     pub generation: watch::Sender<u64>,
     /// Events from link sessions, with the generation of the engine they're about.
     pub events: mpsc::UnboundedSender<(u64, Event)>,
+    /// Counts the surface frames taken, and the links made and ended, so the output task
+    /// steps when one arrives.
+    pub arrivals: watch::Sender<u64>,
+    /// Counts the links made and ended.
+    pub links: watch::Sender<u64>,
     events_in: Mutex<Option<mpsc::UnboundedReceiver<(u64, Event)>>>,
 }
 
@@ -215,13 +226,23 @@ impl Shared {
                     restarts: 0,
                 },
                 received: Received::default(),
+                apply_pending: false,
+                apply_id: None,
             }),
             config: watch::channel(None).0,
             revision: AtomicU64::new(0),
             generation: watch::channel(0).0,
             events,
             events_in: Mutex::new(Some(events_in)),
+            arrivals: watch::channel(0).0,
+            links: watch::channel(0).0,
         }
+    }
+
+    /// A link was made or ended.
+    pub(crate) fn link_changed(&self) {
+        self.links.send_modify(|n| *n += 1);
+        self.arrivals.send_modify(|n| *n += 1);
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, State> {
@@ -232,9 +253,11 @@ impl Shared {
     /// the supervisor moved on to a newer engine leaves that one's link alone.
     pub(crate) fn release(&self, generation: u64) {
         let mut state = self.lock();
-        if *self.generation.borrow() == generation {
+        if *self.generation.borrow() == generation && state.linked {
             state.linked = false;
             state.requests = None;
+            drop(state);
+            self.link_changed();
         }
     }
 
@@ -346,6 +369,7 @@ impl Supervisor {
                 .frames
                 .retain(|(kind, _), _| *kind != SURFACE_FRAME);
             state.received.levels.clear();
+            state.apply_pending = true;
         }
     }
 
@@ -364,6 +388,20 @@ impl Supervisor {
     #[must_use]
     pub fn linked(&self) -> bool {
         self.shared.lock().linked
+    }
+
+    /// Changes when a surface frame arrives from the engine, and when its link is made or
+    /// ends: what the output task steps on (ADR-0036 D2).
+    #[must_use]
+    pub fn arrivals(&self) -> watch::Receiver<u64> {
+        self.shared.arrivals.subscribe()
+    }
+
+    /// Changes when the engine's link is made or ends: what it sent is gone then, and the
+    /// compositor forgets it.
+    #[must_use]
+    pub fn links(&self) -> watch::Receiver<u64> {
+        self.shared.links.subscribe()
     }
 
     /// Reads what the linked engine sent, under the supervisor's lock: keep
