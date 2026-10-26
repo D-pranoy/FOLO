@@ -23,8 +23,16 @@ fn the_cases_agree_with_python() {
     for case in cases {
         let text = case["json"].as_str().unwrap();
         let value: Value = serde_json::from_str(text).unwrap();
-        assert_eq!(to_canonical(&value).unwrap(), case["canonical"].as_str().unwrap(), "{text}");
-        assert_eq!(item_hash(&value).unwrap(), case["sha256"].as_str().unwrap(), "{text}");
+        assert_eq!(
+            to_canonical(&value).unwrap(),
+            case["canonical"].as_str().unwrap(),
+            "{text}"
+        );
+        assert_eq!(
+            item_hash(&value).unwrap(),
+            case["sha256"].as_str().unwrap(),
+            "{text}"
+        );
     }
 }
 
@@ -35,8 +43,13 @@ fn the_built_in_items_hash_as_python_does() {
     assert!(files.len() > 70);
     for file in files {
         let path = file["path"].as_str().unwrap();
-        let value: Value = serde_json::from_slice(&std::fs::read(root().join(path)).unwrap()).unwrap();
-        assert_eq!(item_hash(&value).unwrap(), file["sha256"].as_str().unwrap(), "{path}");
+        let value: Value =
+            serde_json::from_slice(&std::fs::read(root().join(path)).unwrap()).unwrap();
+        assert_eq!(
+            item_hash(&value).unwrap(),
+            file["sha256"].as_str().unwrap(),
+            "{path}"
+        );
     }
 }
 
@@ -62,7 +75,11 @@ fn the_library_hashes_the_built_ins_as_python_does() {
             }
             let id = item["item"]["id"].as_str().unwrap();
             let path = format!("packs/{pack}/{}/{id}.json", kind.folder());
-            assert_eq!(item["hash"].as_str().unwrap(), python[path.as_str()], "{path}");
+            assert_eq!(
+                item["hash"].as_str().unwrap(),
+                python[path.as_str()],
+                "{path}"
+            );
             checked += 1;
         }
     }
