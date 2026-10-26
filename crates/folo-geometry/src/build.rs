@@ -19,8 +19,9 @@ use crate::validate::usable_path;
 /// - **Plane:** the element's position is projected orthographically onto the surface's plane, and
 ///   its `(u, v)` times the size is the sample.
 ///
-/// An area kernel's box is `radius` × the element's spacing on each side of the sample. Where the
-/// spacing is unknown (a point, or coincident elements) it is one cell.
+/// An area kernel's box is `radius` × the element's spacing on each side of the sample: on a plane
+/// a grid's spacing along each of its axes, so the box can be a rectangle. Where the spacing is
+/// unknown (a point, or coincident elements) it is one cell.
 pub(crate) fn build(mapping: &Mapping, surface: &Surface, layout: &Layout) -> Option<GatherPlan> {
     let (width, height) = published_size(surface);
     let elements = match mapping.method {
@@ -142,10 +143,12 @@ fn plane(
             .map(|element| {
                 let (along_u, along_v) =
                     math::plane_coordinates(layout.position(element)?, origin, edge_u, edge_v)?;
-                let half = match layout.spacing(element) {
-                    Some(s) => (radius * s / cell_u, radius * s / cell_v),
-                    None => (radius, radius),
-                };
+                // The element's spacing in metres along u and along v
+                let (pitch_u, pitch_v) = layout.spacing_uv(element);
+                let half = (
+                    pitch_u.map_or(radius, |s| radius * s / cell_u),
+                    pitch_v.map_or(radius, |s| radius * s / cell_v),
+                );
                 kernel::sample(
                     mapping.kernel.type_,
                     mapping.edge,

@@ -10,7 +10,9 @@
 
 mod common;
 
-use common::{Map, bare_strip, canvas, close, line, mappings, pixels, plane, strip, view, zone};
+use common::{
+    Map, bare_strip, canvas, close, grid, line, mappings, pixels, plane, strip, view, zone,
+};
 use folo_geometry::{CpuProjector, ProjectError, Projector, Severity};
 use folo_protocol::generated::MappingBlend;
 use serde_json::json;
@@ -353,6 +355,27 @@ fn a_plane_mapping_with_a_bilinear_kernel_blends_neighbours() {
         .unwrap();
     // Between the centres of cells 0 and 1 of the first row.
     assert!(close(out[0], [5.0, 0.0, 0.0]), "{:?}", out[0]);
+}
+
+#[test]
+fn a_grid_with_unequal_pitches_averages_a_rectangle() {
+    // 8 × 8 cells of one metre, and a grid of 2 columns and 4 rows over the same 8 m square: 4 m
+    // apart along u, 2 m along v. Radius 0.5 gives a box 4 cells wide and 2 tall, so the first
+    // element (centred at 2 m, 1 m) averages columns 0–3 of rows 0–1.
+    let square = plane([0.0; 3], [8.0, 0.0, 0.0], [0.0, 8.0, 0.0]);
+    let px = pixels((8, 8), |x, y| [x as f32, y as f32, 0.0]);
+    let z = zone(
+        json!([canvas("c", (8, 8), &square)]),
+        json!([grid("t", (2, 4), &square, &json!({}))]),
+        mappings(&[Map::new("m", "c", "t", "plane")]),
+    );
+    let mut projector = CpuProjector::new();
+    projector.prepare(0, &z);
+    let mut out = vec![[0.0; 3]; 8];
+    projector
+        .project("z", "t", &[("c", view((8, 8), &px))], &mut out)
+        .unwrap();
+    assert!(close(out[0], [1.5, 0.5, 0.0]), "{:?}", out[0]);
 }
 
 #[test]

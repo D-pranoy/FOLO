@@ -34,6 +34,8 @@ pub struct Layout {
     positions: Vec<Vec3>,
     /// One distance in metres per element, or empty. 0 means unknown.
     spacing: Vec<f64>,
+    /// A grid's pitch along its `u` and along its `v`, in metres.
+    pitch: Option<(f64, f64)>,
 }
 
 impl Layout {
@@ -72,12 +74,30 @@ impl Layout {
         self.spacing.get(i).copied().filter(|s| *s > 0.0)
     }
 
+    /// Element `i`'s spacing along each axis of a plane, in metres: a grid's pitch along its `u`
+    /// and along its `v`, so an area box can be a rectangle, and [`spacing`](Self::spacing) on
+    /// both axes for the other targets. `None` on an axis where it is unknown.
+    #[must_use]
+    pub fn spacing_uv(&self, i: usize) -> (Option<f64>, Option<f64>) {
+        match self.pitch {
+            Some((u, v)) if i < self.count => {
+                let known = |s: f64| Some(s).filter(|s| *s > 0.0);
+                (known(u), known(v))
+            }
+            _ => {
+                let s = self.spacing(i);
+                (s, s)
+            }
+        }
+    }
+
     fn unplaced(shape: Shape, count: usize) -> Self {
         Self {
             shape,
             count,
             positions: Vec::new(),
             spacing: Vec::new(),
+            pitch: None,
         }
     }
 }
@@ -101,6 +121,7 @@ pub fn element_layout(target: &Target) -> Layout {
                 count: 1,
                 positions: vec![at],
                 spacing: vec![0.0],
+                pitch: None,
             }
         }
         Geometry::LineGeometry(l) => line_layout(l),
@@ -196,6 +217,7 @@ fn line_layout(l: &LineGeometry) -> Layout {
         count,
         positions,
         spacing,
+        pitch: None,
     }
 }
 
@@ -217,7 +239,7 @@ fn grid_layout(grid: &GridGeometry) -> Layout {
             )
         })
         .collect();
-    let pitch = f64::midpoint(
+    let pitch = (
         math::length(u) / width as f64,
         math::length(v) / height as f64,
     );
@@ -225,7 +247,9 @@ fn grid_layout(grid: &GridGeometry) -> Layout {
         shape: Shape::Grid { width, height },
         count,
         positions,
-        spacing: vec![pitch; count],
+        // A path has one axis, so a grid mapped onto one takes the mean of the two
+        spacing: vec![f64::midpoint(pitch.0, pitch.1); count],
+        pitch: Some(pitch),
     }
 }
 
@@ -467,6 +491,31 @@ mod tests {
         // Serpentine: the second row runs back, so index 4 is the right end of row 1.
         assert!(near(layout.position(4).unwrap(), [4.5, 1.5, 0.0]));
         assert!((layout.spacing(0).unwrap() - 1.0).abs() < 1e-9);
+        assert_eq!(layout.spacing_uv(0), (Some(1.0), Some(1.0)));
+    }
+
+    #[test]
+    fn a_grid_spaces_its_elements_along_each_axis() {
+        // 8 m by 1 m, four columns and two rows: 2 m apart along u, 0.5 m along v
+        let t = Target {
+            kind: TargetKind::Grid,
+            geometry: Geometry::GridGeometry(GridGeometry {
+                height: 2.try_into().unwrap(),
+                kind: "grid".into(),
+                plane: Plane {
+                    origin: p(0.0, 0.0, 0.0),
+                    u: p(8.0, 0.0, 0.0),
+                    v: p(0.0, 1.0, 0.0),
+                },
+                width: 4.try_into().unwrap(),
+                wiring: wiring(WiringOrder::Row, false, WiringStart::TopLeft),
+            }),
+            ..Target::default()
+        };
+        let layout = element_layout(&t);
+        assert_eq!(layout.spacing_uv(3), (Some(2.0), Some(0.5)));
+        // A path has one axis: the mean of the two
+        assert!((layout.spacing(3).unwrap() - 1.25).abs() < 1e-9);
     }
 
     #[test]
