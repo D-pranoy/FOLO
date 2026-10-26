@@ -157,7 +157,8 @@ pub struct ElementFrame {
     /// The controller's monotonic clock, in microseconds.
     pub timestamp_us: u64,
     /// For state targets, how long the device should take to reach these colours: the update
-    /// interval. Zero for streaming targets.
+    /// interval. Zero when the frame holds only streaming targets; in a frame that mixes the
+    /// two it is the state targets' interval, and a streaming provider ignores it.
     pub transition: Duration,
     pub targets: Vec<TargetOutput>,
 }
@@ -264,10 +265,18 @@ pub struct DeliveryPolicy {
     /// Paces the updates of state targets: one token per target update, shared by the instance
     /// (a bridge or a device).
     pub bucket: BucketSpec,
+    /// How long one call of the provider (`connect`, `describe`, `start`, `send`, a release
+    /// while running) may take. A call that takes longer counts as `Unreachable`: the instance
+    /// reconnects. Hue's `start` (the stream and its handshake) is the slow one.
+    pub call_timeout: Duration,
+    /// How long a release, or closing the connection, may take when the sender stops. Stopping
+    /// as a whole takes at most three times this.
+    pub release_timeout: Duration,
 }
 
 impl Default for DeliveryPolicy {
-    /// One second, and five updates a second with a burst of five: placeholders a kind replaces.
+    /// One second, and five updates a second with a burst of five, calls limited to 10 s and
+    /// releases to 2 s: placeholders a kind replaces.
     fn default() -> Self {
         Self {
             keepalive: Duration::from_secs(1),
@@ -275,6 +284,8 @@ impl Default for DeliveryPolicy {
                 capacity: 5,
                 per_second: 5.0,
             },
+            call_timeout: Duration::from_secs(10),
+            release_timeout: Duration::from_secs(2),
         }
     }
 }

@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use folo_protocol::generated::{ProviderInstance, Target};
-use folo_provider::testing::{Event, RecordingProvider};
+use folo_provider::testing::{Event, Op, RecordingProvider};
 use folo_provider::{
-    Backoff, BucketSpec, Delivery, DeliveryPolicy, ElementColors, ElementFrame, ProviderState,
-    SenderConfig, SenderHandle, SenderTarget, TargetOutput, spawn_sender,
+    Backoff, BucketSpec, Delivery, DeliveryPolicy, ElementColors, ElementFrame, ProviderError,
+    ProviderState, SenderConfig, SenderHandle, SenderTarget, TargetOutput, spawn_sender,
 };
 use tokio::time::{Instant, sleep};
 
@@ -52,7 +52,8 @@ fn config(rate_hz: f64, policy: DeliveryPolicy, targets: &[(&str, Delivery)]) ->
             reset_after: Duration::from_secs(60),
             jitter: no_jitter,
         },
-        release_timeout: Duration::from_secs(2),
+        start_retry: Duration::from_secs(5),
+        describe_every: None,
     }
 }
 
@@ -63,6 +64,8 @@ fn policy(keepalive_ms: u64) -> DeliveryPolicy {
             capacity: 2,
             per_second: 1.0,
         },
+        call_timeout: Duration::from_secs(10),
+        release_timeout: Duration::from_secs(2),
     }
 }
 
@@ -383,9 +386,69 @@ async fn a_failed_send_reconnects_and_starts_the_targets_again() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failing_start_is_an_error_and_is_retried() {
+async fn a_refused_start_is_about_its_target_only() {
     let provider = Arc::new(RecordingProvider::new());
     provider.set_fail_starts(true);
+    let sender = start(
+        &provider,
+        config(
+            40.0,
+            policy(10_000),
+            &[("a", Delivery::Streaming), ("b", Delivery::Streaming)],
+        ),
+    );
+    sender.submit(frame(&[("a", 1.0), ("b", 2.0)]));
+    sleep(100 * MS).await;
+    // Neither started, but the instance is fine: no reconnecting
+    assert_eq!(sender.status().borrow().state, ProviderState::Connected);
+    assert_eq!(provider.sends().len(), 0);
+
+    // Both can start now; a refused target is tried again only after start_retry
+    provider.set_fail_starts(false);
+    sleep(5_100 * MS).await;
+    let events = provider.events();
+    let connects = events
+        .iter()
+        .filter(|e| matches!(e, Event::Connect))
+        .count();
+    assert_eq!(connects, 1, "the control connection was never touched");
+    let sends = provider.sends();
+    assert_eq!(sends.len(), 1);
+    assert_eq!(
+        sends[0].1.targets.len(),
+        2,
+        "both start once the refusal is over"
+    );
+    sender.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn one_refused_target_does_not_stop_the_others() {
+    let provider = Arc::new(RecordingProvider::new());
+    let sender = start(
+        &provider,
+        config(
+            40.0,
+            policy(10_000),
+            &[("a", Delivery::Streaming), ("ghost", Delivery::Streaming)],
+        ),
+    );
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(100 * MS).await;
+    provider.set_fail_starts(true);
+    sender.submit(frame(&[("a", 2.0), ("ghost", 3.0)]));
+    sleep(100 * MS).await;
+    let sends = provider.sends();
+    assert_eq!(sends.len(), 2, "the running target is still sent");
+    assert_eq!(sends[1].1.targets.len(), 1);
+    assert_eq!(sender.status().borrow().state, ProviderState::Connected);
+    sender.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_unreachable_start_reconnects() {
+    let provider = Arc::new(RecordingProvider::new());
+    provider.set_start_error(Some(ProviderError::Unreachable("gone".to_owned())));
     let sender = start(
         &provider,
         config(40.0, policy(10_000), &[("a", Delivery::Streaming)]),
@@ -393,10 +456,173 @@ async fn a_failing_start_is_an_error_and_is_retried() {
     sender.submit(frame(&[("a", 1.0)]));
     sleep(100 * MS).await;
     assert_eq!(sender.status().borrow().state, ProviderState::Error);
-    assert_eq!(provider.sends().len(), 0);
-    provider.set_fail_starts(false);
+    provider.set_start_error(None);
     sleep(1_200 * MS).await;
+    assert_eq!(sender.status().borrow().state, ProviderState::Connected);
     assert_eq!(provider.sends().len(), 1);
+    sender.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shutdown_during_start_still_releases_the_target() {
+    let provider = Arc::new(RecordingProvider::new());
+    provider.set_delay(Op::Start, Duration::from_secs(5));
+    let sender = start(
+        &provider,
+        config(40.0, policy(10_000), &[("a", Delivery::Streaming)]),
+    );
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(1_000 * MS).await;
+    sender.shutdown().await;
+    let events = provider.events();
+    assert!(
+        events.contains(&Event::Release("a".to_owned())),
+        "{events:?}"
+    );
+    assert!(events.ends_with(&[Event::Disconnect]));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shutdown_during_a_release_releases_again() {
+    let provider = Arc::new(RecordingProvider::new());
+    let sender = start(
+        &provider,
+        config(40.0, policy(10_000), &[("a", Delivery::Streaming)]),
+    );
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(100 * MS).await;
+    provider.set_delay(Op::Release, Duration::from_secs(1));
+    sender.submit(frame(&[]));
+    sleep(60 * MS).await;
+    sender.shutdown().await;
+    // The first release was cancelled before it finished (a finished one is recorded); the
+    // stop made it again
+    let releases = provider
+        .events()
+        .iter()
+        .filter(|e| matches!(e, Event::Release(_)))
+        .count();
+    assert_eq!(releases, 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_shutdown_during_a_send_releases_the_targets() {
+    let provider = Arc::new(RecordingProvider::new());
+    provider.set_delay(Op::Send, Duration::from_secs(1));
+    let sender = start(
+        &provider,
+        config(40.0, policy(10_000), &[("a", Delivery::Streaming)]),
+    );
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(500 * MS).await;
+    sender.shutdown().await;
+    let events = provider.events();
+    assert_eq!(provider.sends().len(), 0, "the send was cancelled");
+    assert!(events.contains(&Event::Release("a".to_owned())));
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_targets_are_released_in_order_at_shutdown() {
+    let provider = Arc::new(RecordingProvider::new());
+    let sender = start(&provider, config(40.0, policy(10_000), &[]));
+    sender.submit(frame(&[("c", 1.0), ("a", 1.0), ("b", 1.0)]));
+    sleep(100 * MS).await;
+    sender.shutdown().await;
+    let released: Vec<String> = provider
+        .events()
+        .into_iter()
+        .filter_map(|e| match e {
+            Event::Release(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(released, ["a", "b", "c"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hung_release_cannot_hold_the_stop_for_long() {
+    let provider = Arc::new(RecordingProvider::new());
+    provider.set_delay(Op::Release, Duration::from_secs(3_600));
+    provider.set_delay(Op::Disconnect, Duration::from_secs(3_600));
+    let sender = start(
+        &provider,
+        config(
+            40.0,
+            policy(10_000),
+            &[("a", Delivery::Streaming), ("b", Delivery::Streaming)],
+        ),
+    );
+    sender.submit(frame(&[("a", 1.0), ("b", 1.0)]));
+    sleep(100 * MS).await;
+    let begun = Instant::now();
+    sender.shutdown().await;
+    // 2 s for each of two releases, then what is left of the overall 6 s for the close
+    let took = begun.elapsed();
+    assert!(took >= Duration::from_secs(4), "{took:?}");
+    assert!(took <= Duration::from_secs(6) + 100 * MS, "{took:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hung_send_times_out_and_reconnects() {
+    let provider = Arc::new(RecordingProvider::new());
+    let mut cfg = config(40.0, policy(10_000), &[("a", Delivery::Streaming)]);
+    cfg.policy.call_timeout = Duration::from_secs(1);
+    let sender = start(&provider, cfg);
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(100 * MS).await;
+    provider.set_delay(Op::Send, Duration::from_secs(3_600));
+    sender.submit(frame(&[("a", 2.0)]));
+    sleep(1_200 * MS).await;
+    let status = sender.status().borrow().clone();
+    assert_eq!(status.state, ProviderState::Error);
+    assert!(status.message.is_some_and(|m| m.contains("timed out")));
+    provider.set_delay(Op::Send, Duration::ZERO);
+    sleep(1_200 * MS).await;
+    assert_eq!(sender.status().borrow().state, ProviderState::Connected);
+    assert_eq!(
+        provider.sends().last().unwrap().1.targets[0].colors,
+        rgb(2.0)
+    );
+    sender.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_long_connection_starts_the_backoff_over() {
+    let provider = Arc::new(RecordingProvider::new());
+    let mut cfg = config(40.0, policy(10_000), &[("a", Delivery::Streaming)]);
+    cfg.backoff.reset_after = Duration::from_secs(5);
+    provider.fail_connects(2);
+    let sender = start(&provider, cfg);
+    // Two failures (waits of 1 s and 2 s), then connected at 3 s
+    sleep(3_100 * MS).await;
+    assert_eq!(sender.status().borrow().state, ProviderState::Connected);
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(6_000 * MS).await;
+
+    // The connection lasted over 5 s: the next loss waits the first delay (1 s), not the third
+    provider.set_fail_sends(true);
+    sender.submit(frame(&[("a", 2.0)]));
+    sleep(100 * MS).await;
+    assert_eq!(sender.status().borrow().state, ProviderState::Error);
+    provider.set_fail_sends(false);
+    sleep(1_100 * MS).await;
+    assert_eq!(sender.status().borrow().state, ProviderState::Connected);
+    sender.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_instance_is_described_again_when_asked() {
+    let provider = Arc::new(RecordingProvider::new());
+    let mut cfg = config(40.0, policy(10_000), &[]);
+    cfg.describe_every = Some(Duration::from_secs(1));
+    let sender = start(&provider, cfg);
+    sleep(2_500 * MS).await;
+    let describes = provider
+        .events()
+        .iter()
+        .filter(|e| matches!(e, Event::Describe))
+        .count();
+    assert_eq!(describes, 3, "once on connecting, then every second");
     sender.shutdown().await;
 }
 
