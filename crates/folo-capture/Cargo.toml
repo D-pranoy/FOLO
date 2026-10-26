@@ -19,4 +19,5 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 folo-capture-core = { path = "../folo-capture-core" }
+folo-capture-windows = { path = "../folo-capture-windows" }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }

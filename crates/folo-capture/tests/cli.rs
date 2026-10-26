@@ -135,9 +135,19 @@ fn the_environment_is_checked_before_the_backend() {
     assert_eq!(code(&output), 2);
 }
 
+/// The backends that can't be opened on this platform: the Linux one everywhere until its
+/// crate arrives, and the Windows ones (and `auto`) on other systems.
+fn unbuilt_backends() -> &'static [&'static str] {
+    if cfg!(windows) {
+        &["portal"]
+    } else {
+        &["auto", "dda", "wgc", "gdi", "portal"]
+    }
+}
+
 #[test]
 fn a_backend_that_is_not_built_yet_exits_with_1_and_says_so() {
-    for backend in ["auto", "dda", "wgc", "gdi", "portal"] {
+    for &backend in unbuilt_backends() {
         let output = agent(&["--backend", backend, "run"], &linked());
         assert_eq!(code(&output), 1, "{backend}");
         let text = stderr(&output);
@@ -245,7 +255,7 @@ fn screens_without_json_prints_a_line_per_screen() {
 
 #[test]
 fn screens_on_a_backend_that_is_not_built_exits_with_1() {
-    for backend in ["auto", "dda", "wgc", "gdi", "portal"] {
+    for &backend in unbuilt_backends() {
         let output = agent(&["screens", "--json", "--backend", backend], &[]);
         assert_eq!(code(&output), 1, "{backend}");
         assert_eq!(output.stdout, b"", "{backend}");
@@ -256,5 +266,29 @@ fn screens_on_a_backend_that_is_not_built_exits_with_1() {
 #[test]
 fn the_default_backend_is_auto() {
     let output = agent(&["screens", "--json"], &[]);
-    assert_eq!(code(&output), 1);
+    assert_eq!(code(&output), i32::from(!cfg!(windows)));
+}
+
+/// Listing the monitors captures nothing and asks for no consent, so the real backend is
+/// run here. A machine with no display lists none, which is a valid answer too.
+#[cfg(windows)]
+#[test]
+fn screens_json_on_the_windows_backends_lists_the_monitors_in_the_shape_of_the_schema() {
+    for backend in ["auto", "dda", "wgc", "gdi"] {
+        let output = agent(&["screens", "--json", "--backend", backend], &[]);
+        assert_eq!(code(&output), 0, "{backend}: {}", stderr(&output));
+        let listed: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let screens = listed["screens"].as_array().expect("a screens array");
+        let mut ids = std::collections::HashSet::new();
+        for screen in screens {
+            let id = screen["id"].as_str().unwrap();
+            assert!(!id.is_empty() && id.chars().count() <= 128, "{screen}");
+            assert!(!screen["name"].as_str().unwrap().is_empty(), "{screen}");
+            assert!(screen["width"].as_u64().unwrap() > 0, "{screen}");
+            assert!(screen["height"].as_u64().unwrap() > 0, "{screen}");
+            assert!(screen["primary"].is_boolean(), "{screen}");
+            assert!(ids.insert(id.to_owned()), "ids are unique: {screen}");
+        }
+        assert_eq!(stderr(&output), "", "{backend}");
+    }
 }

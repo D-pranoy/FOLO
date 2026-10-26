@@ -92,6 +92,13 @@ impl fmt::Display for Fault {
 
 impl std::error::Error for Fault {}
 
+#[cfg(windows)]
+impl From<windows::core::Error> for Fault {
+    fn from(error: windows::core::Error) -> Self {
+        Self::from_hresult(error.code().0, &error.message())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -23,3 +23,24 @@ pub mod fault;
 pub mod recovery;
 pub mod throttle;
 pub mod tonemap;
+
+#[cfg(windows)]
+pub mod clock;
+#[cfg(windows)]
+pub mod com;
+#[cfg(windows)]
+pub mod dda;
+#[cfg(windows)]
+pub mod factory;
+#[cfg(windows)]
+pub mod gdi;
+#[cfg(windows)]
+pub mod gpu;
+#[cfg(windows)]
+pub mod monitors;
+#[cfg(windows)]
+pub mod present;
+#[cfg(windows)]
+pub mod shader;
+#[cfg(windows)]
+pub mod wgc;

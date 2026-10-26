@@ -301,6 +301,7 @@ version = "0.0.0"
 dependencies = [
  "clap",
  "folo-capture-core",
+ "folo-capture-windows",
  "serde_json",
 ]
 
