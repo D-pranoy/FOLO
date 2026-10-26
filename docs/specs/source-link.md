@@ -115,6 +115,7 @@ All integers are little-endian:
 **Delivery semantics:**
 - **Newest wins.** The controller keeps only the latest frame per surface and drops late or duplicate sequence numbers.
 - A surface whose source sends nothing for its staleness timeout (default 500 ms) counts as inactive.
+- **Renumbering:** the surfaces of a `config.apply` are numbered in its order, so a new call can give a surface another index. The source sends no frame under the old numbering after it has answered the call, and the controller drops the frames it received before the answer, which belong to the old numbering.
 
 ## Signal frames
 

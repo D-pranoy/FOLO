@@ -50,4 +50,5 @@ Demo mode is used for end-to-end tests, documentation screenshots and UI develop
 
 - Regenerate goldens only when behaviour is meant to change, and say why in the PR.
 - Review image goldens (stacked frames rendered as PNGs) visually.
+- **Projection images** (`tests/golden/projection/`) are written by the Rust tests, not by `scripts/make_golden.py`, only while `FOLO_BLESS=1` is set; without it they are compared.
 - Synthetic inputs and recorded fixtures are committed. Recordings of real audio or screens are never committed.

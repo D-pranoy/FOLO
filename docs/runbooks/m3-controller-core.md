@@ -97,7 +97,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
    - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns))
    - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults))
 6. **Provider interface** ([providers](../architecture/providers.md)):
-   - discover, describe (targets with capabilities), connect, send, release, status, admin
+   - discover, describe (targets with capabilities), connect (the control connection), start (realtime output for a target), send, wire key (what the sender compares), release (per target), status, admin
    - `ElementOutput` now; `RasterOutput` reserved
    - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
    - a recording provider for tests

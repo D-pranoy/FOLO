@@ -122,9 +122,9 @@ The effect engine's executor renders the surfaces `config.apply` assigns and pub
 
 Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR-0036](../decisions/ADR-0036-controller-output.md). The controller's output core is one `step(now_us)` that takes the time as an argument. The node runs it when a frame arrives and at least every 1/60 s, so the crossfade, the ambient fades and the delay line keep time without frames, and tests drive it with a clock of their own.
 
-1. **Intake:** the newest frame per source surface wins; a late or duplicate sequence number is dropped. A compressed (LZ4) frame is dropped with a log line until RB-16 brings remote sources ([source link](../specs/source-link.md#surface-frames)).
+1. **Intake:** the newest frame per source surface wins; a late or duplicate sequence number is dropped. A compressed (LZ4) frame is dropped with a log line until RB-16 brings remote sources ([source link](../specs/source-link.md#surface-frames)). At each `config.apply` the controller drops every frame it holds, because the surfaces are numbered afresh, and takes frames again from the engine's answer on.
 2. **Compositor:** per surface, a priority list of sources.
-   - A source is active when it reports activity, for example audio above the silence threshold within the last 2 s. A source that sends no frame for 500 ms counts as inactive.
+   - For switching, a source is active when it reports activity, for example audio above the silence threshold within the last 2 s. A source that sends no frame for 500 ms counts as inactive. (The zone's silence below uses the activity notification as it is, without this hold.)
    - The highest-priority active source wins, with a 300 ms crossfade on change.
    - **With no active source,** the surface shows the highest-priority source whose newest frame is at most 500 ms old, active or not, so a layer's idle glow shows in silence. With no fresh frame at all, it shows its background × `master`.
    - Blending all active sources is a per-surface option.
@@ -133,11 +133,11 @@ Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR
    - **Off:** the ambient light is shown.
    - **Auto:** the sources' surfaces are shown while they are active; the ambient light is shown after `idle_after` seconds of silence (1–600 s, default 5 s), or after 0.3 s of silence when the zone's players are paused and the zone enables "on pause".
    - **Silence and pause:**
-     - A zone is **quiet** while none of the sources feeding it reports `active`. The controller counts `quiet_s` on its own clock, from the sources' `activity` notifications, and ignores the sources' own `quiet_s`.
-     - It is **paused** when every linked source of the zone that has a media session reports `paused`.
+     - A zone is **quiet** while none of the sources feeding it reports `active` in its latest `activity` notification, which is instantaneous: the loudest bin, without gain, at or above −70 dB now. The controller counts `quiet_s` on its own clock and ignores the sources' own `quiet_s`.
+     - It is **paused** when at least one linked source of the zone has a media session (state `playing`, `paused` or `stopped`) and all of those report `paused`. A zone fed only by sources without a session, such as a game or a line-in, is never paused.
      - A zone with no source at all is quiet from the moment it starts, so its ambient light shows.
    - **The ambient light** is a colour × level, solid or breathing (30–100% over 8 s). It fades in over 1.5 s (eased) and back out over 0.15 s, so the first beat after a pause still shows.
-   - **Where it is blended:** into each of the zone's composited surfaces, before projection. The ambient colour is `colour × level × master` of that surface, and the composite, which already carries `master`, is mixed towards it by the fade. That equals the current engine's `mix(segments, ambient) × master`, whose frames the golden tests compare within ±1. The result is truncated to `rgb8`. A fade of 0 leaves the frame untouched, byte for byte.
+   - **Where it is blended:** into each of the zone's composited surfaces, before projection. The ambient colour is `colour × level × master` of that surface (times the breathing factor, 0.3 to 1, for `breathe`), and the composite, which already carries `master`, is mixed towards it by the fade. That equals the current engine's `mix(segments, ambient) × master`, whose frames the golden tests compare within ±1. The result is truncated to `rgb8`. A fade of 0 leaves the frame untouched, byte for byte.
    - It replaces the earlier "idle scene or black" fallback, and it shows even when no source is connected.
 4. **Projection:** gather plans per (surface, target) mapping ([spatial model](spatial-model.md)). The projected elements of a target, after the ambient light and before the adapters, are what `target:<id>` live frames carry: `rgb8`, as wide as the target has elements and one row high.
 5. **Adapters:** per target, in the order resolution → colour model → calibration → latency → flash limiter ([capabilities](capabilities.md)).
