@@ -10,10 +10,12 @@ Writes the golden files that pin today's engine (RB-01 steps 6 to 8):
 - tests/golden/migration/: sample v1 files and the documents they migrate to (RB-05)
 - tests/golden/ambient/: what the controller's ambient light gets (the reactive frames, the
   steps and the activity) to match tests/golden/renderer/ambient-*.png (RB-08)
+- tests/golden/hyperion/legacy.json: the bytes the legacy Hyperion sender writes, and how the studio
+  scales segments to a new LED count (RB-10)
 
     uv run python scripts/make_golden.py [--export-builtins] [--only PART,...]
 
-The parts are renderer, beat, corpus, clamp, migration and ambient.
+The parts are renderer, beat, corpus, clamp, migration, ambient and hyperion.
 
 Regenerate only when behaviour is meant to change, and say why in the pull
 request (docs/process/testing-policy.md#golden-files).
@@ -36,11 +38,12 @@ from tests import (  # noqa: E402
     beat_fixtures,
     clamp_corpus,
     golden_cases,
+    hyperion_wire_cases,
     migration_cases,
     sanitize_corpus,
 )
 
-PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration', 'ambient')
+PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration', 'ambient', 'hyperion')
 
 
 def export_builtins() -> None:
@@ -151,6 +154,11 @@ def write_ambient() -> None:
     print(f'wrote {len(cases)} ambient cases to {out.relative_to(ROOT)} ({size / 1e6:.1f} MB)')
 
 
+def write_hyperion() -> None:
+    count = hyperion_wire_cases.write()
+    print(f'wrote {count} cases to {hyperion_wire_cases.WIRE.relative_to(ROOT)}')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -184,6 +192,8 @@ def main() -> None:
         write_migration()
     if 'ambient' in parts:
         write_ambient()
+    if 'hyperion' in parts:
+        write_hyperion()
 
 
 if __name__ == '__main__':

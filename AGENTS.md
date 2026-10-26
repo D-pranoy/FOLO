@@ -48,7 +48,7 @@ py -3.13 -m venv .venv
 | Tests (goldens, beat fixtures, `sanitize_config`, the studio starting, the clamper, contract drift and the conformance harness; about two minutes) | `uv run pytest` (`--hypothesis-profile=thorough` tries 5,000 inputs per property) |
 | Lint, format, types | `uv run ruff check .`, `uv run ruff format .`, `uv run pyright` |
 | Every pre-commit hook | `uv run pre-commit run --all-files` (`uv run pre-commit install` once to run them on commit) |
-| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp,migration]` |
+| Regenerate the goldens (only when behaviour is meant to change) | `uv run python scripts/make_golden.py [--export-builtins] [--only renderer,beat,corpus,clamp,migration,hyperion]` |
 | Contract tools (once, needs Node.js 22) | `npm ci` in `ui\` |
 | Regenerate the schema bundle and the Python, Rust and TypeScript types (after changing `specs/`) | `uv run python scripts/contracts.py generate` |
 | Validate the contracts and fail on drift (what CI runs) | `uv run python scripts/contracts.py check`, then `npm run check:types` in `ui\` |
@@ -318,6 +318,10 @@ The controller half of the pipeline ([pipeline](docs/architecture/pipeline.md#co
 - `folo-adapters`: each target's `AdapterChain` (resolution, colour model, calibration, the delay line, the flash limiter).
 - `folo-provider`: the provider traits, the `Registry`, the sender (one task per instance) and `testing::RecordingProvider`.
 - `folo-controller`: `OutputCore`. Per effectively active zone, `step(now_us)` composes each surface, blends the zone's ambient light in (ADR-0036 D7), projects every target with the cached plans and runs its chain, and returns an `ElementFrame` per provider instance, each target's projected `rgb8` (the `target:` topic) and each zone's reactive state. A running test pattern (`identify`, `sweep`, `position`) takes the place of a target's projected colours and goes through its chain. A chain whose settings stay is kept across revisions; one rebuilt for new settings, or used by a zone that takes the target over, inherits the old limiter's history (`AdapterChain::inherit_limiter`), so no edit or hand-over opens a fresh window. A zone that comes on again clears its delay lines. `tests/parity.rs` feeds the reactive `tests/golden/renderer/*.png` frames through identity adapters (exact, and through a sender to a recording provider), the migrated configurations, and the ambient inputs (within ±1 of the existing ambient goldens on the controller's clock; the frames where the legacy float silence ties a threshold within 1 µs, and the fade after them, worked out by `tie_frames`, are compared one frame shifted); `tests/core.rs` the rest, with a timing print of one step (about 9 µs for a 300-LED strip in a release build).
+- **Hyperion provider (`crates/folo-provider-hyperion`, RB-10 steps 1 to 4):** `HyperionKind` implements the `folo-provider` interface for Hyperion.NG ([Hyperion](docs/integrations/hyperion.md#how-it-is-built)); the node registers it (RB-10 step 5).
+  - **Wire:** `wire.rs` writes `color` and `clear` as the legacy sender's `json.dumps` does, which `tests/golden/hyperion/legacy.json` (from `scripts/make_golden.py --only hyperion`, captured from `legacy/json_client.py`) pins. `link.rs` is a JSON connection whose reader drains every reply.
+  - **Provider:** one connection and one line target per running Hyperion instance (id: the instance number). `layout.rs` places LED rectangles on a TV plane and scales spans as the studio's `scale_segments` does; `admin.rs` has the administration actions.
+  - **Tests:** `FakeHyperion` (the `testing` feature) is the fake Hyperion JSON server. The tests in `crates/folo-provider-hyperion/tests/` run the sender on Tokio's paused clock against it. They never touch a real Hyperion.
 
 ## Changes from upstream (so far)
 
