@@ -38,7 +38,7 @@ Status: Accepted · Implementation: Partial (owner-only secrets, the local link'
 - **Static UI files load without a key; every API and WebSocket call requires one.** The exceptions are `/api/v1/health` and the pairing endpoints, which use their own proofs.
 - **Before client keys** arrive with RB-15, no key is valid: clients on other machines get `401` from every API and WebSocket call that needs one ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D1).
 - **The UI's Content Security Policy:** `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. Inline styles are allowed because Svelte's transitions write them ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D7).
-- **Secrets** live in a separate file with owner-only permissions. Secrets are excluded from every API response, log and export.
+- **Secrets** live in a separate file with owner-only permissions. It holds the node's identity, the providers' credentials and the Hue certificates people confirmed. Secrets are excluded from every API response, log and export.
 - **Device certificates:**
   - Hue bridges are verified against the bundled Signify root certificates, with CN = bridge id.
   - Non-Signify bridges (for example diyHue) use trust-on-first-use pinning after the user confirms.

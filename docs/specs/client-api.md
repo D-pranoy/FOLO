@@ -62,7 +62,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 Until then:
 - `GET /system` reports `start_at_sign_in` as `false` (until [RB-19](../runbooks/m8-release.md#rb-19-desktop-app)), and the service's `installed` and `running` as whether this node was launched with `--service` (until [RB-20](../runbooks/m8-release.md#rb-20-windows-service-and-installer)).
 - On the live channel, sources other than `local` report `offline` (until RB-16).
-- No provider kind is registered until RB-10, RB-12 and RB-13 bring them: every instance reports `off` with "arrives with RB-NN", discovery answers an empty list and administration answers 501.
+- The node registers the Hyperion, WLED and Hue kinds. An instance of a kind that isn't registered (a node built for a test) reports `off` with "arrives with RB-NN", and its administration answers 501. A malformed administration body is `400 bad_body`; a device that refuses or doesn't answer is `502 provider_error`.
 
 ## Resources
 

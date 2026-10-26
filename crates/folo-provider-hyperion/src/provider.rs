@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use folo_protocol::generated::{
     Address, CapabilityDescriptor, CapabilityDescriptorAddressing, CapabilityDescriptorColorModel,
-    CapabilityDescriptorDelivery, CapabilityLimits, LineGeometry, TargetKind,
+    CapabilityDescriptorDelivery, CapabilityLimits, LineGeometry, ProviderSecrets, TargetKind,
 };
 use folo_provider::{
     AdminError, AdminMethod, BoxFuture, DeliveryPolicy, DescribedLayout, DescribedTarget,
@@ -318,6 +318,12 @@ impl Provider for HyperionProvider {
     ) -> BoxFuture<'_, Result<Value, AdminError>> {
         let action = action.to_owned();
         Box::pin(async move { self.run_admin(&action, method, &body).await })
+    }
+
+    fn secrets(&self) -> Option<ProviderSecrets> {
+        let token = self.lock().token.clone()?;
+        let secrets = serde_json::json!({"token": token});
+        serde_json::from_value(secrets).ok()
     }
 
     fn delivery_policy(&self) -> DeliveryPolicy {

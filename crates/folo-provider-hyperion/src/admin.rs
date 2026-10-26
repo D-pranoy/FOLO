@@ -395,8 +395,8 @@ impl HyperionProvider {
         }
         let values = self.token_values(self.token_required().await);
         let change = "Logs in with the token given in a POST body; if Hyperion accepts it, this \
-                      provider uses it from now on (it is not stored: the node keeps tokens in \
-                      secrets.json). Creating tokens stays in Hyperion's own UI";
+                      provider uses it from now on and the node keeps it in secrets.json. \
+                      Creating tokens stays in Hyperion's own UI";
         Ok(read_only(method, values, change))
     }
 

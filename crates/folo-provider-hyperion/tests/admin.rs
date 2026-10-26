@@ -425,7 +425,7 @@ async fn a_token_is_tried_and_then_used() {
     );
 
     let preview = get(&provider, "token", json!({"token": TOKEN})).await;
-    assert!(preview["change"].as_str().unwrap().contains("not stored"));
+    assert!(preview["change"].as_str().unwrap().contains("secrets.json"));
     assert_eq!(preview["configured"], false, "a read adopts nothing");
 
     let accepted = post(&provider, "token", json!({"token": TOKEN})).await;

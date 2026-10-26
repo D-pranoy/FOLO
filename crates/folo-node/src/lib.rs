@@ -12,6 +12,7 @@ pub mod lock;
 pub mod logs;
 pub mod node;
 pub mod output;
+pub mod providers;
 pub mod server;
 pub mod status;
 pub mod ui;

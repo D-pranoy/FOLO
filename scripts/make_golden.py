@@ -155,7 +155,7 @@ def write_ambient() -> None:
 
 
 def write_hyperion() -> None:
-    count = hyperion_wire_cases.write()
+    count = hyperion_wire_cases.write()  # wire cases and parity cases
     print(f'wrote {count} cases to {hyperion_wire_cases.WIRE.relative_to(ROOT)}')
 
 

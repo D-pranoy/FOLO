@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 
 use crate::node::Node;
 use crate::output::{ProviderAbsent, TestRefused};
+use crate::providers;
 use crate::server::error;
 use crate::status;
 use crate::zones;
@@ -384,11 +385,12 @@ fn get_item(node: &Node, items: Items, id: &str) -> Response {
 }
 
 /// `POST`: adds an item; an id that is missing, empty or taken gets a new one.
-fn create_item(node: &Node, items: Items, body: Body) -> Response {
-    let body = match read_json(body) {
+fn create_item(node: &Node, items: Items, body: Body, defaults: fn(&mut Value)) -> Response {
+    let mut body = match read_json(body) {
         Ok(body) => body,
         Err(refused) => return *refused,
     };
+    defaults(&mut body);
     let mut id = String::new();
     let stored = node.store.update(items.doc, |document| {
         let mut item = clamp(items.definition, &body, &mut folo_store::new_id).map_err(|e| {
@@ -490,7 +492,7 @@ pub async fn zones(State(node): Shared) -> Json<Value> {
 }
 
 pub async fn create_zone(State(node): Shared, body: Body) -> Response {
-    create_item(&node, ZONES, body)
+    create_item(&node, ZONES, body, |_| {})
 }
 
 pub async fn zone(State(node): Shared, Path(id): Path<String>) -> Response {
@@ -713,8 +715,21 @@ pub async fn providers(State(node): Shared) -> Json<Value> {
     get_document(&node, Doc::Providers)
 }
 
+/// A new instance whose body names no `rate_hz` gets its kind's default, when the kind's run
+/// book sets one (WLED's 60 Hz); the contract's 40 is for the rest.
+fn kind_rate(body: &mut Value) {
+    let Some(kind) = body["kind"].as_str() else {
+        return;
+    };
+    if let Some(rate) = providers::default_rate_hz(kind)
+        && body.get("rate_hz").is_none()
+    {
+        body["rate_hz"] = json!(rate);
+    }
+}
+
 pub async fn create_provider(State(node): Shared, body: Body) -> Response {
-    create_item(&node, PROVIDERS, body)
+    create_item(&node, PROVIDERS, body, kind_rate)
 }
 
 pub async fn provider(State(node): Shared, Path(id): Path<String>) -> Response {
@@ -807,7 +822,15 @@ async fn admin(node: &Node, id: &str, action: &str, method: AdminMethod, body: V
         }
     };
     match provider.admin(action, method, body).await {
-        Ok(answer) => Json(answer).into_response(),
+        Ok(answer) => {
+            // A login that worked is kept: the next start reads it from secrets.json
+            if method == AdminMethod::Change
+                && let Some(held) = provider.secrets()
+            {
+                node.secrets.keep_provider(id, &held);
+            }
+            Json(answer).into_response()
+        }
         Err(failure) => admin_error(&failure),
     }
 }

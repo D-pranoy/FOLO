@@ -135,7 +135,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 done bu
 ## RB-10: Hyperion provider
 
 **Goal:** Hyperion on the provider interface, with parity and basic administration.
-**Status:** steps 1 to 4 are implemented in `crates/folo-provider-hyperion` ([how it is built](../integrations/hyperion.md#how-it-is-built)); step 5 needs the controller's output, and step 6 is a person's.
+**Status:** steps 1 to 5 are implemented: the provider in `crates/folo-provider-hyperion` ([how it is built](../integrations/hyperion.md#how-it-is-built)), registered by the node, and the parity test `crates/folo-node/tests/hyperion_parity.rs`. Layout watching in step 3 is not wired to the store yet. Step 6, live verification, is a person's.
 **Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)); step 5 below also needs the rest of RB-08, the controller's output.
 
 1. **Fake first:** a Hyperion JSON server in tests that records frames and answers `serverinfo`, `clear`, `sourceselect` and `componentstate`.
@@ -146,7 +146,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 done bu
    - clear on stop; reconnect with backoff
 3. **Describe:** line targets from `serverinfo` LED rectangles on the zone's TV plane; layout watching with proportional mapping scaling.
 4. **Administration:** instances, priorities with clear, component toggles, automatic source selection, brightness, token support ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)).
-5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio.
+5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio. Done: the migrations `builtin` and `default` run through the node's real output path (the engine's frames, compositor, projection, adapters, the sender and `HyperionKind`) with the legacy origin "Audio Effects", and the `color` lines are those of `tests/golden/hyperion/parity.json`, which the legacy `JsonClient` wrote for sampled frames of the renderer goldens (`--only hyperion`). The migration's target `strip` is renamed `0` in the test: see the [target ids](../integrations/hyperion.md#how-it-is-built).
 6. **Live verification** per the [testing policy](../process/testing-policy.md).
 
 **Done when:** the end-to-end parity test is green and live verification has passed.

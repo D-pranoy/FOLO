@@ -21,7 +21,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, live, lock, logs, output, server, zones};
+use crate::{import, live, lock, logs, output, providers, server, zones};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -46,6 +46,8 @@ pub struct Node {
     pub live: live::Hub,
     /// The controller's output: the zones' targets, the provider senders (RB-08).
     pub output: output::Output,
+    /// What the node keeps of the providers' credentials (`secrets.json`).
+    pub secrets: Arc<providers::SecretsFile>,
 }
 
 impl Node {
@@ -188,6 +190,7 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         supervisor,
         live: live::Hub::default(),
         output: output::Output::new(Registry::new()),
+        secrets: providers::SecretsFile::in_dir(dir, "abcd1234"),
     })
 }
 
@@ -270,16 +273,26 @@ pub async fn run_with(
     engine: Option<EngineCommand>,
     stop: impl Future<Output = ()> + Send,
 ) -> u8 {
-    run_with_providers(location, args, engine, Registry::new(), stop).await
+    run_registered(location, args, engine, None, stop).await
 }
 
-/// [`run_with`] with the provider kinds in `registry`. The built-in kinds arrive with their run
-/// books (RB-10, RB-12, RB-13); tests register a recording provider.
+/// [`run_with`] with the provider kinds in `registry`, or the built-in ones (Hyperion, WLED and
+/// Hue, [`providers::built_in`]) when there is none; tests register a recording provider.
 pub async fn run_with_providers(
     location: &LocationArgs,
     args: &RunArgs,
     engine: Option<EngineCommand>,
     registry: Registry,
+    stop: impl Future<Output = ()> + Send,
+) -> u8 {
+    run_registered(location, args, engine, Some(registry), stop).await
+}
+
+async fn run_registered(
+    location: &LocationArgs,
+    args: &RunArgs,
+    engine: Option<EngineCommand>,
+    registry: Option<Registry>,
     stop: impl Future<Output = ()> + Send,
 ) -> u8 {
     let launch = if args.managed {
@@ -315,7 +328,7 @@ async fn start(
     flags: Vec<(&'static str, String)>,
     launch: Launch,
     engine: Option<EngineCommand>,
-    registry: Registry,
+    registry: Option<Registry>,
 ) -> Result<(Arc<Node>, Vec<TcpListener>, lock::HomeLock), Failure> {
     let place = locate(location, &flags, launch)?;
     let folders = &place.folders;
@@ -356,6 +369,8 @@ async fn start(
     }
     let store = Store::open(&folders.data).map_err(|e| Failure::new(EXIT_FAILED, e.to_string()))?;
     let identity = ensure_identity(&store)?;
+    let secrets = providers::SecretsFile::of(&store);
+    let registry = registry.unwrap_or_else(|| providers::built_in(&secrets));
     let role = place.layered.json["role"]
         .as_str()
         .unwrap_or("controller")
@@ -377,6 +392,7 @@ async fn start(
         supervisor,
         live: live::Hub::default(),
         output: output::Output::new(registry),
+        secrets,
     });
     node.check_zones();
     node.supervisor.set_config(node.engine_config());

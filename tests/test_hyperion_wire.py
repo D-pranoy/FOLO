@@ -7,6 +7,7 @@ legacy client writes now, and the commands must be what the studio's documentati
 
 from __future__ import annotations
 
+import itertools
 import json
 
 from tests import hyperion_wire_cases as cases
@@ -26,3 +27,15 @@ def test_the_commands_are_the_documented_ones() -> None:
         assert color['duration'] == 2000
         assert entry['color'].endswith('\n')
         assert json.loads(entry['clear']) == {'command': 'clear', 'priority': entry['priority']}
+
+
+def test_the_parity_golden_is_the_legacy_bytes_of_the_renderer_goldens() -> None:
+    assert cases.PARITY.read_text(encoding='utf-8') == cases.dumps_parity(cases.generate_parity())
+
+
+def test_the_parity_frames_change_from_one_to_the_next() -> None:
+    for entry in json.loads(cases.PARITY.read_text(encoding='utf-8'))['cases']:
+        lines = entry['lines']
+        assert len(lines) >= cases.PARITY_FRAMES // 2, entry['png']
+        assert all(a != b for a, b in itertools.pairwise(lines)), entry['png']
+        assert all('"origin": "Audio Effects"' in line for line in lines)
