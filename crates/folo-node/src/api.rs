@@ -23,7 +23,7 @@ use crate::server::error;
 use crate::status;
 
 /// The client API's version: `info.version` in specs/openapi.yaml.
-pub const CLIENT_API_VERSION: &str = "1.2.0";
+pub const CLIENT_API_VERSION: &str = "1.3.0";
 /// JSON-RPC: what the request asked for isn't there (docs/specs/source-link.md).
 const NOT_AVAILABLE: i64 = -32000;
 /// JSON-RPC: params the source can't take.

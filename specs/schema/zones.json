@@ -27,7 +27,8 @@
         "reactive": {"enum": ["on", "auto", "off"], "default": "on"},
         "ambient": {"$ref": "#/$defs/Ambient", "default": {}},
         "beat_offset_ms": {"type": "integer", "minimum": -200, "maximum": 200, "default": 0},
-        "album_colors": {"type": "boolean", "default": false}
+        "album_colors": {"type": "boolean", "default": false},
+        "active": {"description": "Whether the zone drives its targets. At most one active zone drives a target (docs/architecture/spatial-model.md#zone-activation-rules).", "type": "boolean", "default": true}
       },
       "additionalProperties": false
     },
@@ -46,7 +47,17 @@
       "properties": {
         "kind": {"enum": ["tv", "listening", "desk", "none"], "default": "none"},
         "position": {"$ref": "common.json#/$defs/Vec3", "default": {}},
-        "orientation": {"$ref": "common.json#/$defs/Orientation", "default": {}}
+        "orientation": {"$ref": "common.json#/$defs/Orientation", "default": {}},
+        "size": {"$ref": "#/$defs/ReferenceSize", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "ReferenceSize": {
+      "description": "The reference object's width and height, metres (a TV's screen).",
+      "type": "object",
+      "properties": {
+        "width": {"type": "number", "minimum": 0.01, "maximum": 1000, "default": 1.2},
+        "height": {"type": "number", "minimum": 0.01, "maximum": 1000, "default": 0.68}
       },
       "additionalProperties": false
     },
@@ -284,7 +295,19 @@
         "brightness_min": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
         "brightness_max": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
         "color_order": {"enum": ["rgb", "rbg", "grb", "gbr", "brg", "bgr"], "default": "rgb"},
-        "latency_ms": {"type": "number", "minimum": 0, "maximum": 5000, "default": 0}
+        "latency_ms": {"type": "number", "minimum": 0, "maximum": 5000, "default": 0},
+        "white": {"description": "How RGBW and RGB+CCT targets get their white channel.", "enum": ["off", "accurate", "brighter"], "default": "accurate"},
+        "onoff": {"$ref": "#/$defs/OnOff", "default": {}}
+      },
+      "additionalProperties": false
+    },
+    "OnOff": {
+      "description": "How on/off targets switch: a threshold with hysteresis and a minimum interval between changes.",
+      "type": "object",
+      "properties": {
+        "threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+        "hysteresis": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.1},
+        "min_interval_ms": {"type": "number", "minimum": 0, "maximum": 60000, "default": 1000}
       },
       "additionalProperties": false
     },
