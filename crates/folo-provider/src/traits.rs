@@ -98,6 +98,8 @@ pub trait ElementOutput: Send + Sync {
     /// - **Failures:** `Unreachable` means the connection is the trouble, and the instance
     ///   reconnects. `Refused` or `Failed` (an unknown target, a bridge in use by another app)
     ///   is about this target only: the others carry on, and the sender tries it again later.
+    ///   The sender doesn't release a target whose `start` was refused or failed, so the
+    ///   provider undoes whatever it began before it returns the error.
     /// - **Cancelled or repeated:** a shutdown may cancel this call, and after a lost connection
     ///   it may be called for a target that already runs. It must cope with both, and the
     ///   target is released afterwards either way.
@@ -117,8 +119,8 @@ pub trait ElementOutput: Send + Sync {
 
     /// Gives one target's lights back: clears the priority (Hyperion), ends realtime (WLED),
     /// closes the stream (Hue). Called when nothing drives the target any more, and for every
-    /// started target when the instance stops, including one whose `start` was cancelled or
-    /// refused: it must be harmless for a target that isn't running. On a device-wide output,
+    /// started target when the instance stops, including one whose `start` was cancelled: it
+    /// must be harmless for a target that isn't running. On a device-wide output,
     /// only the last target's release ends the output (see [`start`](Self::start)).
     fn release(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>>;
 }
