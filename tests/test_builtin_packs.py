@@ -266,6 +266,24 @@ def traced() -> Json:
     return json.loads(out)
 
 
+@needs_node
+def test_the_scale_corpus_is_what_scale_segments_answers() -> None:
+    """tests/corpus/scale_segments.json, which the node's scaling is checked against, is current."""
+    node = shutil.which('node')
+    assert node is not None, 'FOLO_NODE_TESTS=1 needs Node.js'
+    out = subprocess.run(
+        [node, str(EXPORTER), '--scale'],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+    ).stdout
+    committed = (ROOT / 'tests' / 'corpus' / 'scale_segments.json').read_text(encoding='utf-8')
+    assert out == committed, (
+        'run: node scripts/export_builtins.mjs --scale --out tests/corpus/scale_segments.json'
+    )
+
+
 def comparable(layer: Json) -> Json:
     """A layer without its id; its region is compared as cells."""
     return {key: value for key, value in layer.items() if key not in ('id', 'region')}

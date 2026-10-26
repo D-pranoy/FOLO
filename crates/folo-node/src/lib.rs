@@ -4,6 +4,7 @@
 //! port, supervises the effect engine and reports its status.
 
 pub mod api;
+pub mod apply_api;
 pub mod cli;
 pub mod client;
 pub mod import;

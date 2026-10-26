@@ -40,9 +40,9 @@ const ART_TYPES: [&str; 5] = [
 ];
 
 type Shared = State<Arc<Node>>;
-type Body = Result<Bytes, BytesRejection>;
+pub(crate) type Body = Result<Bytes, BytesRejection>;
 /// An answer refusing a request, boxed so results stay small.
-type Refusal = Box<Response>;
+pub(crate) type Refusal = Box<Response>;
 
 static EFFECTS: LazyLock<Value> = LazyLock::new(|| Value::Array(folo_protocol::catalog::effects()));
 
@@ -203,7 +203,7 @@ pub async fn system_logs(
 // ---------------------------------------------------------------- documents
 
 /// A body as JSON, or the answer refusing it.
-fn read_json(body: Body) -> Result<Value, Refusal> {
+pub(crate) fn read_json(body: Body) -> Result<Value, Refusal> {
     let bytes = body.map_err(|rejection| {
         Box::new(if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
             error(
@@ -229,13 +229,21 @@ fn read_json(body: Body) -> Result<Value, Refusal> {
 }
 
 /// Why a document write was refused.
-enum Refused {
+pub(crate) enum Refused {
     Store(StoreError),
     /// `If-Match` named another revision than the document's.
     Stale(u64),
     NotFound,
     /// The list holds as many items as its schema allows.
     Full,
+    /// `404 not_found` for a scene or a zone an apply names (`details.what`).
+    Absent(&'static str),
+    /// `409 no_base`: nothing to merge against.
+    NoBase,
+    /// `400 bad_body`, with the reason.
+    BadBody(String),
+    /// An answer already made, such as an unreadable body's.
+    Raw(Refusal),
 }
 
 impl From<StoreError> for Refused {
@@ -245,7 +253,7 @@ impl From<StoreError> for Refused {
 }
 
 impl Refused {
-    fn response(self) -> Response {
+    pub(crate) fn response(self) -> Response {
         match self {
             Self::Store(StoreError::Structural { why, .. }) => {
                 error(StatusCode::UNPROCESSABLE_ENTITY, "structural_error", &why)
@@ -269,9 +277,27 @@ impl Refused {
                 "list_full",
                 "the list holds as many items as it may",
             ),
+            Self::Absent(what) => {
+                let body = json!({"error": {
+                    "code": "not_found",
+                    "message": format!("no such {what}"),
+                    "details": {"what": what},
+                }});
+                (StatusCode::NOT_FOUND, Json(body)).into_response()
+            }
+            Self::NoBase => error(
+                StatusCode::CONFLICT,
+                "no_base",
+                "the zone's scene has no applied copy of this item to merge against",
+            ),
+            Self::BadBody(reason) => error(StatusCode::BAD_REQUEST, "bad_body", &reason),
+            Self::Raw(response) => *response,
         }
     }
 }
+
+/// The longest `If-Match` the API reads (`IfMatch` in specs/openapi.yaml).
+const IF_MATCH_MAX: usize = 32;
 
 /// What `If-Match` asks for.
 #[derive(Debug, PartialEq, Eq)]
@@ -289,12 +315,16 @@ fn if_match(headers: &HeaderMap) -> IfMatch {
         return IfMatch::Absent;
     };
     let text = value.to_str().unwrap_or_default().trim();
+    // The parameter's schema allows 32 characters (specs/openapi.yaml): more matches no revision
+    if text.len() > IF_MATCH_MAX {
+        return IfMatch::Unreadable;
+    }
     let text = text.strip_prefix("W/").unwrap_or(text).trim_matches('"');
     text.parse().map_or(IfMatch::Unreadable, IfMatch::Revision)
 }
 
 /// Refuses a write when `If-Match` names another revision than `current`'s.
-fn check_revision(headers: &HeaderMap, current: &Value) -> Result<(), Refused> {
+pub(crate) fn check_revision(headers: &HeaderMap, current: &Value) -> Result<(), Refused> {
     let revision = current["revision"].as_u64().unwrap_or(0);
     match if_match(headers) {
         IfMatch::Absent => Ok(()),
@@ -305,15 +335,15 @@ fn check_revision(headers: &HeaderMap, current: &Value) -> Result<(), Refused> {
 
 /// The items of a list document.
 #[derive(Clone, Copy)]
-struct Items {
-    doc: Doc,
+pub(crate) struct Items {
+    pub(crate) doc: Doc,
     /// The list's key in the document.
-    key: &'static str,
+    pub(crate) key: &'static str,
     /// The schema definition of one item.
-    definition: &'static str,
+    pub(crate) definition: &'static str,
 }
 
-const ZONES: Items = Items {
+pub(crate) const ZONES: Items = Items {
     doc: Doc::Zones,
     key: "zones",
     definition: "Zone",
@@ -337,11 +367,11 @@ fn room(items: Items) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-fn list(document: &Value, items: Items) -> &[Value] {
+pub(crate) fn list(document: &Value, items: Items) -> &[Value] {
     document[items.key].as_array().map_or(&[], Vec::as_slice)
 }
 
-fn find<'a>(document: &'a Value, items: Items, id: &str) -> Option<&'a Value> {
+pub(crate) fn find<'a>(document: &'a Value, items: Items, id: &str) -> Option<&'a Value> {
     list(document, items).iter().find(|item| item["id"] == id)
 }
 
@@ -354,7 +384,7 @@ fn with_list(document: &Value, items: Items, list: Vec<Value>) -> Value {
 
 /// After a write: the engine gets its new configuration when the document
 /// is one it's built from.
-fn written(node: &Node, doc: Doc) {
+pub(crate) fn written(node: &Node, doc: Doc) {
     if matches!(doc, Doc::Zones | Doc::Show | Doc::Sources) {
         node.refresh_engine();
     }
@@ -508,13 +538,17 @@ pub async fn put_show(State(node): Shared, headers: HeaderMap, body: Body) -> Re
         Ok(body) => body,
         Err(refused) => return *refused,
     };
+    let zones = node.store.get(Doc::Zones);
     let stored = node.store.update(Doc::Show, |document| {
         check_revision(&headers, document)?;
+        let mut body = body;
+        crate::apply_api::drop_stale_bindings(&mut body, &zones);
         Ok::<_, Refused>(body)
     });
     match stored {
         Ok(document) => {
             written(&node, Doc::Show);
+            crate::apply_api::prune_bases(&node, &document);
             Json((*document).clone()).into_response()
         }
         Err(refused) => refused.response(),
@@ -743,6 +777,9 @@ mod tests {
             assert_eq!(if_match(&headers), IfMatch::Revision(revision), "{text}");
         }
         headers.insert(header::IF_MATCH, "*".parse().unwrap());
+        assert_eq!(if_match(&headers), IfMatch::Unreadable);
+        // Longer than the schema allows, though it would parse as a revision
+        headers.insert(header::IF_MATCH, "0".repeat(33).parse().unwrap());
         assert_eq!(if_match(&headers), IfMatch::Unreadable);
         let current = json!({"revision": 3});
         assert!(matches!(

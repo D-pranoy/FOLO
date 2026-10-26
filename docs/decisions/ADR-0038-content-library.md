@@ -123,7 +123,7 @@ Facts that shape the answer:
   - **Frames:** rendered as a `strip.main` surface of 30, 61 and 144 cells, with the [golden](../process/testing-policy.md#golden-files) signals and the settings `tests/golden_cases.py` gives each built-in case, they reproduce `tests/golden/renderer/builtin-*.png` byte for byte. No golden is regenerated.
   - **Layers:** at every length from 1 to 64 and at 100, 144, 255, 256, 300, 512, 1000, 1024, 1999 and 2000, the scene's layers, clamped and with regions resolved to cells, equal the builder's segments run through `sanitize_config()` and the RB-05 migration's conversion to layers, field for field, ids aside.
   - **Reactions and palettes** equal `REACTIVE` (range and response fields) and `PRESETS`.
-  - **Scaling:** a scene with `cells` regions and a `led_count` scales as `scaleSegments()` does, checked against it at the same lengths. No built-in scene has `cells` regions, and the scaling code arrives with applying ([RB-09](../runbooks/m3-controller-core.md) code change 4), so this check is made there.
+  - **Scaling:** a scene with `cells` regions and a `led_count` scales as `scaleSegments()` does, checked against it at the same lengths. No built-in scene has `cells` regions, and the scaling code arrives with applying ([RB-09](../runbooks/m3-controller-core.md) code change 4), so this check is made there: `tests/corpus/scale_segments.json` holds what `scaleSegments()` answers (made by `scripts/export_builtins.mjs --scale`, kept current by a Node-backed test), and the node's scaling reproduces every row.
   - **Where it runs:** the builders' output comes from `export_builtins.mjs`, run by the test. CI's contract job, which has Node 22, runs `FOLO_NODE_TESTS=1 uv run pytest tests/test_builtin_packs.py`; elsewhere, without Node, the Node-backed tests are skipped.
 
   `folo/core:default` is the exception: its thirds are `relative` with `snap: nearest`, so when the length isn't a multiple of 3 its boundaries round to the nearest LED where today's `default_config()` rounds down (`led_count // 3`): at 32 LEDs, 0–10, 11–20 and 21–31 instead of 0–9, 10–19 and 20–31.
@@ -221,3 +221,18 @@ The service's implementation needed these choices, which D1 to D10 leave open. T
 - **A newer version** is one whose SemVer precedence is higher: build metadata (`+a`, `+b`) doesn't make a version newer.
 - **Pack ids that are Windows device names** (`con`, `aux`, …) as an author or a name are not valid pack ids, because the id is a folder path.
 - **Removals and replacements leave different traces:** a removed pack's folder waits in `.trash/gone~…` and recovery deletes it; a replaced one waits under its own id and recovery puts it back when the replacement never arrived. Files are flushed to disk before the swap.
+
+## Settled in applying and Reset all (RB-09 code change 4)
+
+Applying needed these choices, which D11 to D15 and D21 leave open. They are decisions of the implementation, to be confirmed in review of the pull request that landed it.
+
+- **A request's `roles` that names a surface the zone doesn't have** is `400 bad_body` and nothing is written or remembered. A remembered override that names a surface the zone has since lost is ignored, and its role is bound automatically.
+- **An override naming a surface whose `role` another role has already bound** skips its role, as D12.4 says, and the role isn't tried again automatically.
+- **Bodies are read strictly,** as the schemas' `additionalProperties: false` says: an unknown field or a wrong type is `400 bad_body`. An empty body is every zone for Reset all and a missing `zone` for an apply.
+- **`bindings` is limited to 256 entries:** an apply that would add an entry past it is `409 list_full`.
+- **The base is the copy clamped as a `Scene`,** so the stored base compares equal to the scene the show holds when the user changed nothing; a merge's theirs is clamped the same way, and it becomes the new base.
+- **A merge keeps a role mine has even when it has no layers left,** and drops a role only in base that is in neither mine nor theirs.
+- **The bases are kept after the show write.** A base that can't be written is logged and the apply stands; a later `keep_changes` on that scene answers `409 no_base`. Every write of `show.json` through the API (an apply, Reset all, `PUT /show`) removes the bases of scenes that left or lost their provenance, and the bindings of zones that no longer exist.
+- **`keep_changes` into a scene another zone has active** writes a new scene, as D15 says, merged against the base of the scene it came from.
+- **A reference over 130 characters,** or one that names nothing, is `404 not_found` with `details.what` `scene`.
+- **Reset all with a scene of the show as `default_scene`** makes it active in each zone (D11) and still restores `master` and `background`.

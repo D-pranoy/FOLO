@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-09 step 1, the library service, done)
+Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-09 steps 1 to 4, the library service, applying and Reset all, done)
 
 ## RB-06: Node core
 

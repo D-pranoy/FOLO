@@ -19,7 +19,7 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::node::Node;
-use crate::{api, library_api, live, ui};
+use crate::{api, apply_api, library_api, live, ui};
 
 /// The client API's body limit (docs/specs/client-api.md#conventions).
 const BODY_LIMIT: usize = 1024 * 1024;
@@ -123,8 +123,8 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
         .route(&v1("/zones/{id}/test"), later_post("RB-08"))
         .route(&v1("/show"), get(api::show).put(api::put_show))
-        .route(&v1("/show/reset"), later_post("RB-09"))
-        .route(&v1("/scenes/{ref}/apply"), later_post("RB-09"))
+        .route(&v1("/show/reset"), post(apply_api::reset))
+        .route(&v1("/scenes/{ref}/apply"), post(apply_api::apply))
         .route(&v1("/effects"), get(api::effects))
         .route(
             &v1("/providers"),

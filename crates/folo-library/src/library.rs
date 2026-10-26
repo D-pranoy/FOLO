@@ -64,6 +64,17 @@ struct EventLog {
     seq: u64,
 }
 
+/// A scene item of a pack, as an apply reads it.
+#[derive(Debug, Clone)]
+pub struct SceneItem {
+    /// Its pack's version.
+    pub version: String,
+    /// Its hash (D5).
+    pub hash: String,
+    /// The item, as clamped.
+    pub item: Value,
+}
+
 /// The content library.
 pub struct Library {
     root: PathBuf,
@@ -174,6 +185,25 @@ impl Library {
             .item(item_type, id)
             .map(|i| i.value.clone())
             .ok_or_else(|| not_found(&format!("{pack} {} {id}", item_type.folder())))
+    }
+
+    /// A scene item with the version of its pack and its hash, which an
+    /// apply copies and records as provenance (ADR-0038 D11).
+    ///
+    /// # Errors
+    ///
+    /// [`LibraryError::NotFound`] when there is no such pack or scene.
+    pub fn scene(&self, pack: &str, id: &str) -> Result<SceneItem, LibraryError> {
+        let inner = self.lock();
+        let found = inner.packs.get(pack).ok_or_else(|| not_found(pack))?;
+        let item = found
+            .item(ItemType::Scenes, id)
+            .ok_or_else(|| not_found(&format!("{pack} scenes {id}")))?;
+        Ok(SceneItem {
+            version: found.version().to_owned(),
+            hash: item.hash.clone(),
+            item: item.value.clone(),
+        })
     }
 
     /// `LibraryItem` of every item of a type: built-in packs first, then by
