@@ -22,10 +22,13 @@ A **zone** is a spatial setup: a room, a TV corner, a desk. A controller has any
 - A target may be a member of several zones.
 - **At any moment, at most one active zone drives a given target.** Activating a zone that shares targets with an active zone asks before taking them over.
 - Zones that share no targets run at the same time.
-- **Shared targets:** two targets are shared when they have the same id, **or** drive overlapping `(provider instance, address range)`: overlapping LED ranges, or at least one Hue channel in common.
-- **Taking over:** activating a zone whose targets are shared with active zones answers with those zones as `conflicts` and changes nothing. With `take_over`, the conflicting zones are **deactivated entirely** and the zone is activated ([client API](../specs/client-api.md#zone-activation)).
-- **Activation is stored** in the zone's `active` flag (default true) and survives restarts. If a node starts with active zones that share a target, the zone that comes first in `zones.json` keeps it, and each later one reports `active: false` on the live channel with a warning in the log. The file isn't rewritten.
-- Only active zones are rendered by the effect engine and driven by the controller ([control plane](control-plane.md#supervision)).
+- **Shared targets:** two targets are shared when they have the same id, **or** drive overlapping `(provider instance, address range)` within one provider instance: overlapping LED ranges, or at least one Hue channel in common. Two instances that happen to reach the same physical device aren't detected.
+- **Taking over:** activating a zone whose targets are shared with active zones answers with those zones as `conflicts` and changes nothing. With `take_over`, the conflicting zones are **deactivated entirely**, not only their shared targets, and the zone is activated ([client API](../specs/client-api.md#zone-activation)).
+- **Activation is stored, the effective state is derived.** The zone's `active` flag (default true) is stored and survives restarts. The **effective** state is the stored flag minus the losers of this check: when active zones share a target, the one that comes first in `zones.json` keeps it, and each later one is effectively inactive, with a warning in the log. The check runs on every load and every write of a zone, so:
+  - a zone added or changed so that it shares a target with an active zone, or one that comes earlier, is effectively inactive, and nothing is refused
+  - a zone the check suppressed becomes effective as soon as the zone that held its target is deactivated or removed, as it would after a restart
+  - the file's flag isn't rewritten by the check; `GET /zones` gives the stored one, and `ZoneActivation.active` and the live channel give the effective one
+- Only effectively active zones are rendered by the effect engine and driven by the controller ([control plane](control-plane.md#supervision)).
 
 ## Targets
 
@@ -70,9 +73,9 @@ Zone types create default surfaces with **roles**, which scenes bind to ([conten
 
 Defaults are applied only when a zone is created through the API or a target is added to one, **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
 - `canvas.room`: 64 × 36 cells on the floor plane, covering the room, with **row 0 on the +y side**: the plane's origin is the corner at `(−x/2, +y/2, 0)`, with `u` along +x and `v` along −y.
-- `canvas.screen` (zones of type `screen`): 64 × 36 cells on the reference TV's plane.
+- `canvas.screen` (zones of type `screen` whose reference is a TV): 64 × 36 cells on the TV's plane, which comes from the reference object. At orientation 0 the TV faces the room: its centre is `reference.position`, its screen's normal points towards −y, and a viewer looking along +y sees +x to the right. Its rectangle has the origin corner at the top left as the viewer sees it, `(−w/2, 0, +h/2)` from the centre, with `u = (w, 0, 0)` and `v = (0, 0, −h)`, `w` and `h` being the reference's `size`. `orientation` then turns the rectangle about its centre: `yaw` about +z (counter-clockwise seen from above), then `pitch` about the TV's own x axis, then `roll` about its own y axis, in degrees. A zone whose reference isn't a TV has no `canvas.screen`. The default `reference.position` is `(0, 0, 0)`, the centre of the floor.
 - `strip.<target>`: one strip surface per line target, with the target's element count as its resolution.
-- One default mapping for each new target: a manual 1:1 mapping from its `strip.<target>` surface for a line target, and a plane mapping from `canvas.room` for any other.
+- One default mapping for each new target: a manual 1:1 mapping from its `strip.<target>` surface for a line target. For any other target, a plane mapping from `canvas.screen` in a `screen` zone with a TV (area kernel, edge `clamp`, so lights beside the screen sample its nearest edge), and from `canvas.room` otherwise.
 - A new surface lists the source `local`.
 
 ## Mappings and projection
@@ -97,9 +100,11 @@ Edge policy is clamp (ambilight-style; lights beside a screen sample its nearest
 Each element has a sample position on its surface, in cell units. The kernels turn it into taps (a cell and a weight):
 - **nearest:** the cell the sample falls in, with weight 1.
 - **bilinear:** the four cells around the sample, weighted by their distance, measured between cell centres.
-- **area:** the box of half-size `radius` × the element's spacing (the distance between neighbouring elements, in cells), centred on the sample. Each cell the box overlaps is a tap, weighted by its exact overlap, the weights normalised to add up to 1. At most **64 taps**: a larger box is sampled on an 8 × 8 sub-grid of the box, each sub-cell counting for the cell it falls in.
+- **area:** a box centred on the sample, with half-size `radius` × the element's **spacing** along each axis of the surface. Each cell the box overlaps is a tap, weighted by its exact overlap, the weights normalised to add up to 1. At most **64 taps**: a larger box is sampled on an 8 × 8 sub-grid of the box, each sub-cell counting for the cell it falls in. `radius` is a fraction of the spacing, 0 to 1 (half a spacing by default).
+  - **Spacing,** in cells of the surface: for a line, the distance between neighbouring elements (at the ends, to their one neighbour), converted to the surface's cells along the sample axis; for a grid, separately along `u` (the plane's width over `W`) and along `v` (its height over `H`), so the box can be a rectangle; for a point and for a line of one element, one cell; for a manual range, `cells / elements`.
+  - **Box shape:** a strip surface has one row, so the box is that row's one cell tall and has its half-size only along the strip.
 - **Edges:** with `clamp`, a tap outside the surface moves to the nearest cell. With `none`, taps outside are dropped and the remaining weights are renormalised to add up to 1.
-- **Manual ranges:** element `i` of a range samples its cell range at `(i + ½) · cells / elements`. When the two counts are equal, every element has **one tap of weight 1**, which makes the mapping exact: it is the parity mapping.
+- **Manual ranges:** element `i` of a range samples its cell range at `(i + ½) · cells / elements`. **When the two counts are equal the kernel is ignored:** every element has one tap of weight 1, which makes the mapping exact, whatever the kernel's type and radius. It is the parity mapping.
 
 ### Combining mappings
 

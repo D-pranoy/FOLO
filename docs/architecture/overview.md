@@ -38,8 +38,8 @@ On a desktop all-in-one install, the controller runs a **local source** (its own
 3. **Publishing.** Surfaces are published at the resolution and rate each zone requests (default 60 Hz).
 4. **Compositing.** The controller picks or blends sources per surface (priority, activity, crossfade), then applies each zone's reactive mode and ambient light.
 5. **Projection.** Each target element samples its surface through a precomputed gather plan.
-6. **Adapters.** Colour model, resolution, rate, calibration, latency offset, flash limiter.
-7. **Providers.** Each sends at its own rate (Hyperion 40 Hz, WLED 60 Hz, Hue 50 Hz).
+6. **Adapters.** Resolution, colour model, calibration, latency offset, flash limiter ([ADR-0036](../decisions/ADR-0036-controller-output.md)).
+7. **Providers.** Each sender applies the rate, at its own pace (Hyperion 40 Hz, WLED 60 Hz, Hue 50 Hz).
 
 Details: [pipeline](pipeline.md), [spatial model](spatial-model.md), [capabilities](capabilities.md), [providers](providers.md).
 
