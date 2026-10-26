@@ -20,7 +20,7 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0004](ADR-0004-implementation-languages-and-contracts.md) | Implementation languages and contracts | Accepted |
 | [0005](ADR-0005-pipeline-and-data-model.md) | Pipeline and data model | Accepted |
 | [0006](ADR-0006-spatial-model-zones-and-projection.md) | Spatial model, zones and projection | Accepted |
-| [0007](ADR-0007-capabilities-adapters-and-flash-limiter.md) | Capabilities, adapters and the flash limiter | Accepted · D4 superseded by [0033](ADR-0033-flash-limiter-off-by-default.md) |
+| [0007](ADR-0007-capabilities-adapters-and-flash-limiter.md) | Capabilities, adapters and the flash limiter | Accepted · D2's order superseded by [0036](ADR-0036-controller-output.md), D4 by [0033](ADR-0033-flash-limiter-off-by-default.md) |
 | [0008](ADR-0008-networking-pairing-and-encryption.md) | Networking, pairing and encryption | Accepted |
 | [0009](ADR-0009-client-access.md) | Client access | Accepted |
 | [0010](ADR-0010-settings-persistence-and-migration.md) | Settings, persistence and migration | Accepted |
@@ -49,3 +49,4 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0033](ADR-0033-flash-limiter-off-by-default.md) | The flash limiter is off by default, with epilepsy warnings | Accepted |
 | [0034](ADR-0034-the-node-process.md) | The node process: folders, launches and its command line | Accepted |
 | [0035](ADR-0035-serving-the-client-api.md) | Serving the client API | Accepted |
+| [0036](ADR-0036-controller-output.md) | The controller's output: zones, projection and adapters | Accepted |

@@ -1,6 +1,6 @@
 # ADR-0007: Capabilities, adapters and the flash limiter
 
-Status: Accepted · D4 superseded by [ADR-0033](ADR-0033-flash-limiter-off-by-default.md)
+Status: Accepted · D2's order of stages superseded by [ADR-0036](ADR-0036-controller-output.md), D4 superseded by [ADR-0033](ADR-0033-flash-limiter-off-by-default.md)
 Date: 2026-10-13
 
 ## Context
