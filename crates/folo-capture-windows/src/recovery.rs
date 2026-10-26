@@ -84,8 +84,10 @@ impl Default for Policy {
 pub struct Recovery {
     order: Vec<BackendKind>,
     current: usize,
-    /// Faults since the last picture (or backend switch).
+    /// Faults of the same class in a row since the last picture (or backend switch).
     streak: u32,
+    /// The class of the last fault, so that a different one starts its own count.
+    last_class: Option<std::mem::Discriminant<Fault>>,
     policy: Policy,
 }
 
@@ -105,6 +107,7 @@ impl Recovery {
             order,
             current: 0,
             streak: 0,
+            last_class: None,
             policy,
         }
     }
@@ -118,11 +121,18 @@ impl Recovery {
     /// A picture arrived: the faults before it are forgotten.
     pub fn on_picture(&mut self) {
         self.streak = 0;
+        self.last_class = None;
     }
 
     /// Decides what follows `fault`.
     pub fn on_fault(&mut self, fault: &Fault) -> Step {
-        self.streak = self.streak.saturating_add(1);
+        let class = std::mem::discriminant(fault);
+        if self.last_class == Some(class) {
+            self.streak = self.streak.saturating_add(1);
+        } else {
+            self.streak = 1;
+            self.last_class = Some(class);
+        }
         match fault {
             Fault::Unsupported => self.next_backend(fault),
             Fault::ProcessLimit => self.retry_or_switch(fault, self.policy.limit_attempts),
@@ -152,7 +162,9 @@ impl Recovery {
     }
 
     fn retry_or_switch(&mut self, fault: &Fault, attempts: u32) -> Step {
-        if self.streak <= attempts {
+        // On the last backend there is nothing to switch to, and these failures can pass
+        // (a GPU reset, a busy session): it goes on retrying at the longest delay.
+        if self.streak <= attempts || self.current + 1 >= self.order.len() {
             self.retry(self.policy.max_backoff, fault)
         } else {
             self.next_backend(fault)
@@ -167,6 +179,7 @@ impl Recovery {
         };
         self.current += 1;
         self.streak = 0;
+        self.last_class = None;
         Step::Switch(next)
     }
 }
@@ -303,6 +316,36 @@ mod tests {
         }
         assert_eq!(recovery.current(), BackendKind::Wgc);
         assert_eq!(recovery.on_fault(&Fault::PrivacyDenied), retry(5000, true));
+    }
+
+    #[test]
+    fn each_class_of_fault_counts_its_own_retries() {
+        let mut recovery = auto();
+        for _ in 0..3 {
+            recovery.on_fault(&Fault::AccessLost);
+        }
+        // Three lost screens don't use up the process limit's three retries.
+        assert_eq!(recovery.on_fault(&Fault::ProcessLimit), retry(100, true));
+        assert_eq!(recovery.on_fault(&Fault::ProcessLimit), retry(200, true));
+    }
+
+    #[test]
+    fn the_last_backend_keeps_retrying_failures_that_can_pass() {
+        let mut recovery = Recovery::new(vec![BackendKind::Gdi], Policy::default());
+        for _ in 0..50 {
+            assert!(matches!(
+                recovery.on_fault(&Fault::Other("x".to_owned())),
+                Step::Retry { .. }
+            ));
+            assert!(matches!(
+                recovery.on_fault(&Fault::DeviceLost),
+                Step::Retry { .. }
+            ));
+        }
+        assert_eq!(
+            recovery.on_fault(&Fault::Other("x".to_owned())),
+            retry(100, false)
+        );
     }
 
     #[test]

@@ -148,7 +148,16 @@ impl<F: GrabberFactory, T: Timer> Engine<F, T> {
             {
                 Ok(grabber) => {
                     session.active = Active::Grabbing(grabber);
-                    session.status = BackendStatus::default();
+                    // The pause (and its message) stays until the first picture: a reopen
+                    // that fails again at once must not flap to "capturing".
+                    if let Ok(screens) = self.factory.screens() {
+                        session.screen_index = screens
+                            .iter()
+                            .position(|screen| screen.id == session.screen_id)
+                            .map_or(session.screen_index, |index| {
+                                u16::try_from(index).unwrap_or(u16::MAX)
+                            });
+                    }
                     return Ok(());
                 }
                 Err(fault) => {
@@ -229,6 +238,14 @@ impl<F: GrabberFactory, T: Timer> CaptureBackend for Engine<F, T> {
             .iter()
             .position(|screen| screen.id == request.screen)
             .ok_or_else(|| CaptureError::UnknownScreen(request.screen.clone()))?;
+        let failed = self
+            .session
+            .as_ref()
+            .is_some_and(|session| matches!(session.active, Active::Failed(_)));
+        if failed {
+            // The same `capture.start` again is a new try, not the old error.
+            self.stop();
+        }
         if let Some(session) = self
             .session
             .as_mut()

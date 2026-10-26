@@ -8,7 +8,8 @@
 //! Each frame is copied into the [`Presenter`]'s texture and given back to
 //! the pool at once, so the pool's two buffers are never held.
 
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError, mpsc};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use folo_capture_core::types::{CaptureRequest, Picture};
@@ -21,6 +22,7 @@ use windows::Graphics::Capture::{
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Graphics::SizeInt32;
+use windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus;
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Graphics::Dxgi::{IDXGIAdapter, IDXGIDevice};
 use windows::Win32::Graphics::Gdi::HMONITOR;
@@ -30,6 +32,7 @@ use windows::Win32::System::WinRT::Direct3D11::{
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
 use windows::core::{IInspectable, Interface as _, h};
 
+use crate::com;
 use crate::engine::Grabber;
 use crate::fault::{E_ACCESSDENIED, Fault};
 use crate::gpu::Gpu;
@@ -80,7 +83,8 @@ pub struct WgcGrabber {
     pool_size: SizeInt32,
     session: GraphicsCaptureSession,
     item: GraphicsCaptureItem,
-    tokens: (i64, i64),
+    /// The tokens of the two handlers, once they are added.
+    tokens: Option<(i64, i64)>,
     signal: Arc<Signal>,
     presenter: Presenter,
 }
@@ -95,8 +99,15 @@ fn open_fault(error: windows::core::Error) -> Fault {
     }
 }
 
+/// How long the borderless consent is waited for. Past it the capture starts with the border.
+const CONSENT_WAIT: Duration = Duration::from_secs(1);
+
 impl WgcGrabber {
     /// Starts capturing `monitor`.
+    ///
+    /// Everything that can fail is made first, and the grabber (whose `Drop` closes what exists)
+    /// is built before the handlers are added and the capture started, so a failure halfway
+    /// leaves nothing open.
     ///
     /// # Errors
     ///
@@ -104,13 +115,14 @@ impl WgcGrabber {
     /// [`Fault::PrivacyDenied`] when the privacy setting refuses it, and the fault a Windows
     /// error stands for otherwise.
     pub fn open(monitor: &Monitor, request: &CaptureRequest) -> Result<Self, Fault> {
-        if !GraphicsCaptureSession::IsSupported().map_err(Fault::from)? {
+        if !GraphicsCaptureSession::IsSupported().unwrap_or(false) {
             return Err(Fault::Unsupported);
         }
         let gpu = match &monitor.dxgi {
             Some(dxgi) => Gpu::on_adapter(&dxgi.adapter.cast::<IDXGIAdapter>()?)?,
             None => Gpu::hardware()?,
         };
+        let presenter = Presenter::new(gpu.clone(), request, monitor.hdr, monitor.sdr_white_nits)?;
         let device = Self::winrt_device(&gpu)?;
         let item = Self::item_for(monitor)?;
         let format = if monitor.hdr {
@@ -125,26 +137,32 @@ impl WgcGrabber {
             POOL_BUFFERS,
             pool_size,
         )?;
-        let signal = Arc::new(Signal::default());
-        let tokens = Self::subscribe(&pool, &item, &signal)?;
         let session = pool.CreateCaptureSession(&item).map_err(open_fault)?;
-        Self::configure(&session);
-        session.StartCapture().map_err(open_fault)?;
-        Ok(Self {
-            gpu: gpu.clone(),
+        let mut grabber = Self {
+            gpu,
             format,
             pool,
             pool_size,
             session,
             item,
-            tokens,
-            signal,
-            presenter: Presenter::new(gpu, request, monitor.hdr, monitor.sdr_white_nits)?,
-        })
+            tokens: None,
+            signal: Arc::new(Signal::default()),
+            presenter,
+        };
+        grabber.start()?;
+        Ok(grabber)
+    }
+
+    fn start(&mut self) -> Result<(), Fault> {
+        self.tokens = Some(Self::subscribe(&self.pool, &self.item, &self.signal)?);
+        Self::configure(&self.session);
+        self.session.StartCapture().map_err(open_fault)
     }
 
     #[allow(unsafe_code)] // CreateDirect3D11DeviceFromDXGIDevice
     fn winrt_device(gpu: &Gpu) -> Result<IDirect3DDevice, Fault> {
+        // The frame pool and its surfaces are used by threads of the system's.
+        gpu.protect_for_threads();
         let dxgi_device = gpu.device.cast::<IDXGIDevice>()?;
         // SAFETY: the DXGI device is borrowed for the call, which wraps it in a WinRT object
         // that holds its own reference.
@@ -188,8 +206,9 @@ impl WgcGrabber {
     }
 
     /// The cursor is never captured, and the border is turned off where Windows has the
-    /// setting (build 20348 and newer): it asks the user's consent through the access API,
-    /// and without it the yellow border stays. Neither can fail the capture.
+    /// setting (build 20348 and newer) and the user consents to it through the access API.
+    /// Without consent, or when the consent isn't given within [`CONSENT_WAIT`], the yellow
+    /// border stays. Neither can fail the capture.
     fn configure(session: &GraphicsCaptureSession) {
         let _ = session.SetIsCursorCaptureEnabled(false);
         let has_border_setting = ApiInformation::IsPropertyPresent(
@@ -197,12 +216,24 @@ impl WgcGrabber {
             h!("IsBorderRequired"),
         )
         .unwrap_or(false);
-        if has_border_setting {
-            let _ =
-                GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless)
-                    .and_then(|asking| asking.join());
+        if has_border_setting && Self::borderless_allowed() {
             let _ = session.SetIsBorderRequired(false);
         }
+    }
+
+    /// Asks Windows for borderless access on a thread of its own, so that a consent dialog
+    /// can't hold the capture thread past `next_picture`'s timeout.
+    fn borderless_allowed() -> bool {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            com::ensure_initialized();
+            let status =
+                GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless)
+                    .and_then(|asking| asking.join());
+            let _ = sender
+                .send(status.is_ok_and(|status| status == AppCapabilityAccessStatus::Allowed));
+        });
+        receiver.recv_timeout(CONSENT_WAIT).unwrap_or(false)
     }
 
     /// Copies every frame that is waiting, newest last, and gives each back to the pool.
@@ -236,8 +267,10 @@ impl WgcGrabber {
 
 impl Drop for WgcGrabber {
     fn drop(&mut self) {
-        let _ = self.pool.RemoveFrameArrived(self.tokens.0);
-        let _ = self.item.RemoveClosed(self.tokens.1);
+        if let Some((arrived, closed)) = self.tokens {
+            let _ = self.pool.RemoveFrameArrived(arrived);
+            let _ = self.item.RemoveClosed(closed);
+        }
         let _ = self.session.Close();
         let _ = self.pool.Close();
     }
@@ -258,11 +291,13 @@ impl Grabber for WgcGrabber {
             if Instant::now() >= deadline {
                 self.drain()?;
                 let ready = self.presenter.ready_in() == Some(Duration::ZERO);
-                return if ready {
-                    self.presenter.emit().map(Some)
-                } else {
-                    Ok(None)
-                };
+                if ready {
+                    return self.presenter.emit().map(Some);
+                }
+                // Frames come only when the screen changes, so none is not a fault, but a lost
+                // GPU would look the same.
+                self.presenter.check_alive()?;
+                return Ok(None);
             }
         }
     }

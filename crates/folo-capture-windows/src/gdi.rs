@@ -108,6 +108,11 @@ impl GdiGrabber {
                 }
             };
             let previous = SelectObject(dc, HGDIOBJ(bitmap.0));
+            if previous.is_invalid() {
+                let _ = DeleteObject(HGDIOBJ(bitmap.0));
+                let _ = DeleteDC(dc);
+                return Err(Fault::Other("GDI wouldn't select the bitmap".to_owned()));
+            }
             Ok(Canvas {
                 dc: dc.0 as isize,
                 bitmap: bitmap.0 as isize,
@@ -218,9 +223,11 @@ impl Grabber for GdiGrabber {
         if monitors::bounds_of(self.handle) != Some(self.bounds) {
             return Err(Fault::AccessLost);
         }
+        let started = self.now_us();
         self.copy_desktop()?;
         let picture = self.picture()?;
-        self.gate.mark(self.now_us());
+        // Counted from the start of the work, so that the work's time isn't added to each period.
+        self.gate.mark(started);
         Ok(Some(picture))
     }
 

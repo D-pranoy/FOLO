@@ -60,7 +60,7 @@ impl Drop for FakeGrabber {
 }
 
 struct FakeFactory {
-    screens: Vec<Screen>,
+    screens: Arc<Mutex<Vec<Screen>>>,
     /// One entry per `open`: the fault, or the grabs of the grabber it opens.
     opens: Script<OpenResult>,
     log: Log,
@@ -69,7 +69,7 @@ struct FakeFactory {
 
 impl GrabberFactory for FakeFactory {
     fn screens(&mut self) -> Result<Vec<Screen>, CaptureError> {
-        Ok(self.screens.clone())
+        Ok(self.screens.lock().unwrap().clone())
     }
 
     fn open(
@@ -118,6 +118,7 @@ struct Rig {
     timer: FakeTimer,
     closed: Arc<Mutex<u32>>,
     opens: Script<OpenResult>,
+    screens: Arc<Mutex<Vec<Screen>>>,
 }
 
 fn screen(id: &str) -> Screen {
@@ -160,9 +161,10 @@ fn request(screen: &str) -> CaptureRequest {
 fn rig(order: Vec<BackendKind>, opens: Vec<OpenResult>) -> Rig {
     let (log, timer) = (Log::default(), FakeTimer::default());
     let closed = Arc::new(Mutex::new(0));
+    let screens = Arc::new(Mutex::new(vec![screen("a"), screen("b")]));
     let opens: Script<_> = Arc::new(Mutex::new(opens.into()));
     let factory = FakeFactory {
-        screens: vec![screen("a"), screen("b")],
+        screens: Arc::clone(&screens),
         opens: Arc::clone(&opens),
         log: log.clone(),
         closed: Arc::clone(&closed),
@@ -173,6 +175,7 @@ fn rig(order: Vec<BackendKind>, opens: Vec<OpenResult>) -> Rig {
         timer,
         closed,
         opens,
+        screens,
     }
 }
 
@@ -258,8 +261,10 @@ fn access_lost_pauses_closes_the_duplication_and_reopens_after_the_backoff() {
         rig.timer.slept.lock().unwrap().clone(),
         [Duration::from_millis(100)]
     );
-    assert!(!rig.backend.status().paused);
+    // Reopened, but paused until the first picture arrives.
+    assert!(rig.backend.status().paused);
     assert!(rig.backend.next_picture(SECOND).unwrap().is_some());
+    assert!(!rig.backend.status().paused);
     assert_eq!(rig.log.lines(), ["open dda a", "open dda a"]);
 }
 
@@ -303,17 +308,18 @@ fn the_secure_desktop_keeps_the_agent_paused_while_opening_keeps_failing() {
         assert!(rig.backend.status().paused || rig.log.lines().len() == 22);
     }
     // Back on the normal desktop: the last open worked, and the next call grabs.
-    assert!(!rig.backend.status().paused);
     assert!(rig.backend.next_picture(SECOND).unwrap().is_some());
+    assert!(!rig.backend.status().paused);
     // The delays doubled up to the two-second cap.
     let slept = rig.timer.slept.lock().unwrap().clone();
     assert_eq!(slept.iter().max(), Some(&Duration::from_secs(2)));
+    // The first fault was another class (AccessLost), which started its own count.
     assert_eq!(
         slept[..3],
         [
             Duration::from_millis(100),
-            Duration::from_millis(200),
-            Duration::from_millis(400)
+            Duration::from_millis(100),
+            Duration::from_millis(200)
         ]
     );
 }
@@ -419,6 +425,38 @@ fn giving_up_mid_capture_is_an_error_every_call_repeats() {
     let first = rig.backend.next_picture(SECOND);
     assert!(matches!(first, Err(CaptureError::Failed(_))), "{first:?}");
     assert_eq!(rig.backend.next_picture(SECOND), first);
+}
+
+#[test]
+fn the_same_start_again_after_a_failure_tries_again() {
+    let mut rig = rig(
+        vec![BackendKind::Gdi],
+        vec![
+            Ok(vec![Err(Fault::Unsupported)]),
+            Ok(vec![Ok(Some(picture()))]),
+        ],
+    );
+    rig.backend.start(&request("a")).unwrap();
+    assert!(rig.backend.next_picture(SECOND).is_err());
+    rig.backend.start(&request("a")).unwrap();
+    assert!(rig.backend.next_picture(SECOND).unwrap().is_some());
+}
+
+#[test]
+fn a_reopen_after_the_screens_moved_in_the_list_updates_the_pictures_screen_index() {
+    let mut rig = rig(
+        BackendKind::auto_order(),
+        vec![
+            Ok(vec![Err(Fault::AccessLost)]),
+            Ok(vec![Ok(Some(picture()))]),
+        ],
+    );
+    rig.backend.start(&request("b")).unwrap();
+    rig.backend.next_picture(SECOND).unwrap();
+    *rig.screens.lock().unwrap() = vec![screen("b"), screen("a")];
+    rig.backend.next_picture(SECOND).unwrap();
+    let got = rig.backend.next_picture(SECOND).unwrap().unwrap();
+    assert_eq!(got.screen_index, 0);
 }
 
 #[test]

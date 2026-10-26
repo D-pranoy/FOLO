@@ -127,6 +127,9 @@ impl Presenter {
     ///
     /// A [`Fault`] when the GPU refuses; [`Fault::Other`] when no image was taken.
     pub fn emit(&mut self) -> Result<Picture, Fault> {
+        // The rate is counted from the start of the work, not its end, or the work's own time
+        // would be added to every period.
+        let started = self.now_us();
         let Some((shape, copy)) = &self.copy else {
             return Err(Fault::Other("no desktop image was taken".to_owned()));
         };
@@ -134,8 +137,7 @@ impl Presenter {
         let tone_map = (shape.format == FP16).then_some(self.hdr_scale);
         let pixels = self.downscaler.downscale(copy, size, tone_map)?;
         self.dirty = false;
-        let now = self.now_us();
-        self.gate.mark(now);
+        self.gate.mark(started);
         Ok(Picture {
             screen_index: 0,
             width: size.0,
@@ -155,5 +157,17 @@ impl Presenter {
     pub fn wait_within(&self, remaining: Duration) -> Duration {
         self.ready_in()
             .map_or(remaining, |wait| wait.min(remaining))
+    }
+}
+
+impl Presenter {
+    /// Whether the device is still there. Called when a grab ended without a picture, because a
+    /// lost GPU is otherwise indistinguishable from a screen that doesn't change.
+    ///
+    /// # Errors
+    ///
+    /// [`Fault::DeviceLost`] when the GPU was removed, reset or hung.
+    pub fn check_alive(&self) -> Result<(), Fault> {
+        self.gpu.check_alive()
     }
 }

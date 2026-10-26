@@ -139,6 +139,7 @@ impl Grabber for DdaGrabber {
             let remaining = deadline.saturating_duration_since(Instant::now());
             self.acquire(self.presenter.wait_within(remaining))?;
             if Instant::now() >= deadline && self.presenter.ready_in() != Some(Duration::ZERO) {
+                self.presenter.check_alive()?;
                 return Ok(None);
             }
         }

@@ -19,13 +19,15 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_BUFFER_DESC, D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAP_READ,
     D3D11_MAPPED_SUBRESOURCE, D3D11_SDK_VERSION, D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE2D_DESC,
     D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING, D3D11_VIEWPORT, D3D11CreateDevice, ID3D11Buffer,
-    ID3D11Device, ID3D11DeviceContext, ID3D11PixelShader, ID3D11RenderTargetView,
-    ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
+    ID3D11Device, ID3D11DeviceContext, ID3D11Multithread, ID3D11PixelShader,
+    ID3D11RenderTargetView, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIAdapter;
+
+use windows::core::Interface as _;
 
 use crate::fault::Fault;
 use crate::shader;
@@ -162,6 +164,29 @@ impl Gpu {
                 .map_err(|error| Fault::from(error).context("CreateTexture2D"))?;
         }
         texture.ok_or_else(|| Fault::Other("Direct3D made no texture".to_owned()))
+    }
+
+    /// Whether the device is still there.
+    ///
+    /// # Errors
+    ///
+    /// [`Fault::DeviceLost`] when the GPU was removed, reset or hung since the device was made.
+    #[allow(unsafe_code)] // GetDeviceRemovedReason
+    pub fn check_alive(&self) -> Result<(), Fault> {
+        // SAFETY: the call has no arguments and only reads the device's state.
+        unsafe { self.device.GetDeviceRemovedReason() }.map_err(Fault::from)
+    }
+
+    /// Makes the device safe to use from several threads. A device handed to Windows.Graphics.Capture
+    /// is also used by the system's own threads, and Direct3D's immediate context isn't thread safe
+    /// unless this is on.
+    #[allow(unsafe_code)] // SetMultithreadProtected
+    pub fn protect_for_threads(&self) {
+        let Ok(multithread) = self.device.cast::<ID3D11Multithread>() else {
+            return;
+        };
+        // SAFETY: the call takes a flag and returns the previous one.
+        let _ = unsafe { multithread.SetMultithreadProtected(true) };
     }
 
     /// The description of a texture.

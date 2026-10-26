@@ -14,6 +14,7 @@
 
 use folo_capture_core::color;
 use folo_capture_windows::gpu::{BGRA8, Downscaler, FP16, Gpu, shader_resource_binding};
+use folo_capture_windows::present::Presenter;
 use folo_capture_windows::tonemap;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Texture2D,
@@ -268,4 +269,93 @@ fn an_hdr_desktop_downscales_at_awkward_ratios() {
         }
     }
     assert_close(&actual, &expected, "an HDR ramp");
+}
+
+// The presenter that Desktop Duplication and Windows.Graphics.Capture share, on the same device.
+
+fn request(width: u16, height: u16, rate_hz: f64) -> folo_capture_core::types::CaptureRequest {
+    use folo_capture_core::types::{
+        BlackBarMode, BlackBarPreset, BlackBarSettings, CaptureRequest, Profile,
+    };
+    CaptureRequest {
+        screen: "test".to_owned(),
+        width,
+        height,
+        rate_hz,
+        black_bars: BlackBarSettings {
+            preset: BlackBarPreset::Auto,
+            mode: BlackBarMode::Default,
+            threshold: 0.05,
+        },
+        profile: Profile::Video,
+        restore_token: None,
+    }
+}
+
+fn presenter(
+    request: &folo_capture_core::types::CaptureRequest,
+    hdr: bool,
+    white_nits: f32,
+) -> (Presenter, Gpu) {
+    let gpu = Gpu::warp().expect("the WARP software device");
+    (
+        Presenter::new(gpu.clone(), request, hdr, white_nits).expect("a presenter"),
+        gpu,
+    )
+}
+
+#[test]
+fn the_presenter_makes_a_picture_that_fits_the_box_and_waits_for_the_rate() {
+    let (mut presenter, gpu) = presenter(&request(4, 2, 1.0), false, 80.0);
+    assert_eq!(presenter.ready_in(), None, "no image yet");
+    let image = bgra8(&gpu, (16, 8), &noise(16, 8));
+    presenter.take(&image).unwrap();
+    assert_eq!(presenter.ready_in(), Some(std::time::Duration::ZERO));
+    let picture = presenter.emit().unwrap();
+    assert_eq!((picture.width, picture.height), (4, 2));
+    assert_eq!(picture.pixels.len(), 4 * 2 * 3);
+    assert!(!picture.flags.hdr && !picture.flags.protected && !picture.flags.held);
+    // The image is used up; a new one has to wait for the one-a-second gate.
+    assert_eq!(presenter.ready_in(), None);
+    presenter.take(&image).unwrap();
+    assert!(presenter.ready_in().unwrap() > std::time::Duration::from_millis(500));
+}
+
+#[test]
+fn the_presenter_follows_a_change_of_the_desktops_size_and_format() {
+    let (mut presenter, gpu) = presenter(&request(8, 4, 60.0), false, 80.0);
+    let pixels = noise(16, 8);
+    presenter.take(&bgra8(&gpu, (16, 8), &pixels)).unwrap();
+    let first = presenter.emit().unwrap();
+    assert_eq!((first.width, first.height), (8, 4));
+    let expected = color::downscale(&pixels, 16, 8, 8, 4).unwrap();
+    assert_close(&first.pixels, &expected, "the first image");
+    // A mode change: another size, with the same aspect ratio, and then another shape.
+    presenter
+        .take(&bgra8(&gpu, (32, 16), &noise(32, 16)))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    let second = presenter.emit().unwrap();
+    assert_eq!((second.width, second.height), (8, 4));
+    presenter.take(&fp16(&gpu, (4, 2), &[0.5; 24])).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(presenter.emit().unwrap().pixels.len(), 8 * 4 * 3);
+}
+
+#[test]
+fn the_presenter_tone_maps_an_fp16_image_and_flags_an_hdr_desktop() {
+    let (mut presenter, gpu) = presenter(&request(1, 1, 60.0), true, 240.0);
+    presenter.take(&fp16(&gpu, (2, 2), &[3.0; 12])).unwrap();
+    let picture = presenter.emit().unwrap();
+    assert!(picture.flags.hdr);
+    assert_close(&picture.pixels, &[255, 255, 255], "SDR white at 240 nits");
+}
+
+#[test]
+fn the_presenter_reports_protected_content_and_a_live_device() {
+    let (mut presenter, gpu) = presenter(&request(2, 1, 60.0), false, 80.0);
+    presenter.protected = true;
+    presenter.take(&bgra8(&gpu, (2, 1), &[9; 6])).unwrap();
+    assert!(presenter.emit().unwrap().flags.protected);
+    presenter.check_alive().expect("the WARP device is alive");
 }
