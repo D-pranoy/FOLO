@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
+Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 step 5 has zone activation)
 
 ## RB-06: Node core
 
@@ -92,8 +92,8 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
    - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)), by the [algorithm](../architecture/capabilities.md#algorithm)
    - the rate belongs to step 6's sender
 5. **Zone activation and test patterns:**
-   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation))
-   - the engine's `config.apply` assigns the surfaces of active zones only
+   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation)) (done: `folo-node`'s `zones` module and the two endpoints)
+   - the engine's `config.apply` assigns the surfaces of active zones only (done: the node passes the effective flags; the live channel reports them)
    - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns))
    - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults))
 6. **Provider interface** ([providers](../architecture/providers.md)):

@@ -20,7 +20,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, live, lock, logs, server};
+use crate::{import, live, lock, logs, server, zones};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -68,13 +68,22 @@ impl Node {
     /// its controller sends one (RB-16).
     fn engine_config(&self) -> Option<Value> {
         (self.role == "controller").then(|| {
+            // The engine gets the effective activation, not the stored flags
             local_config(
-                &self.store.get(Doc::Zones),
+                &zones::with_effective(&self.store.get(Doc::Zones)),
                 &self.store.get(Doc::Show),
                 &self.store.get(Doc::Sources),
                 self.live.wanted(),
             )
         })
+    }
+
+    /// Logs the zones the activation check suppressed: the check that runs
+    /// on every load and write of the zones (ADR-0036 D3).
+    pub fn check_zones(&self) {
+        for (zone, holder) in zones::check(&self.store.get(Doc::Zones)).suppressed {
+            log::warn!("zone {zone} is inactive: zone {holder} drives a target it shares");
+        }
     }
 
     /// Sends the engine its configuration again when it changed: after a
@@ -122,6 +131,9 @@ impl Node {
         }
         if found.applied.contains(&"local_source.enabled") {
             self.supervisor.set_wanted(self.engine_wanted(&fresh));
+        }
+        if documents.contains(&Doc::Zones) {
+            self.check_zones();
         }
         if !documents.is_empty() {
             self.supervisor.set_config(self.engine_config());
@@ -348,6 +360,7 @@ async fn start(
         supervisor,
         live: live::Hub::default(),
     });
+    node.check_zones();
     node.supervisor.set_config(node.engine_config());
     log::info!(
         "node {} ({}) listening on {listen}",

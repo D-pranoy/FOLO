@@ -28,6 +28,10 @@ A **zone** is a spatial setup: a room, a TV corner, a desk. A controller has any
   - of the zones that share a target, the one first in `zones.json` keeps it, whether the write added a zone or changed one; a new zone goes last, so a new zone that shares a target with an active one comes up effectively inactive, and nothing is refused
   - a zone the check suppressed becomes effective as soon as the zone that held its target is deactivated or removed, as it would after a restart
   - the file's flag isn't rewritten by the check; `GET /zones` gives the stored one, and `ZoneActivation.active` and the live channel give the effective one
+- **Details of the check:**
+  - it goes through the zones in file order and a zone that lost holds nothing for the zones after it, so a chain of overlaps silences only the zones that must be
+  - a target with no provider instance yet shares a target only by id
+  - `take_over` also deactivates the other zones that are active in the file and share a target, the suppressed ones included, so the zone can't lose a target to a zone that comes before it in the file; its answer has no `conflicts`, since none is left
 - Only effectively active zones are rendered by the effect engine and driven by the controller ([control plane](control-plane.md#supervision)).
 
 ## Targets

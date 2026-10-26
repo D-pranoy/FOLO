@@ -21,6 +21,7 @@ use serde_json::{Value, json};
 use crate::node::Node;
 use crate::server::error;
 use crate::status;
+use crate::zones;
 
 /// The client API's version: `info.version` in specs/openapi.yaml.
 pub const CLIENT_API_VERSION: &str = "1.3.0";
@@ -355,6 +356,9 @@ fn with_list(document: &Value, items: Items, list: Vec<Value>) -> Value {
 /// After a write: the engine gets its new configuration when the document
 /// is one it's built from.
 fn written(node: &Node, doc: Doc) {
+    if doc == Doc::Zones {
+        node.check_zones();
+    }
     if matches!(doc, Doc::Zones | Doc::Show | Doc::Sources) {
         node.refresh_engine();
     }
@@ -497,6 +501,89 @@ pub async fn put_zone(
 
 pub async fn delete_zone(State(node): Shared, Path(id): Path<String>) -> Response {
     delete_item(&node, ZONES, &id)
+}
+
+// ---------------------------------------------------------------- zone activation
+
+/// A `ZoneActivation` answer (specs/schema/api.json).
+fn activation(zone: &str, active: bool, conflicts: &[String]) -> Response {
+    Json(json!({"zone": zone, "active": active, "conflicts": conflicts})).into_response()
+}
+
+/// `take_over` from the body of `POST /zones/{id}/activate`, which may be
+/// empty (`ActivateRequest`: only `take_over`, a boolean).
+fn take_over_of(body: Body) -> Result<bool, Refusal> {
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    if empty {
+        return Ok(false);
+    }
+    let request = read_json(body)?;
+    let take_over = request.as_object().and_then(|fields| {
+        let known = fields.keys().all(|key| key == "take_over");
+        let flag = fields.get("take_over").map_or(Some(false), Value::as_bool);
+        known.then_some(flag).flatten()
+    });
+    take_over.ok_or_else(|| {
+        Box::new(error(
+            StatusCode::BAD_REQUEST,
+            "bad_body",
+            "the body isn't an ActivateRequest",
+        ))
+    })
+}
+
+/// Writes the zones `change` returns and answers with the zone's effective
+/// state: the stored flag moves, the revision with it, and `config_changed`
+/// follows (docs/specs/client-api.md#zone-activation).
+fn write_activation(node: &Node, id: &str, change: impl FnOnce(&Value) -> Value) -> Response {
+    let stored = node
+        .store
+        .update(Doc::Zones, |document| Ok::<_, Refused>(change(document)));
+    match stored {
+        Ok(document) => {
+            written(node, Doc::Zones);
+            activation(id, zones::check(&document).is_active(id), &[])
+        }
+        Err(refused) => refused.response(),
+    }
+}
+
+pub async fn activate_zone(State(node): Shared, Path(id): Path<String>, body: Body) -> Response {
+    let take_over = match take_over_of(body) {
+        Ok(flag) => flag,
+        Err(refused) => return *refused,
+    };
+    let document = node.store.get(Doc::Zones);
+    if find(&document, ZONES, &id).is_none() {
+        return Refused::NotFound.response();
+    }
+    if zones::check(&document).is_active(&id) {
+        return activation(&id, true, &[]);
+    }
+    let conflicts = zones::conflicts(&document, &id);
+    if !conflicts.is_empty() && !take_over {
+        return activation(&id, false, &conflicts);
+    }
+    write_activation(&node, &id, |current| {
+        if take_over {
+            zones::take_over(current, &id)
+        } else {
+            zones::set_active(current, &id, true)
+        }
+    })
+}
+
+pub async fn deactivate_zone(State(node): Shared, Path(id): Path<String>) -> Response {
+    let document = node.store.get(Doc::Zones);
+    let Some(zone) = find(&document, ZONES, &id) else {
+        return Refused::NotFound.response();
+    };
+    if zone["active"] == false {
+        return activation(&id, false, &[]);
+    }
+    write_activation(&node, &id, |current| zones::set_active(current, &id, false))
 }
 
 pub async fn show(State(node): Shared) -> Json<Value> {
