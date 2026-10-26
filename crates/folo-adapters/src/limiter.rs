@@ -4,19 +4,17 @@
 //! show. A limiter that fails to act while it is on counts as a security problem (ADR-0033 D6),
 //! so this file follows the text of the algorithm closely and says where it had to choose.
 //!
-//! # Where the text leaves a choice
+//! # What the documents fix
 //!
-//! - **What a flash is.** The text says a flash is a counted transition that opposes the one
-//!   counted before it, "two opposing transitions". Read as *every* opposing transition, a
-//!   3 Hz blink (six transitions a second) would count six flashes, and WCAG's "three flashes"
-//!   would allow only a 1.5 Hz blink. Here a flash is a **pair**: a transition *opens* it, the
-//!   first transition that opposes that one *completes* it, and the next transition opens the
-//!   next. Further transitions in the direction the last one went (a slow rise counted in
-//!   several steps of 0.10) change nothing. A 3 Hz blink is then three flashes a second and is
-//!   untouched; a 4 Hz blink is held. See [`Element::count`].
-//! - **The window's edge.** A flash is in the window while it is younger than 1 s. One that is
-//!   exactly 1 s old has left it, so a steady 3 Hz blink, whose flashes are exactly 1/3 s apart,
-//!   isn't held by its own fourth flash.
+//! - **A flash is a pair.** A transition *opens* it, the first transition that opposes that one
+//!   *completes* it, and the next transition opens the next. A transition in the direction the
+//!   last one went (a slow rise counted in several steps of 0.10) changes nothing. A 3 Hz blink
+//!   is three flashes a second and untouched; a 4 Hz blink is held. See [`Element::count`]. The
+//!   transition that opens a fourth flash isn't held, only the one that completes it.
+//! - **A run ends at a reversal of 0.02** from its furthest point ([`Run::advance`]), so noise
+//!   on a fade can't keep a fall from being counted.
+//! - **The window** is 0.98 s: the last 20 ms of the second are a tolerance for the controller's
+//!   clock ([`WINDOW_US`]).
 //! - **The first frame** has no luminance to change from; nothing is counted for it.
 
 use std::collections::VecDeque;
@@ -27,40 +25,59 @@ use crate::model::LUMA;
 
 /// A run's cumulative change that makes a transition.
 const MIN_CHANGE: f32 = 0.10;
+/// A run ends only when the luminance turns back by at least this much.
+const REVERSAL: f32 = 0.02;
 /// A transition counts only when its darker end is below this.
 const DARK_BELOW: f32 = 0.80;
-/// The window's length in microseconds.
-const WINDOW_US: u64 = 1_000_000;
+/// How long a flash stays in the window, in microseconds: 1 s less 20 ms, a tolerance for the
+/// controller's clock, so a steady 3 Hz blink isn't held by its own fourth flash.
+const WINDOW_US: u64 = 980_000;
 /// The most flashes the window holds; a transition that would complete one more is held.
 const MAX_FLASHES: usize = 3;
 
-/// A series of steps in which the luminance moves one way.
+/// A series of steps in which the luminance moves one way, give or take noise.
 #[derive(Clone, Copy, Debug, Default)]
 struct Run {
     /// `1` rising, `-1` falling, `0` before it has moved.
     dir: i8,
     /// The luminance the run's change is measured from.
     start: f32,
+    /// The run's furthest point in its direction.
+    extreme: f32,
 }
 
 impl Run {
-    /// Moves the run on to luminance `to`, which follows `from` (the output's luminance), and
-    /// says in which direction it completes a transition, if it does.
+    /// Moves the run on to luminance `to`, which follows `from` (what the element shows), and
+    /// says in which direction it completes a transition, if it does. The run ends only when the
+    /// luminance turns back by at least [`REVERSAL`] from its furthest point, and the next run
+    /// is measured from that point.
     fn advance(&mut self, from: f32, to: f32) -> Option<i8> {
-        let delta = to - from;
-        if delta != 0.0 {
-            let dir = if delta > 0.0 { 1 } else { -1 };
-            if dir != self.dir {
-                self.dir = dir;
-                self.start = from;
+        if self.dir == 0 {
+            if to == from {
+                return None;
+            }
+            self.dir = if to > from { 1 } else { -1 };
+            self.start = from;
+            self.extreme = to;
+        } else {
+            let sign = f32::from(self.dir);
+            if (to - self.extreme) * sign > 0.0 {
+                self.extreme = to;
+            } else if (self.extreme - to) * sign >= REVERSAL {
+                self.start = self.extreme;
+                self.dir = -self.dir;
+                self.extreme = to;
             }
         }
-        if self.dir == 0 {
-            return None;
-        }
-        let change = (to - self.start).abs();
-        let darker = self.start.min(to);
+        let change = (self.extreme - self.start).abs();
+        let darker = self.start.min(self.extreme);
         (change >= MIN_CHANGE && darker < DARK_BELOW).then_some(self.dir)
+    }
+
+    /// Starts the change again from `luminance`, after a transition.
+    fn restart(&mut self, luminance: f32) {
+        self.start = luminance;
+        self.extreme = luminance;
     }
 }
 
@@ -129,7 +146,7 @@ impl Element {
                 return true;
             }
             self.count(dir, now_us);
-            run.start = luminance;
+            run.restart(luminance);
         }
         self.run = run;
         self.shown = luminance;
@@ -278,7 +295,7 @@ mod tests {
             .map(|a| {
                 edges
                     .iter()
-                    .filter(|b| **b >= *a && (**b - *a) as u64 * STEP < WINDOW_US)
+                    .filter(|b| **b >= *a && (**b - *a) as u64 * STEP < 1_000_000)
                     .count()
             })
             .max()
@@ -353,12 +370,12 @@ mod tests {
         );
         assert_eq!(at(1000), 1.0);
         assert_eq!(
-            at(1140),
+            at(1120),
             1.0,
             "the first flash (at 150 ms) is still in the window"
         );
         assert_eq!(
-            at(1150),
+            at(1130),
             0.0,
             "it left the window: the output jumps to the input"
         );
@@ -368,12 +385,12 @@ mod tests {
     #[test]
     fn the_jump_counts_as_the_flash_it_completes() {
         let mut limiter = FlashLimiter::new([0, 1, 2]);
-        timeline(&mut limiter, &BURST, 1150);
+        timeline(&mut limiter, &BURST, 1130);
         let e = &limiter.elements[0];
-        // Flashes at 250, 350 and the jump at 1150; the one at 150 has gone.
+        // Flashes at 250, 350 and the jump at 1130; the one at 150 has gone.
         assert_eq!(
             e.flashes.iter().copied().collect::<Vec<_>>(),
-            [250_000, 350_000, 1_150_000]
+            [250_000, 350_000, 1_130_000]
         );
     }
 
@@ -573,5 +590,85 @@ mod tests {
         assert_eq!(level(&colors), 1.0);
         assert!(limiter.elements[0].flashes.is_empty());
         assert_eq!(limiter.elements[0].last_dir, 0);
+    }
+
+    #[test]
+    fn a_staircase_with_a_wiggle_is_still_limited() {
+        // 6 Hz: a jump to 1.0, then falls of 0.09 each followed by a rise of 0.002 (the review's
+        // probe). Each rise is a reversal under 0.02, so the fall stays one run.
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut level_now = 1.0_f32;
+        let mut altered = 0;
+        for i in 0..600u64 {
+            match i % 10 {
+                0 => level_now = 1.0,
+                n if n % 2 == 1 => level_now -= 0.09,
+                _ => level_now += 0.002,
+            }
+            let mut colors = dimmer(level_now);
+            limiter.apply(i * STEP, &mut colors);
+            altered += usize::from((level(&colors) - level_now).abs() > 1e-4);
+        }
+        assert!(altered > 0, "a 6 Hz swing with noise passed untouched");
+    }
+
+    #[test]
+    fn a_reversal_of_two_hundredths_or_more_ends_a_run() {
+        let mut run = Run::default();
+        // Falls to 0.5, rises 0.03 (a reversal), falls again.
+        assert_eq!(run.advance(1.0, 0.7), Some(-1));
+        run.restart(0.7);
+        assert_eq!(run.advance(0.7, 0.5), Some(-1));
+        run.restart(0.5);
+        run.advance(0.5, 0.53);
+        assert_eq!(run.dir, 1, "0.03 back is a new run");
+        assert_eq!(run.start, 0.5);
+    }
+
+    /// A blink between two levels at 10 Hz on the 60 Hz step; whether anything was held.
+    fn blink_between(low: f32, high: f32) -> bool {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        (0..360u64).any(|i| {
+            let input = if (i / 3) % 2 == 1 { high } else { low };
+            let mut colors = dimmer(input);
+            limiter.apply(i * STEP, &mut colors);
+            (level(&colors) - input).abs() > 1e-4
+        })
+    }
+
+    #[test]
+    fn the_thresholds_are_pinned_from_both_sides() {
+        assert!(blink_between(0.30, 0.41), "a swing of 0.11 is a transition");
+        assert!(!blink_between(0.30, 0.39), "a swing of 0.09 isn't");
+        assert!(blink_between(0.75, 0.95), "darker end 0.75 is below 0.80");
+        assert!(!blink_between(0.82, 1.0), "darker end 0.82 isn't");
+    }
+
+    #[test]
+    fn a_steady_three_hertz_blink_is_never_held_on_an_exact_clock() {
+        for hz in [30u64, 60, 144, 240] {
+            let half = hz / 6;
+            let mut limiter = FlashLimiter::new([0, 1, 2]);
+            for i in 0..(hz * 8) {
+                let input = if (i / half) % 2 == 1 { 1.0 } else { 0.0 };
+                let mut colors = dimmer(input);
+                limiter.apply(i * 1_000_000 / hz, &mut colors);
+                assert_eq!(level(&colors), input, "held at {hz} Hz, step {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn four_hertz_is_held_on_exact_clocks_too() {
+        for hz in [60u64, 144] {
+            let mut limiter = FlashLimiter::new([0, 1, 2]);
+            let held = (0..hz * 4).any(|i| {
+                let input = if (i * 8 / hz) % 2 == 1 { 1.0 } else { 0.0 };
+                let mut colors = dimmer(input);
+                limiter.apply(i * 1_000_000 / hz, &mut colors);
+                level(&colors) != input
+            });
+            assert!(held, "4 Hz passed at {hz} Hz");
+        }
     }
 }

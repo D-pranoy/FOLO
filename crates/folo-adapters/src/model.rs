@@ -137,11 +137,12 @@ impl ColorModel {
             .zip(&mut self.switches)
             .map(|(c, switch)| {
                 let level = luminance(*c) / 255.0;
-                // Strict at the on point, so black never switches an element on.
+                // The points are clamped to 0–1 and reachable (white switches a threshold near 1
+                // on, black one near 0 off), but black never switches an element on.
                 let want = if switch.on {
-                    level >= rule.off_at
+                    !(level < rule.off_at || level == 0.0)
                 } else {
-                    level > rule.on_at
+                    level >= rule.on_at && level > 0.0
                 };
                 let ready = switch
                     .changed_us
@@ -439,6 +440,19 @@ mod tests {
         assert!(!on(&mut m, 1_000_010, 0.0), "a second since the change");
         assert!(!on(&mut m, 1_500_000, 1.0), "held again for a second");
         assert!(on(&mut m, 2_010_000, 1.0));
+    }
+
+    #[test]
+    fn onoff_thresholds_near_the_ends_still_switch() {
+        // on_at clamps to 1.0: white turns it on.
+        let mut m = onoff_model(0.95, 0.2, 0.0);
+        assert!(!on(&mut m, 0, 0.9));
+        assert!(on(&mut m, 1, 1.0));
+        // off_at clamps to 0.0: black turns it off.
+        let mut m = onoff_model(0.05, 0.2, 0.0);
+        assert!(on(&mut m, 0, 0.5));
+        assert!(on(&mut m, 1, 0.01), "still above off_at");
+        assert!(!on(&mut m, 2, 0.0));
     }
 
     #[test]

@@ -277,4 +277,35 @@ mod tests {
         t.calibration.latency_ms = 4000.0;
         assert_eq!(delay_ms(&t, own + 3000.0), 5000.0, "limited to 5 s");
     }
+
+    /// Blinks `high` / `low` (full-scale logical RGB) at 10 Hz through a limited chain and says
+    /// whether anything was held.
+    fn held_at_ten_hertz(t: &Target, high: [f32; 3]) -> bool {
+        let mut chain = AdapterChain::new(t, true, 0.0);
+        let mut plain = AdapterChain::new(t, false, 0.0);
+        (0..360u64).any(|i| {
+            let v = if (i / 3) % 2 == 1 { high } else { [0.0; 3] };
+            chain.run(i * STEP, &[v]) != plain.run(i * STEP, &[v])
+        })
+    }
+
+    #[test]
+    fn the_limiter_undoes_the_colour_order_set_by_the_chain() {
+        // Logical blue swings 0.0722: under the threshold. On the wire (BGR) it is channel 0,
+        // which an unaware limiter would read as red (0.2126) and hold.
+        let mut t = target(1);
+        t.calibration.color_order = CalibrationColorOrder::Bgr;
+        assert!(!held_at_ten_hertz(&t, [0.0, 0.0, 255.0]));
+        // Logical red swings 0.2126 and is held.
+        assert!(held_at_ten_hertz(&t, [255.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn the_limiter_judges_what_comes_out_of_calibration() {
+        // A brightness range of 0 to 0.05 makes a full-range blink a swing of 0.05.
+        let mut t = target(1);
+        t.calibration.brightness_max = 0.05;
+        assert!(!held_at_ten_hertz(&t, [255.0; 3]));
+        assert!(held_at_ten_hertz(&target(1), [255.0; 3]));
+    }
 }
