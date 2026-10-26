@@ -3,7 +3,7 @@
 //! Replies to requests that carry a `tan` go to whoever asked; all others are dropped.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -37,6 +37,9 @@ pub struct Link {
     writer: tokio::sync::Mutex<OwnedWriteHalf>,
     waiters: Arc<Mutex<Waiters>>,
     next_tan: AtomicU64,
+    /// Set when a write failed or timed out: the stream may hold half a line, so nobody
+    /// writes to it again.
+    broken: AtomicBool,
     reader: JoinHandle<()>,
 }
 
@@ -75,14 +78,16 @@ impl Link {
             writer: tokio::sync::Mutex::new(write),
             waiters,
             next_tan: AtomicU64::new(1),
+            broken: AtomicBool::new(false),
             reader,
         })
     }
 
-    /// Whether the reader is still running, which it is until Hyperion closes the connection.
+    /// Whether the connection can still be used: Hyperion hasn't closed it and no write on it
+    /// failed.
     #[must_use]
     pub fn is_open(&self) -> bool {
-        !self.reader.is_finished()
+        !self.reader.is_finished() && !self.broken.load(Ordering::Relaxed)
     }
 
     /// Writes one line, which carries its own newline.
@@ -96,10 +101,21 @@ impl Link {
             ));
         }
         let mut writer = self.writer.lock().await;
-        writer
-            .write_all(line)
-            .await
-            .map_err(|e| ProviderError::Unreachable(format!("writing to Hyperion failed: {e}")))
+        // Cancelled mid-line (by the sender's limit, say), the stream holds a part of a line
+        let guard = BrokenOnDrop(&self.broken);
+        let written = tokio::time::timeout(REQUEST_TIMEOUT, writer.write_all(line)).await;
+        match written {
+            Ok(Ok(())) => {
+                guard.disarm();
+                Ok(())
+            }
+            Ok(Err(e)) => Err(ProviderError::Unreachable(format!(
+                "writing to Hyperion failed: {e}"
+            ))),
+            Err(_) => Err(ProviderError::Unreachable(
+                "writing to Hyperion timed out".to_owned(),
+            )),
+        }
     }
 
     /// Sends a command with a `tan` and waits for the reply that carries it.
@@ -151,6 +167,21 @@ impl Link {
     }
 }
 
+/// Marks a link broken unless disarmed: a write that was cancelled, failed or timed out.
+struct BrokenOnDrop<'a>(&'a AtomicBool);
+
+impl BrokenOnDrop<'_> {
+    fn disarm(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for BrokenOnDrop<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
 /// Reads reply lines until the connection ends, passing on those somebody waits for. When it
 /// ends, the waiters are dropped, which tells them the connection is gone.
 async fn read_replies(read: tokio::net::tcp::OwnedReadHalf, waiters: Arc<Mutex<Waiters>>) {
@@ -165,7 +196,11 @@ async fn read_replies(read: tokio::net::tcp::OwnedReadHalf, waiters: Arc<Mutex<W
         else {
             break;
         };
-        if n == 0 || line.last() != Some(&b'\n') {
+        if n == 0 {
+            break;
+        }
+        if line.last() != Some(&b'\n') {
+            log::warn!("a reply from Hyperion has no end within {MAX_REPLY_BYTES} bytes");
             break;
         }
         let Ok(reply) = serde_json::from_slice::<Value>(&line) else {

@@ -4,8 +4,8 @@
 mod common;
 
 use folo_provider::{AdminError, AdminMethod, Provider, ProviderError};
-use folo_provider_hyperion::HyperionProvider;
 use folo_provider_hyperion::testing::{FakeHyperion, edge_leds};
+use folo_provider_hyperion::{HyperionConfig, HyperionProvider};
 use serde_json::{Value, json};
 
 use common::{provider, provider_with_token};
@@ -424,4 +424,91 @@ async fn a_configured_token_that_is_too_short_is_refused_without_asking_hyperion
     let error = provider.connect().await.unwrap_err();
     assert!(matches!(error, ProviderError::Refused(_)), "{error:?}");
     assert!(fake.commands("authorize").is_empty());
+}
+
+#[test]
+fn the_config_never_prints_its_token() {
+    let config = HyperionConfig {
+        host: "h".to_owned(),
+        port: 1,
+        priority: 100,
+        origin: "FOLO".to_owned(),
+        token: Some(TOKEN.to_owned()),
+    };
+    let printed = format!("{config:?}");
+    assert!(!printed.contains(TOKEN), "{printed}");
+    assert!(printed.contains("<redacted>"));
+}
+
+#[tokio::test]
+async fn a_read_ignores_a_token() {
+    let fake = FakeHyperion::start().await;
+    let provider = connected(&fake).await;
+    fake.require_token(TOKEN);
+    let read = get(&provider, "token", json!({"token": TOKEN})).await;
+    assert_eq!(read["configured"], false);
+    assert!(!read.to_string().contains(TOKEN));
+    assert!(
+        fake.commands("authorize")
+            .iter()
+            .all(|c| c.command["subcommand"] != "login")
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_silent_hyperion_ends_a_request_instead_of_hanging() {
+    let fake = FakeHyperion::start().await;
+    let provider = connected(&fake).await;
+    fake.set_silent(true);
+    let error = provider
+        .admin("priorities", AdminMethod::Read, Value::Null)
+        .await
+        .unwrap_err();
+    let AdminError::Provider(ProviderError::Unreachable(why)) = error else {
+        panic!("expected unreachable");
+    };
+    assert!(why.contains("in time"), "{why}");
+}
+
+#[tokio::test]
+async fn administration_reopens_a_connection_that_died() {
+    let fake = FakeHyperion::start().await;
+    fake.set_instance(1, "Desk", true, edge_leds(4));
+    let provider = connected(&fake).await;
+    fake.drop_connections();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let changed = post(
+        &provider,
+        "brightness",
+        json!({"brightness": 20, "instance": 1}),
+    )
+    .await;
+    assert_eq!(changed["brightness"], 20);
+    assert_eq!(fake.brightness(1), Some(20));
+}
+
+#[tokio::test]
+async fn an_instance_selected_before_the_first_describe_is_described() {
+    let fake = FakeHyperion::start().await;
+    fake.set_instance(1, "Desk", true, edge_leds(4));
+    let provider = provider(&fake);
+    provider.connect().await.unwrap();
+    post(&provider, "instances", json!({"instance": 1})).await;
+    let targets = provider.describe().await.unwrap();
+    assert_eq!(targets.len(), 2);
+}
+
+#[tokio::test]
+async fn a_stopped_and_restarted_instance_comes_back() {
+    let fake = FakeHyperion::start().await;
+    fake.set_instance(1, "Desk", true, edge_leds(4));
+    let provider = connected(&fake).await;
+    fake.set_running(1, false);
+    assert_eq!(provider.describe().await.unwrap().len(), 1);
+    fake.set_running(1, true);
+    let targets = provider.describe().await.unwrap();
+    assert_eq!(
+        targets.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+        ["0", "1"]
+    );
 }

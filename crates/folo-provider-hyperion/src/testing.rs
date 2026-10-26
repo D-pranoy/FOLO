@@ -147,6 +147,7 @@ struct Inner {
     instances: Vec<InstanceData>,
     token: Option<String>,
     accepting: bool,
+    silent: bool,
     connections: u32,
     log: Vec<Received>,
 }
@@ -195,6 +196,7 @@ impl FakeHyperion {
                 instances: vec![InstanceData::new(0, "FOLO test", true, edge_leds(10))],
                 token: None,
                 accepting: true,
+                silent: false,
                 connections: 0,
                 log: Vec::new(),
             }),
@@ -272,6 +274,12 @@ impl FakeHyperion {
     /// listens.
     pub fn set_accepting(&self, accepting: bool) {
         self.shared.lock().accepting = accepting;
+    }
+
+    /// Whether the fake stays silent: it records commands and answers none, as a Hyperion that
+    /// hangs.
+    pub fn set_silent(&self, silent: bool) {
+        self.shared.lock().silent = silent;
     }
 
     /// How many connections were accepted so far.
@@ -435,6 +443,9 @@ fn handle(shared: &Shared, session: &mut Session, line: &str) -> Option<Value> {
         line: line.to_owned(),
         command: command.clone(),
     });
+    if inner.silent {
+        return None;
+    }
     if name == "authorize" {
         return Some(authorize(&inner, session, &command, &tan));
     }

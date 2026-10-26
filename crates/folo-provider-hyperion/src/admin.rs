@@ -367,6 +367,12 @@ impl HyperionProvider {
 
     async fn admin_token(&self, method: AdminMethod, body: &Value) -> Outcome {
         self.require_connected()?;
+        // A read ignores the token: it would travel in a URL
+        let body = if method == AdminMethod::Read {
+            &Value::Null
+        } else {
+            body
+        };
         let offered = match &body["token"] {
             Value::Null => None,
             Value::String(t) if t.chars().count() >= MIN_TOKEN_CHARS => Some(t.clone()),
@@ -389,12 +395,9 @@ impl HyperionProvider {
             self.lock().token = Some(token);
         }
         let values = self.token_values(self.token_required().await);
-        let change = if offered.is_some() {
-            "Logs in with the token; if Hyperion accepts it, this provider uses it from now on \
-             (it is not stored: the node keeps tokens in secrets.json)"
-        } else {
-            "Tries a token with Hyperion; creating tokens stays in Hyperion's own UI"
-        };
+        let change = "Logs in with the token given in a POST body; if Hyperion accepts it, this \
+                      provider uses it from now on (it is not stored: the node keeps tokens in \
+                      secrets.json). Creating tokens stays in Hyperion's own UI";
         Ok(read_only(method, values, change))
     }
 

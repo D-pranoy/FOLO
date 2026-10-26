@@ -102,7 +102,9 @@ impl HyperionProvider {
 
     /// The connection of a running instance, opened when `describe` hasn't yet.
     pub(crate) async fn link_or_open(&self, instance: u32) -> Result<Arc<Link>, ProviderError> {
-        if let Some(link) = self.link(instance) {
+        if let Some(link) = self.link(instance)
+            && link.is_open()
+        {
             return Ok(link);
         }
         let known = self
@@ -115,9 +117,16 @@ impl HyperionProvider {
                 "Hyperion has no running instance {instance}"
             )));
         }
-        let link = Arc::new(self.open_link(Some(instance)).await?);
-        self.lock().links.insert(instance, Arc::clone(&link));
-        Ok(link)
+        let opened = Arc::new(self.open_link(Some(instance)).await?);
+        // Another request may have opened it meanwhile: the first stays
+        let mut state = self.lock();
+        match state.links.get(&instance) {
+            Some(first) if first.is_open() => Ok(Arc::clone(first)),
+            _ => {
+                state.links.insert(instance, Arc::clone(&opened));
+                Ok(opened)
+            }
+        }
     }
 
     /// `serverinfo` of the instance a link is on.
@@ -205,7 +214,10 @@ impl HyperionProvider {
 
     async fn do_describe(&self) -> Result<Vec<DescribedTarget>, ProviderError> {
         let selected = self.lock().selected;
-        let control = self.link(selected).ok_or_else(not_connected)?;
+        if self.lock().links.is_empty() {
+            return Err(not_connected());
+        }
+        let control = self.link_or_open(selected).await?;
         let own = Self::server_info(&control).await?;
         let mut instances = own.instances.clone();
         if instances.is_empty() {

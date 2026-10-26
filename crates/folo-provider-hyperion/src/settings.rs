@@ -8,7 +8,7 @@ use crate::wire::{MAX_ORIGIN_CHARS, MIN_ORIGIN_CHARS};
 /// Where Hyperion's own web UI listens unless its owner moved it (`serverinfo` doesn't say).
 pub const WEB_UI_PORT: u16 = 8090;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct HyperionConfig {
     pub host: String,
     pub port: u16,
@@ -18,6 +18,19 @@ pub struct HyperionConfig {
     pub origin: String,
     /// The API token, for a Hyperion with authentication on.
     pub token: Option<String>,
+}
+
+/// Never prints the token.
+impl std::fmt::Debug for HyperionConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HyperionConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("priority", &self.priority)
+            .field("origin", &self.origin)
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 impl HyperionConfig {
