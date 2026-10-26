@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done; RB-08's default surfaces per zone type, the last bullet of step 5, are left for a follow-up)
+Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 done but for the last bullet of step 5, default surfaces per zone type)
 
 ## RB-06: Node core
 

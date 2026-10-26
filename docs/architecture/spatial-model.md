@@ -30,7 +30,8 @@ A **zone** is a spatial setup: a room, a TV corner, a desk. A controller has any
   - the file's flag isn't rewritten by the check; `GET /zones` gives the stored one, and `ZoneActivation.active` and the live channel give the effective one
 - **Details of the check:**
   - it goes through the zones in file order and a zone that lost holds nothing for the zones after it, so a chain of overlaps silences only the zones that must be
-  - a target with no provider instance yet shares a target only by id
+  - a target with no provider instance yet shares a target only by id; one bound to an instance without an address has the default address (LED 0, one LED)
+  - Hue channels are compared with channels only, and LED ranges with LED ranges, so a channel target and a range target on one instance never share
   - `take_over` also deactivates the other zones that are active in the file and share a target, the suppressed ones included, so the zone can't lose a target to a zone that comes before it in the file; its answer has no `conflicts`, since none is left
 - Only effectively active zones are rendered by the effect engine and driven by the controller ([control plane](control-plane.md#supervision)).
 
