@@ -85,7 +85,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
      - solid or breathe (30–100% over 8 s)
      - fade in 1.5 s eased, fade out 0.15 s
      - blended into the composited surface before projection, as `colour × level × master`; a fade of 0 leaves the frame byte-exact; the result is truncated
-     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when every linked player that has a media session is paused
+     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when at least one linked source has a media session and all of those are paused
    - golden tests against the current engine's ambient frames (within ±1 per channel)
 4. **Adapter chain** per [capabilities](../architecture/capabilities.md#adapter-chain-per-target-in-order), in the order resolution → colour model → calibration → latency → flash limiter:
    - resolution (fitting to `address.count`), colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, the latency delay line

@@ -446,6 +446,27 @@ async fn one_refused_target_does_not_stop_the_others() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_refused_start_is_not_released() {
+    let provider = Arc::new(RecordingProvider::new());
+    provider.set_fail_starts(true);
+    let sender = start(
+        &provider,
+        config(40.0, policy(10_000), &[("a", Delivery::Streaming)]),
+    );
+    sender.submit(frame(&[("a", 1.0)]));
+    sleep(100 * MS).await;
+    sender.submit(frame(&[]));
+    sleep(100 * MS).await;
+    sender.shutdown().await;
+    let events = provider.events();
+    assert!(events.contains(&Event::Start("a".to_owned())));
+    assert!(
+        !events.contains(&Event::Release("a".to_owned())),
+        "the provider undoes a refused start itself"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn an_unreachable_start_reconnects() {
     let provider = Arc::new(RecordingProvider::new());
     provider.set_start_error(Some(ProviderError::Unreachable("gone".to_owned())));
