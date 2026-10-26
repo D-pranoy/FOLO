@@ -42,7 +42,7 @@ Every instance offers these operations. All of them are asynchronous, and none o
 5. **Releasing.**
    - **A target** is released when nothing drives it any more: its zone was deactivated or changed, or its test pattern ended. A target another active zone drives stays on. **Starts and releases are per target, one after the other, even for a device whose realtime output is device-wide** (WLED's one session, a Hue bridge's one stream): that provider counts them, beginning on the first target started and ending on the last released, and rebuilds what depends on the set (a Hue area) on the count.
    - **The instance** is released when it is disabled or removed, and when the node stops: it releases each of its targets and closes the connection. A node that stops releases its outputs, then writes its pending documents ([control plane](control-plane.md#supervision)).
-   - A release that fails or takes longer than `release_timeout` is logged, and the device's own timeout ends the output ([the sender](#the-sender)). Stopping as a whole takes at most three times `release_timeout`. A target whose `start` was cancelled by the stop, or refused, is released too, so a release must be harmless for a target that isn't running.
+   - A release that fails or takes longer than `release_timeout` is logged, and the device's own timeout ends the output ([the sender](#the-sender)). Stopping as a whole takes at most three times `release_timeout`. A target whose `start` was cancelled by the stop is released too, so a release must be harmless for a target that isn't running. One whose `start` was refused isn't released, so a provider undoes what a refused `start` began.
 
 ### States
 
