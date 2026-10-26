@@ -26,7 +26,8 @@ fn settings_become_the_config() {
     let instance = instance(&json!({
         "kind": "hyperion", "host": "10.0.0.5", "port": 19445, "priority": 150, "origin": "My origin"
     }));
-    let secrets: ProviderSecrets = serde_json::from_value(json!({"token": "abc"})).unwrap();
+    let secrets: ProviderSecrets =
+        serde_json::from_value(json!({"token": "c1b2a3d4-0000-4000-8000-123456789abc"})).unwrap();
     let config = HyperionConfig::from_instance(&instance, Some(&secrets)).unwrap();
     assert_eq!(
         config,
@@ -35,7 +36,7 @@ fn settings_become_the_config() {
             port: 19445,
             priority: 150,
             origin: "My origin".to_owned(),
-            token: Some("abc".to_owned()),
+            token: Some("c1b2a3d4-0000-4000-8000-123456789abc".to_owned()),
         }
     );
 }
@@ -69,6 +70,28 @@ fn an_origin_over_twenty_characters_is_not_used() {
             .parse::<folo_protocol::generated::HyperionSettingsOrigin>()
             .is_err()
     );
+}
+
+#[test]
+fn an_origin_must_have_four_to_twenty_characters() {
+    // Hyperion's color command takes 4 to 20, and the documents only cap the top
+    for (origin, ok) in [
+        ("abc", false),
+        ("abcd", true),
+        ("a".repeat(20).as_str(), true),
+    ] {
+        let mut instance = instance(&json!({"kind": "hyperion"}));
+        if let folo_protocol::generated::ProviderSettings::HyperionSettings(s) =
+            &mut instance.settings
+        {
+            s.origin = origin.parse().unwrap();
+        }
+        assert_eq!(
+            HyperionConfig::from_instance(&instance, None).is_ok(),
+            ok,
+            "{origin}"
+        );
+    }
 }
 
 #[test]

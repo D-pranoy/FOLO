@@ -3,7 +3,7 @@
 use folo_protocol::generated::{ProviderInstance, ProviderSecrets, ProviderSettings};
 use folo_provider::ProviderError;
 
-use crate::wire::MAX_ORIGIN_CHARS;
+use crate::wire::{MAX_ORIGIN_CHARS, MIN_ORIGIN_CHARS};
 
 /// Where Hyperion's own web UI listens unless its owner moved it (`serverinfo` doesn't say).
 pub const WEB_UI_PORT: u16 = 8090;
@@ -37,9 +37,10 @@ impl HyperionConfig {
             )));
         };
         let origin = (*settings.origin).clone();
-        if origin.chars().count() > MAX_ORIGIN_CHARS {
+        // Hyperion's color command takes 4 to 20 characters, and the documents only cap them
+        if !(MIN_ORIGIN_CHARS..=MAX_ORIGIN_CHARS).contains(&origin.chars().count()) {
             return Err(ProviderError::Failed(format!(
-                "the origin is longer than {MAX_ORIGIN_CHARS} characters"
+                "the origin must have {MIN_ORIGIN_CHARS} to {MAX_ORIGIN_CHARS} characters"
             )));
         }
         let too_big = |what: &str| ProviderError::Failed(format!("the {what} is out of range"));

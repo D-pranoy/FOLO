@@ -571,15 +571,15 @@ fn source_select(instance: &mut InstanceData, command: &Value, tan: &Value) -> V
         instance.pinned = None;
         return success("sourceselect", tan);
     }
-    let priority = command["priority"].as_i64();
-    match priority.filter(|p| instance.priorities.iter().any(|e| e.priority == *p)) {
-        Some(p) => {
-            instance.auto = false;
-            instance.pinned = Some(p);
-            success("sourceselect", tan)
-        }
-        None => failure("sourceselect", tan, "Priority not found"),
+    let Some(priority) = command["priority"].as_i64() else {
+        return failure("sourceselect", tan, "Priority request is invalid");
+    };
+    // Hyperion answers success either way, and ignores a priority it doesn't have
+    if instance.priorities.iter().any(|e| e.priority == priority) {
+        instance.auto = false;
+        instance.pinned = Some(priority);
     }
+    success("sourceselect", tan)
 }
 
 fn component_state(instance: &mut InstanceData, command: &Value, tan: &Value) -> Value {

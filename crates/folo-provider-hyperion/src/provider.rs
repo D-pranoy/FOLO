@@ -260,6 +260,13 @@ impl HyperionProvider {
 }
 
 async fn login(link: &Link, token: &str) -> Result<(), ProviderError> {
+    // Hyperion's schema rejects a shorter token, and its login handler never answers one
+    if token.chars().count() < wire::MIN_TOKEN_CHARS {
+        return Err(ProviderError::Refused(format!(
+            "an API token has at least {} characters",
+            wire::MIN_TOKEN_CHARS
+        )));
+    }
     link.request(json!({"command": "authorize", "subcommand": "login", "token": token}))
         .await
         .map(drop)

@@ -17,6 +17,7 @@ use crate::link::Link;
 use crate::provider::HyperionProvider;
 use crate::serverinfo::ServerInfo;
 use crate::settings::WEB_UI_PORT;
+use crate::wire::MIN_TOKEN_CHARS;
 
 /// The components the administration switches, as Hyperion names them: the LED device,
 /// smoothing, the black border, audio and V4L.
@@ -278,6 +279,10 @@ impl HyperionProvider {
         if priority.is_some_and(|p| !PRIORITIES.contains(&p)) {
             return Err(invalid("priority is not 1–253"));
         }
+        // Hyperion answers success to any priority and ignores one it doesn't have
+        if priority.is_some_and(|p| !info.priorities.iter().any(|e| e.priority == p)) {
+            return Err(invalid("priority isn't in the list"));
+        }
         if method == AdminMethod::Change {
             let command = match (auto, priority) {
                 (Some(true), None) => json!({"command": "sourceselect", "auto": true}),
@@ -364,7 +369,12 @@ impl HyperionProvider {
         self.require_connected()?;
         let offered = match &body["token"] {
             Value::Null => None,
-            Value::String(t) if !t.is_empty() => Some(t.clone()),
+            Value::String(t) if t.chars().count() >= MIN_TOKEN_CHARS => Some(t.clone()),
+            Value::String(_) => {
+                return Err(invalid(&format!(
+                    "a token has at least {MIN_TOKEN_CHARS} characters"
+                )));
+            }
             _ => return Err(invalid("token is not a text")),
         };
         if method == AdminMethod::Change {

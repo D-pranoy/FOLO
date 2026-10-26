@@ -10,6 +10,10 @@ use serde_json::{Value, json};
 
 use common::{provider, provider_with_token};
 
+/// As long as Hyperion's own app tokens (a UUID with dashes).
+const TOKEN: &str = "c1b2a3d4-0000-4000-8000-123456789abc";
+const WRONG_TOKEN: &str = "ffffffff-0000-4000-8000-123456789abc";
+
 async fn connected(fake: &FakeHyperion) -> std::sync::Arc<HyperionProvider> {
     let provider = provider(fake);
     provider.connect().await.unwrap();
@@ -332,7 +336,7 @@ async fn hyperions_own_ui_is_linked() {
 #[tokio::test]
 async fn without_the_token_a_protected_hyperion_refuses() {
     let fake = FakeHyperion::start().await;
-    fake.require_token("secret-token");
+    fake.require_token(TOKEN);
     let provider = provider(&fake);
     let error = provider.connect().await.unwrap_err();
     assert!(matches!(error, ProviderError::Refused(_)), "{error:?}");
@@ -342,14 +346,14 @@ async fn without_the_token_a_protected_hyperion_refuses() {
 #[tokio::test]
 async fn the_configured_token_logs_in_first() {
     let fake = FakeHyperion::start().await;
-    fake.require_token("secret-token");
-    let provider = provider_with_token(&fake, "secret-token");
+    fake.require_token(TOKEN);
+    let provider = provider_with_token(&fake, TOKEN);
     provider.connect().await.unwrap();
     let targets = provider.describe().await.unwrap();
     assert_eq!(targets.len(), 1);
     let logins = fake.commands("authorize");
     assert_eq!(logins[0].command["subcommand"], "login");
-    assert_eq!(logins[0].command["token"], "secret-token");
+    assert_eq!(logins[0].command["token"], TOKEN);
     // The login is the first thing sent on the connection
     assert_eq!(fake.received()[0].name(), "authorize");
 
@@ -358,7 +362,7 @@ async fn the_configured_token_logs_in_first() {
     assert_eq!(read["configured"], true);
     assert_eq!(read["persisted"], false);
     assert!(
-        !read.to_string().contains("secret-token"),
+        !read.to_string().contains(TOKEN),
         "the token is never echoed"
     );
 }
@@ -366,8 +370,8 @@ async fn the_configured_token_logs_in_first() {
 #[tokio::test]
 async fn a_wrong_token_is_refused() {
     let fake = FakeHyperion::start().await;
-    fake.require_token("secret-token");
-    let provider = provider_with_token(&fake, "wrong-token");
+    fake.require_token(TOKEN);
+    let provider = provider_with_token(&fake, WRONG_TOKEN);
     let error = provider.connect().await.unwrap_err();
     assert!(matches!(error, ProviderError::Refused(_)), "{error:?}");
 }
@@ -376,30 +380,48 @@ async fn a_wrong_token_is_refused() {
 async fn a_token_is_tried_and_then_used() {
     let fake = FakeHyperion::start().await;
     let provider = connected(&fake).await;
-    fake.require_token("secret-token");
+    fake.require_token(TOKEN);
     // Hyperion started protecting itself after the connection was made; this one stays authorised
     let read = get(&provider, "token", Value::Null).await;
     assert_eq!(read["configured"], false);
     assert_eq!(read["required"], true);
 
-    let bad = refused(&provider, "token", json!({"token": "nope"})).await;
+    let bad = refused(&provider, "token", json!({"token": WRONG_TOKEN})).await;
     assert!(bad.contains("authorize"), "{bad}");
+    // Hyperion never answers a token under 36 characters, so none is sent
+    let short = refused(&provider, "token", json!({"token": "nope"})).await;
+    assert!(short.contains("at least 36"), "{short}");
+    assert_eq!(
+        fake.commands("authorize").len(),
+        2,
+        "tokenRequired and the one login"
+    );
     assert_eq!(
         get(&provider, "token", Value::Null).await["configured"],
         false
     );
 
-    let preview = get(&provider, "token", json!({"token": "secret-token"})).await;
+    let preview = get(&provider, "token", json!({"token": TOKEN})).await;
     assert!(preview["change"].as_str().unwrap().contains("not stored"));
     assert_eq!(preview["configured"], false, "a read adopts nothing");
 
-    let accepted = post(&provider, "token", json!({"token": "secret-token"})).await;
+    let accepted = post(&provider, "token", json!({"token": TOKEN})).await;
     assert_eq!(accepted["configured"], true);
-    assert!(!accepted.to_string().contains("secret-token"));
+    assert!(!accepted.to_string().contains(TOKEN));
     // A reconnect now logs in with it
     provider.connect().await.unwrap();
     provider.describe().await.unwrap();
 
     refused(&provider, "token", json!({})).await;
     refused(&provider, "token", json!({"token": ""})).await;
+}
+
+#[tokio::test]
+async fn a_configured_token_that_is_too_short_is_refused_without_asking_hyperion() {
+    let fake = FakeHyperion::start().await;
+    fake.require_token(TOKEN);
+    let provider = provider_with_token(&fake, "short");
+    let error = provider.connect().await.unwrap_err();
+    assert!(matches!(error, ProviderError::Refused(_)), "{error:?}");
+    assert!(fake.commands("authorize").is_empty());
 }

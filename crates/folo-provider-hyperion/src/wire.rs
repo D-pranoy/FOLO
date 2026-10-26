@@ -9,8 +9,13 @@ use std::fmt::Write as _;
 /// (`docs/integrations/hyperion.md`).
 pub const DURATION_MS: u32 = 2000;
 
-/// What Hyperion accepts as an origin.
+/// What Hyperion accepts as an origin: 4 to 20 characters (`schema-color.json`).
+pub const MIN_ORIGIN_CHARS: usize = 4;
 pub const MAX_ORIGIN_CHARS: usize = 20;
+
+/// The shortest API token Hyperion looks at (`schema-authorize.json`); it doesn't answer a
+/// shorter one at all.
+pub const MIN_TOKEN_CHARS: usize = 36;
 
 /// `json.dumps` of a string with `ensure_ascii`: everything but printable ASCII is escaped, and
 /// characters beyond the Basic Multilingual Plane as surrogate pairs.
