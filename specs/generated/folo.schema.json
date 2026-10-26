@@ -626,6 +626,23 @@
      "minimum": 0,
      "maximum": 5000,
      "default": 0
+    },
+    "white": {
+     "description": "How RGBW and RGB+CCT targets get their white channel.",
+     "enum": [
+      "off",
+      "accurate",
+      "brighter"
+     ],
+     "default": "accurate"
+    },
+    "onoff": {
+     "$ref": "#/$defs/OnOff",
+     "default": {
+      "threshold": 0.5,
+      "hysteresis": 0.1,
+      "min_interval_ms": 1000
+     }
     }
    },
    "additionalProperties": false
@@ -3247,6 +3264,31 @@
     "update.result"
    ]
   },
+  "OnOff": {
+   "description": "How on/off targets switch: a threshold with hysteresis and a minimum interval between changes.",
+   "type": "object",
+   "properties": {
+    "threshold": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1,
+     "default": 0.5
+    },
+    "hysteresis": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1,
+     "default": 0.1
+    },
+    "min_interval_ms": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 60000,
+     "default": 1000
+    }
+   },
+   "additionalProperties": false
+  },
   "Orientation": {
    "description": "Degrees.",
    "type": "object",
@@ -4183,6 +4225,32 @@
       "pitch": 0,
       "roll": 0
      }
+    },
+    "size": {
+     "$ref": "#/$defs/ReferenceSize",
+     "default": {
+      "width": 1.2,
+      "height": 0.68
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "ReferenceSize": {
+   "description": "The reference object's width and height, metres (a TV's screen).",
+   "type": "object",
+   "properties": {
+    "width": {
+     "type": "number",
+     "minimum": 0.01,
+     "maximum": 1000,
+     "default": 1.2
+    },
+    "height": {
+     "type": "number",
+     "minimum": 0.01,
+     "maximum": 1000,
+     "default": 0.68
     }
    },
    "additionalProperties": false
@@ -5671,7 +5739,13 @@
       "brightness_min": 0,
       "brightness_max": 1,
       "color_order": "rgb",
-      "latency_ms": 0
+      "latency_ms": 0,
+      "white": "accurate",
+      "onoff": {
+       "threshold": 0.5,
+       "hysteresis": 0.1,
+       "min_interval_ms": 1000
+      }
      }
     }
    },
@@ -6430,6 +6504,10 @@
        "yaw": 0,
        "pitch": 0,
        "roll": 0
+      },
+      "size": {
+       "width": 1.2,
+       "height": 0.68
       }
      }
     },
@@ -6497,6 +6575,11 @@
     "album_colors": {
      "type": "boolean",
      "default": false
+    },
+    "active": {
+     "description": "Whether the zone drives its targets. At most one active zone drives a target (docs/architecture/spatial-model.md#zone-activation-rules).",
+     "type": "boolean",
+     "default": true
     }
    },
    "additionalProperties": false
@@ -6586,6 +6669,10 @@
         "yaw": 0,
         "pitch": 0,
         "roll": 0
+       },
+       "size": {
+        "width": 1.2,
+        "height": 0.68
        }
       },
       "targets": [],
@@ -6607,7 +6694,8 @@
        "on_pause": true
       },
       "beat_offset_ms": 0,
-      "album_colors": false
+      "album_colors": false,
+      "active": true
      }
     }
    },
