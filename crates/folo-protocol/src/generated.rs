@@ -1343,6 +1343,11 @@ pub struct Calibration {
     pub gamma: f64,
     #[serde(default = "defaults::calibration_latency_ms")]
     pub latency_ms: f64,
+    #[serde(default = "defaults::calibration_onoff")]
+    pub onoff: OnOff,
+    ///How RGBW and RGB+CCT targets get their white channel.
+    #[serde(default = "defaults::calibration_white")]
+    pub white: CalibrationWhite,
     #[serde(default = "defaults::calibration_white_balance")]
     pub white_balance: WhiteBalance,
 }
@@ -1354,6 +1359,8 @@ impl ::std::default::Default for Calibration {
             color_order: defaults::calibration_color_order(),
             gamma: defaults::calibration_gamma(),
             latency_ms: defaults::calibration_latency_ms(),
+            onoff: defaults::calibration_onoff(),
+            white: defaults::calibration_white(),
             white_balance: defaults::calibration_white_balance(),
         }
     }
@@ -1432,6 +1439,70 @@ impl ::std::convert::TryFrom<::std::string::String> for CalibrationColorOrder {
 impl ::std::default::Default for CalibrationColorOrder {
     fn default() -> Self {
         CalibrationColorOrder::Rgb
+    }
+}
+///How RGBW and RGB+CCT targets get their white channel.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CalibrationWhite {
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "accurate")]
+    Accurate,
+    #[serde(rename = "brighter")]
+    Brighter,
+}
+impl ::std::fmt::Display for CalibrationWhite {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Off => f.write_str("off"),
+            Self::Accurate => f.write_str("accurate"),
+            Self::Brighter => f.write_str("brighter"),
+        }
+    }
+}
+impl ::std::str::FromStr for CalibrationWhite {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "off" => Ok(Self::Off),
+            "accurate" => Ok(Self::Accurate),
+            "brighter" => Ok(Self::Brighter),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CalibrationWhite {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CalibrationWhite {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for CalibrationWhite {
+    fn default() -> Self {
+        CalibrationWhite::Accurate
     }
 }
 ///What a target can do: as discovered from its provider, and the user's overrides (docs/architecture/capabilities.md).
@@ -9244,6 +9315,26 @@ impl ::std::convert::TryFrom<::std::string::String> for NotificationMethod {
         value.parse()
     }
 }
+///How on/off targets switch: a threshold with hysteresis and a minimum interval between changes.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct OnOff {
+    #[serde(default = "defaults::on_off_hysteresis")]
+    pub hysteresis: f64,
+    #[serde(default = "defaults::on_off_min_interval_ms")]
+    pub min_interval_ms: f64,
+    #[serde(default = "defaults::on_off_threshold")]
+    pub threshold: f64,
+}
+impl ::std::default::Default for OnOff {
+    fn default() -> Self {
+        Self {
+            hysteresis: defaults::on_off_hysteresis(),
+            min_interval_ms: defaults::on_off_min_interval_ms(),
+            threshold: defaults::on_off_threshold(),
+        }
+    }
+}
 ///Degrees.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -12350,6 +12441,8 @@ pub struct Reference {
     pub orientation: Orientation,
     #[serde(default = "defaults::reference_position")]
     pub position: Vec3,
+    #[serde(default = "defaults::reference_size")]
+    pub size: ReferenceSize,
 }
 impl ::std::default::Default for Reference {
     fn default() -> Self {
@@ -12357,6 +12450,7 @@ impl ::std::default::Default for Reference {
             kind: defaults::reference_kind(),
             orientation: defaults::reference_orientation(),
             position: defaults::reference_position(),
+            size: defaults::reference_size(),
         }
     }
 }
@@ -12426,6 +12520,23 @@ impl ::std::convert::TryFrom<::std::string::String> for ReferenceKind {
 impl ::std::default::Default for ReferenceKind {
     fn default() -> Self {
         ReferenceKind::None
+    }
+}
+///The reference object's width and height, metres (a TV's screen).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceSize {
+    #[serde(default = "defaults::reference_size_height")]
+    pub height: f64,
+    #[serde(default = "defaults::reference_size_width")]
+    pub width: f64,
+}
+impl ::std::default::Default for ReferenceSize {
+    fn default() -> Self {
+        Self {
+            height: defaults::reference_size_height(),
+            width: defaults::reference_size_width(),
+        }
     }
 }
 ///Where a layer sits on its surface.
@@ -17098,6 +17209,9 @@ impl ::std::default::Default for Xy {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Zone {
+    ///Whether the zone drives its targets. At most one active zone drives a target (docs/architecture/spatial-model.md#zone-activation-rules).
+    #[serde(default = "defaults::default_bool::<true>")]
+    pub active: bool,
     #[serde(default)]
     pub album_colors: bool,
     #[serde(default = "defaults::zone_ambient")]
@@ -17130,6 +17244,7 @@ pub struct Zone {
 impl ::std::default::Default for Zone {
     fn default() -> Self {
         Self {
+            active: defaults::default_bool::<true>(),
             album_colors: Default::default(),
             ambient: defaults::zone_ambient(),
             beat_offset_ms: Default::default(),
@@ -17578,6 +17693,16 @@ pub mod defaults {
     pub(super) fn calibration_latency_ms() -> f64 {
         0_f64
     }
+    pub(super) fn calibration_onoff() -> super::OnOff {
+        super::OnOff {
+            hysteresis: 0.1_f64,
+            min_interval_ms: 1000_f64,
+            threshold: 0.5_f64,
+        }
+    }
+    pub(super) fn calibration_white() -> super::CalibrationWhite {
+        super::CalibrationWhite::Accurate
+    }
     pub(super) fn calibration_white_balance() -> super::WhiteBalance {
         super::WhiteBalance {
             b: 1_f64,
@@ -17966,6 +18091,15 @@ pub mod defaults {
     pub(super) fn node_settings_role() -> super::NodeSettingsRole {
         super::NodeSettingsRole::Controller
     }
+    pub(super) fn on_off_hysteresis() -> f64 {
+        0.1_f64
+    }
+    pub(super) fn on_off_min_interval_ms() -> f64 {
+        1000_f64
+    }
+    pub(super) fn on_off_threshold() -> f64 {
+        0.5_f64
+    }
     pub(super) fn orientation_pitch() -> f64 {
         0_f64
     }
@@ -18150,6 +18284,18 @@ pub mod defaults {
             y: 0_f64,
             z: 0_f64,
         }
+    }
+    pub(super) fn reference_size() -> super::ReferenceSize {
+        super::ReferenceSize {
+            height: 0.68_f64,
+            width: 1.2_f64,
+        }
+    }
+    pub(super) fn reference_size_height() -> f64 {
+        0.68_f64
+    }
+    pub(super) fn reference_size_width() -> f64 {
+        1.2_f64
     }
     pub(super) fn relative_region_end() -> f64 {
         1_f64
@@ -18346,6 +18492,12 @@ pub mod defaults {
             color_order: super::CalibrationColorOrder::Rgb,
             gamma: 1_f64,
             latency_ms: 0_f64,
+            onoff: super::OnOff {
+                hysteresis: 0.1_f64,
+                min_interval_ms: 1000_f64,
+                threshold: 0.5_f64,
+            },
+            white: super::CalibrationWhite::Accurate,
             white_balance: super::WhiteBalance {
                 b: 1_f64,
                 g: 1_f64,
@@ -18613,6 +18765,10 @@ pub mod defaults {
                 y: 0_f64,
                 z: 0_f64,
             },
+            size: super::ReferenceSize {
+                height: 0.68_f64,
+                width: 1.2_f64,
+            },
         }
     }
     pub(super) fn zone_type() -> super::ZoneType {
@@ -18626,6 +18782,7 @@ pub mod defaults {
     }
     pub(super) fn zone_template_item_zone() -> super::Zone {
         super::Zone {
+            active: true,
             album_colors: false,
             ambient: super::Ambient {
                 color: super::Color("#4B00FF".to_string()),
@@ -18662,6 +18819,10 @@ pub mod defaults {
                     x: 0_f64,
                     y: 0_f64,
                     z: 0_f64,
+                },
+                size: super::ReferenceSize {
+                    height: 0.68_f64,
+                    width: 1.2_f64,
                 },
             },
             surfaces: vec![],

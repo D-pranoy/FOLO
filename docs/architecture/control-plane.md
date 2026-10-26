@@ -144,9 +144,9 @@ A usage error exits with status 2. Until their run books land, `token`, `pair` a
   - It runs in the controller role while `local_source.enabled` is on. In the source role it always runs, and it gets no configuration until the node's owner controller sends one (RB-16).
   - **Restarts:** when it exits without being asked to, or is hung (5 s without a message or without reading one, or 30 s without linking after it starts or its link ends), the node starts a new one after 1 s, doubling up to 60 s, each delay cut by up to 25% at random. The delay starts over once the engine has stayed linked for 60 s. A hung engine is killed first.
   - **Stopping:** the node sends `restart {component: engine}`, which ends the engine with status 0, and kills it if it hasn't exited after 5 s.
-- **The engine's configuration** is the `config.apply` the node builds from its documents. It sends it after the handshake, and again when a document it comes from changes:
+- **The engine's configuration** is the `config.apply` the node builds from its documents. It sends it after the handshake, and again when a document it comes from changes or a zone is activated or deactivated:
   - `inputs`: the inputs of the source `local` in `sources.json`, or the defaults when there is none
-  - `surfaces`: the surfaces in that source's `surfaces`, in that order, indexed from 0. Each carries its zone's `beat_offset_ms` and `album_colors`, its role, and its zone's active scene in `show.json`.
+  - `surfaces`: the surfaces in that source's `surfaces`, in that order, indexed from 0, **of effectively active zones only**: a zone that is inactive ([activation](spatial-model.md#zone-activation-rules)) has no surface assigned and nothing rendered, so a client can't preview it ([ADR-0036](../decisions/ADR-0036-controller-output.md) D6). Activating or deactivating a zone renumbers the later surfaces: the controller drops the frames it holds at each `config.apply`, and the engine sends none under the old numbering after answering it. Each carries its zone's `beat_offset_ms` and `album_colors`, its role, and its zone's active scene in `show.json`.
   - `scenes`: the scenes those surfaces render
   - `publish`: each surface at its resolution (canvases at most 128 × 72), at 60 Hz, as `rgb8` and without LZ4 on loopback; the `spectrum` and `beat` signals and the surfaces' `levels`, while a live client subscribes to them ([client API](../specs/client-api.md#topics-and-delivery))
   - `revision`: the count of configurations the node has sent since it started
@@ -154,7 +154,7 @@ A usage error exits with status 2. Until their run books land, `token`, `pair` a
   - It writes JSON lines in the engine's format to stderr and to `folo.log` in its log folder (see [folders](#folders)). The file rotates at 10 MiB, and four older files are kept (`folo.log.1` to `folo.log.4`).
   - The engine's stderr lines go into the node's log as they are. A line that isn't a JSON object is logged at `error` with the logger `folo-source`.
   - `log_level` filters the engine's lines as well as the node's own: `warning` counts as `warn` and `critical` as `error`.
-- **Stopping the node:** SIGINT, SIGTERM, Windows console control events and the service manager's stop all stop it cleanly. It stops its workers, releases its outputs, writes its pending documents and releases its home's lock.
+- **Stopping the node:** SIGINT, SIGTERM, Windows console control events and the service manager's stop all stop it cleanly. It stops its workers, releases its outputs ([providers](providers.md#lifecycle)), writes its pending documents and releases its home's lock.
 - `folo-capture` always runs in the signed-in user's session. The node starts it when the node itself runs in that session; otherwise the desktop app starts it at sign-in ([display capture](../integrations/display-capture.md#where-capture-runs)).
 - **Media sessions** (now playing) also belong to the user's session. In Windows service mode, the effect engine runs outside it, so now playing reports `unavailable` in v1 ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
 
