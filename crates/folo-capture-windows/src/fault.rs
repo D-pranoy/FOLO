@@ -65,6 +65,16 @@ impl Fault {
         }
     }
 
+    /// Names the step that failed in the words of an unclassified fault, so a log line says
+    /// where; a classified fault already says what happened.
+    #[must_use]
+    pub fn context(self, step: &str) -> Self {
+        match self {
+            Self::Other(why) => Self::Other(format!("{step}: {why}")),
+            other => other,
+        }
+    }
+
     /// Whether the agent can't capture while this lasts: `paused`, with its last picture held.
     #[must_use]
     pub fn pauses(&self) -> bool {

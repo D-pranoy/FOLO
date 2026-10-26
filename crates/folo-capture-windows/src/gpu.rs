@@ -157,11 +157,9 @@ impl Gpu {
         // local; `data` points into a slice that `texture_from` checked is long enough and
         // that its caller keeps alive for the call.
         unsafe {
-            self.device.CreateTexture2D(
-                desc,
-                data.map(std::ptr::from_ref),
-                Some(&raw mut texture),
-            )?;
+            self.device
+                .CreateTexture2D(desc, data.map(std::ptr::from_ref), Some(&raw mut texture))
+                .map_err(|error| Fault::from(error).context("CreateTexture2D"))?;
         }
         texture.ok_or_else(|| Fault::Other("Direct3D made no texture".to_owned()))
     }
@@ -227,9 +225,11 @@ impl Downscaler {
         // are to locals that live for them.
         unsafe {
             gpu.device
-                .CreateVertexShader(vertex_code, None, Some(&raw mut vertex))?;
+                .CreateVertexShader(vertex_code, None, Some(&raw mut vertex))
+                .map_err(|error| Fault::from(error).context("CreateVertexShader"))?;
             gpu.device
-                .CreatePixelShader(pixel_code, None, Some(&raw mut pixel))?;
+                .CreatePixelShader(pixel_code, None, Some(&raw mut pixel))
+                .map_err(|error| Fault::from(error).context("CreatePixelShader"))?;
         }
         match (vertex, pixel) {
             (Some(vertex), Some(pixel)) => Ok((vertex, pixel)),
@@ -252,7 +252,8 @@ impl Downscaler {
         // SAFETY: `desc` is borrowed for the call and the out pointer is to a local.
         unsafe {
             gpu.device
-                .CreateBuffer(&raw const desc, None, Some(&raw mut buffer))?;
+                .CreateBuffer(&raw const desc, None, Some(&raw mut buffer))
+                .map_err(|error| Fault::from(error).context("CreateBuffer"))?;
         }
         buffer.ok_or_else(|| Fault::Other("Direct3D made no buffer".to_owned()))
     }
@@ -295,7 +296,8 @@ impl Downscaler {
         unsafe {
             self.gpu
                 .device
-                .CreateShaderResourceView(source, None, Some(&raw mut view))?;
+                .CreateShaderResourceView(source, None, Some(&raw mut view))
+                .map_err(|error| Fault::from(error).context("CreateShaderResourceView"))?;
         }
         view.ok_or_else(|| Fault::Other("Direct3D made no shader resource view".to_owned()))
     }
@@ -339,7 +341,8 @@ impl Downscaler {
         unsafe {
             self.gpu
                 .device
-                .CreateRenderTargetView(&texture, None, Some(&raw mut view))?;
+                .CreateRenderTargetView(&texture, None, Some(&raw mut view))
+                .map_err(|error| Fault::from(error).context("CreateRenderTargetView"))?;
         }
         let view =
             view.ok_or_else(|| Fault::Other("Direct3D made no render target view".to_owned()))?;
@@ -405,7 +408,9 @@ impl Downscaler {
         // to a local.
         unsafe {
             context.CopyResource(&target.staging, &target.texture);
-            context.Map(&target.staging, 0, D3D11_MAP_READ, 0, Some(&raw mut mapped))?;
+            context
+                .Map(&target.staging, 0, D3D11_MAP_READ, 0, Some(&raw mut mapped))
+                .map_err(|error| Fault::from(error).context("Map"))?;
         }
         let pitch = mapped.RowPitch as usize;
         let mut rgb = Vec::with_capacity(width * height * 3);
