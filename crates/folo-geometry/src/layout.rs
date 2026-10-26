@@ -485,4 +485,39 @@ mod tests {
         let layout = element_layout(&t);
         assert_eq!((layout.len(), layout.shape()), (0, Shape::Display));
     }
+
+    #[test]
+    fn a_geometry_with_only_its_kind_is_read_as_that_kind() {
+        // The generated union reads `{"kind": "line"}` as a point; the layout goes by the kind.
+        let target = |kind: &str| -> Target {
+            serde_json::from_value(serde_json::json!({
+                "id": "t", "kind": kind, "geometry": {"kind": kind},
+            }))
+            .unwrap()
+        };
+        let line = element_layout(&target("line"));
+        assert_eq!(
+            (line.shape(), line.len(), line.is_placed()),
+            (Shape::Line, 1, false)
+        );
+        let grid = element_layout(&target("grid"));
+        assert_eq!(
+            (grid.shape(), grid.len()),
+            (
+                Shape::Grid {
+                    width: 1,
+                    height: 1
+                },
+                1
+            )
+        );
+        assert_eq!(element_layout(&target("display")).shape(), Shape::Display);
+        assert_eq!(element_layout(&target("point")).shape(), Shape::Point);
+        // And the zone check agrees the geometry is of the target's kind.
+        let zone = folo_protocol::generated::Zone {
+            targets: vec![target("line")],
+            ..folo_protocol::generated::Zone::default()
+        };
+        assert!(crate::validate(&zone).iter().all(|i| !i.is_error()));
+    }
 }
