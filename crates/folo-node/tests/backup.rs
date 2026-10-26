@@ -856,7 +856,7 @@ async fn a_restore_checks_everything_before_changing_anything() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_restore_refuses_bodies_over_its_limit() {
+async fn a_restore_counts_sizes_on_the_bytes_decompressed() {
     let home = Home::new();
     let node = Node::start(&home).await;
     // 256 MB is the limit, and the zeros of a bomb compress to almost nothing:
@@ -956,5 +956,49 @@ async fn an_interrupted_restore_is_finished_at_start() {
     std::fs::write(data.join("restore.pending"), b"restore/ is complete\n").unwrap();
     let node = Node::start(&home_b).await;
     assert!(!data.join("restore.pending").exists());
+    assert_eq!(node.stop().await, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restore_takes_a_body_over_the_json_limit() {
+    let (home_a, home_b) = (Home::new(), Home::new());
+    let a = furnished(&home_a).await;
+    let good = a.get("/api/v1/system/backup").await.body;
+    assert_eq!(a.stop().await, 0);
+    // Three bases of incompressible bytes: a body of about 2.7 MB, over the 1 MB of other routes
+    let mut seed = 0x9E37_79B9_7F4A_7C15_u64;
+    let mut noise = || {
+        (0..900_000)
+            .map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                (seed >> 24) as u8
+            })
+            .collect::<Vec<u8>>()
+    };
+    let big = tampered(&good, |e| {
+        for digit in ['a', 'b', 'c'] {
+            e.insert(
+                format!("applied/{}.json", digit.to_string().repeat(64)),
+                noise(),
+            );
+        }
+    });
+    assert!(big.len() > 2 * 1024 * 1024, "{}", big.len());
+    let node = Node::start(&home_b).await;
+    let answer = node.restore(big).await;
+    assert_eq!(
+        answer.status,
+        204,
+        "{}",
+        String::from_utf8_lossy(&answer.body)
+    );
+    assert_eq!(
+        std::fs::read_dir(data_dir(&home_b).join("applied"))
+            .unwrap()
+            .count(),
+        4
+    );
     assert_eq!(node.stop().await, 0);
 }

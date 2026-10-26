@@ -76,6 +76,13 @@ pub fn write(
             .into_iter()
             .map(|(name, bytes)| (format!("{APPLIED}/{name}"), bytes)),
     );
+    // A backup this node couldn't restore is refused when it is made
+    let total: u64 = entries.values().map(|b| b.len() as u64).sum();
+    if entries.len() >= limits::BACKUP_ENTRIES || total > limits::BACKUP_UNCOMPRESSED {
+        return Err(LibraryError::LibraryFull {
+            reason: "the backup would be larger than a restore accepts".to_owned(),
+        });
+    }
     let files = pack::file_hashes(entries.iter());
     let manifest = json!({
         "format": FORMAT,

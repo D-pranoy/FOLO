@@ -82,17 +82,22 @@ fn more_than_ten_thousand_entries_are_refused() {
     for number in 0..10_000 {
         files.insert(format!("applied/{number:064x}.json"), b"{}".to_vec());
     }
-    let bytes = backup::write(
+    // A node refuses to make a backup it couldn't restore
+    let made = backup::write(
         Contents {
-            documents: files,
+            documents: files.clone(),
             packs: BTreeMap::new(),
             bases: BTreeMap::new(),
         },
         "1",
         0,
-    )
-    .unwrap();
-    // 4 documents, 10,000 bases and the manifest
+    );
+    assert!(
+        matches!(made, Err(LibraryError::LibraryFull { .. })),
+        "{made:?}"
+    );
+    // And one that arrives is refused before anything is read
+    let bytes = archive::write_first(&files, "zones.json").unwrap();
     let error = expect_error(&bytes);
     assert!(
         matches!(&error, LibraryError::Structural { reason, .. } if reason.contains("10000 entries")),

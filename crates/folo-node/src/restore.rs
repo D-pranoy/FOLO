@@ -5,6 +5,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::sync::{Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use folo_library::archive::Entries;
@@ -21,6 +22,10 @@ use crate::node::Node;
 pub const RESTORE_DIR: &str = "restore";
 /// Present from when `restore/` is complete until every move is done.
 pub const MARKER: &str = "restore.pending";
+
+/// One restore at a time: the heavy reading and staging happen before any
+/// other lock, so concurrent restores would multiply their memory.
+static RESTORES: Mutex<()> = Mutex::new(());
 
 /// The four documents a backup holds.
 const BACKUP_DOCS: [Doc; 4] = [Doc::Zones, Doc::Show, Doc::Providers, Doc::Sources];
@@ -112,6 +117,7 @@ fn civil(days: u64) -> (u64, u64, u64) {
 ///
 /// The errors of `POST /system/restore`.
 pub fn restore(node: &Node, bytes: &[u8]) -> Result<(), LibraryError> {
+    let _alone = RESTORES.lock().unwrap_or_else(PoisonError::into_inner);
     let restored = backup::read(bytes)?;
     node.library.check_backup(&restored)?;
     let documents = documents_of(&restored)?;
@@ -122,8 +128,15 @@ pub fn restore(node: &Node, bytes: &[u8]) -> Result<(), LibraryError> {
     let result = stage(&staging, &restored).and_then(|()| {
         node.store.restore(documents, |files| {
             stage_documents(&data, files)?;
-            node.library
-                .replace_all(&restored.packs, || Ok(move_into_place(&data)?))
+            // From the marker on the restore is binding: a move that fails now is
+            // finished at the next start, and the node goes on with the backup's
+            // state in memory so a later write can't undo the moves already made
+            node.library.replace_all(&restored.packs, || {
+                if let Err(error) = move_into_place(&data) {
+                    log::error!("restore: a move failed, the next start finishes it: {error}");
+                }
+                Ok(())
+            })
         })
     });
     if let Err(error) = &result {
@@ -182,8 +195,22 @@ fn stage_documents(data: &Path, documents: &[(Doc, Vec<u8>)]) -> Result<(), Libr
     for (doc, bytes) in documents {
         files::write_atomic(&data.join(RESTORE_DIR).join(doc.file()), bytes, false)?;
     }
+    // Every name in restore/ is durable before the marker says it is complete
+    sync_tree(&data.join(RESTORE_DIR));
     files::write_atomic(&data.join(MARKER), b"restore/ is complete\n", false)?;
     Ok(())
+}
+
+/// Makes the directory entries below `dir` durable where the platform allows it.
+fn sync_tree(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                sync_tree(&entry.path());
+            }
+        }
+    }
+    files::sync_dir(dir);
 }
 
 /// Moves what `restore/` holds into the data folder and removes the marker.
@@ -227,7 +254,10 @@ pub fn recover(data: &Path) -> io::Result<()> {
         return move_into_place(data);
     }
     match fs::remove_dir_all(data.join(RESTORE_DIR)) {
-        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+        Err(error) if error.kind() != io::ErrorKind::NotFound => {
+            log::warn!("restore: an unfinished restore/ can't be removed: {error}");
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
