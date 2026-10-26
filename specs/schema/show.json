@@ -14,11 +14,18 @@
       "default": {}
     },
     "default_scene": {
-      "description": "What Reset all restores: a scene id, or a built-in id (fx:*, genre:*) resolved through the alias table.",
-      "$ref": "common.json#/$defs/Ref",
+      "description": "What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).",
+      "type": "string",
+      "maxLength": 160,
       "default": ""
     },
-    "scenes": {"type": "array", "items": {"$ref": "#/$defs/Scene"}, "maxItems": 256, "default": []}
+    "scenes": {"type": "array", "items": {"$ref": "#/$defs/Scene"}, "maxItems": 256, "default": []},
+    "bindings": {
+      "description": "Remembered role overrides per zone and scene (ADR-0038 D13).",
+      "type": "array",
+      "items": {"$ref": "#/$defs/RoleBinding"},
+      "maxItems": 256
+    }
   },
   "additionalProperties": false,
   "$defs": {
@@ -40,12 +47,28 @@
       "additionalProperties": false
     },
     "Provenance": {
-      "description": "Where an applied scene came from.",
+      "description": "Where an applied scene came from (ADR-0038 D11).",
       "type": "object",
       "properties": {
-        "pack": {"type": "string", "maxLength": 64, "default": ""},
+        "pack": {"type": "string", "maxLength": 65, "default": ""},
         "version": {"type": "string", "maxLength": 32, "default": ""},
-        "item": {"type": "string", "maxLength": 64, "default": ""}
+        "item": {"type": "string", "maxLength": 64, "default": ""},
+        "hash": {"description": "SHA-256 (hex) of the item's file as applied; absent when unknown.", "type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "RoleBinding": {
+      "description": "The surfaces a user chose for a scene's roles in a zone.",
+      "type": "object",
+      "properties": {
+        "zone": {"$ref": "common.json#/$defs/Ref", "default": ""},
+        "scene": {"description": "The scene's reference as resolved: author/pack:item, or a scene id of this document.", "type": "string", "maxLength": 160, "default": ""},
+        "roles": {
+          "description": "Role: surface id.",
+          "type": "object",
+          "additionalProperties": {"$ref": "common.json#/$defs/Ref"},
+          "default": {}
+        }
       },
       "additionalProperties": false
     },
@@ -128,12 +151,13 @@
       "x-folo-rules": ["range"]
     },
     "RelativeRegion": {
-      "description": "start-end along a strip, 0-1 of its length.",
+      "description": "start-end along a strip, 0-1 of its length. snap: cover takes every cell the range touches; nearest rounds both ends to the nearest cell, halves up, as the studio's built-in builders do (docs/architecture/pipeline.md, ADR-0038 D14).",
       "type": "object",
       "properties": {
         "kind": {"const": "relative"},
         "start": {"type": "number", "minimum": 0, "maximum": 1, "default": 0},
-        "end": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}
+        "end": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+        "snap": {"description": "Absent means cover.", "enum": ["cover", "nearest"]}
       },
       "required": ["kind"],
       "additionalProperties": false,

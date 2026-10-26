@@ -50,3 +50,4 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0034](ADR-0034-the-node-process.md) | The node process: folders, launches and its command line | Accepted |
 | [0035](ADR-0035-serving-the-client-api.md) | Serving the client API | Accepted |
 | [0036](ADR-0036-controller-output.md) | The controller's output: zones, projection and adapters | Accepted |
+| [0038](ADR-0038-content-library.md) | The content library and the built-in packs | Proposed |

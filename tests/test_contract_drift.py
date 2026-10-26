@@ -365,7 +365,7 @@ def test_client_api_resources_match_openapi() -> None:
             }
             documented.add(path)
         assert found == methods, (row['Path'], sorted(found), sorted(methods))
-    extra = {'/library/packs/{id}/export', '/live', '/ingest/surfaces', '/source-link'}
+    extra = {'/library/packs/{pack}/export', '/live', '/ingest/surfaces', '/source-link'}
     assert set(spec['paths']) - documented == extra
 
 

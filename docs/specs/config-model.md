@@ -16,11 +16,12 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 |---|---|---|
 | `node.toml` | Host settings: role, listen address and port, data paths, remote access, log level. Overridable by `FOLO_*` and CLI flags ([control plane](../architecture/control-plane.md#settings-layering)). | `node.json` |
 | `zones.json` | Zones, targets, surfaces, mappings | `zones.json` |
-| `show.json` | The active scene per zone, the scenes with their layers, and the default scene. A surface's master and background are surface fields in `zones.json`. | `show.json` |
+| `show.json` | The active scene per zone, the scenes with their layers, the default scene and the remembered role bindings. A surface's master and background are surface fields in `zones.json`. | `show.json` |
 | `providers.json` | Provider instances (Hyperion, WLED, Hue) and their settings | `providers.json` |
 | `sources.json` | Paired sources, their owner or consumer role, assigned surfaces, inputs and their settings | `sources.json` |
 | `clients.json` | Client keys (stored hashed), names, scopes, last use | `clients.json` |
-| `library/` | Installed packs and the local "My presets" pack ([pack format](pack-format.md)) | `pack.json` |
+| `library/` | Installed packs and the local "My presets" pack, unpacked in `library/<author>/<name>/` ([pack format](pack-format.md), [ADR-0038](../decisions/ADR-0038-content-library.md) D1) | `pack.json` |
+| `applied/` | The base of each applied scene, `<scene id>.json`, for "re-apply, keeping my changes" (ADR-0038 D11, D15) | `show.json` (`Scene`) |
 | `secrets.json` | Provider credentials, identity keys. Owner-only permissions; never exported or returned. | `secrets.json` |
 
 ## Entities (summary)
@@ -76,11 +77,13 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 
 **Mapping:** `id`, `surface`, `target` (ids), `method` (`plane | path | manual`, default `manual`), `kernel {type: nearest | bilinear | area, radius (0–1: the area kernel's half-size as a fraction of the element's spacing, [spatial model](../architecture/spatial-model.md#sampling-kernels); default 0.5)}`, `edge` (`clamp` (default) or `none`), `priority` (0–100, default 0), `blend` (`max` (default) or `alpha`), plus manual `ranges[]`: `{cells: {start, count}, elements: {start, count}, reversed}`.
 
-**Scene:** `id`, `name`, `tags` (up to 16 of up to 24 characters), `provenance? {pack, version, item}`, `layers_by_role {role: Layer[]}` (up to 64 layers per role), `macros[]` (up to 8: `id`, `name`, `value` 0–1 (default 0.5), `targets[] {layer, param, min, max}`).
+**Show:** `active {zone: scene id}`, `scenes[]` (up to 256), `default_scene` (up to 160 characters: a pack item `author/pack:item`, a built-in id `fx:*` or `genre:*` read through the alias table, or a bare id, which names a scene of the show, else an item of `local/my-presets`; empty applies `folo/core:default`) and `bindings[]?` (up to 256 remembered role overrides: `zone`, `scene` (a reference, up to 160 characters), `roles {role: surface id}`), as [content](../architecture/content.md#applying-a-scene) applies them ([ADR-0038](../decisions/ADR-0038-content-library.md) D13, D19).
+
+**Scene:** `id`, `name`, `tags` (up to 16 of up to 24 characters), `provenance? {pack (up to 65 characters), version, item, hash?}` (`hash`: the SHA-256 of the item's file as applied), `layers_by_role {role: Layer[]}` (up to 64 layers per role), `macros[]` (up to 8: `id`, `name`, `value` 0–1 (default 0.5), `targets[] {layer, param, min, max}`).
 
 **Layer:** `id`, `name`, `effect {id, version}`, `params` (validated against the effect's JSON Schema; the `audio-visualizer` and post-processing effects' are below), `region`, `blend`, `axis`, `enabled` (default true), `solo` (default false), `lane` (UI row: −1…15, −1 places it automatically).
 - The built-in effects, with their names, inputs and minimum element counts, are listed in the show schema (`x-folo-effects`), which [`/effects`](client-api.md#resources) serves with their parameter schemas ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D3).
-- `region`: `{kind: cells, start, end}` (absolute cells, 0–1999), `{kind: relative, start, end}` (0–1 along a strip) or `{kind: rect, x, y, width, height}` (0–1 of a canvas). Default: the whole surface (`relative`, 0–1).
+- `region`: `{kind: cells, start, end}` (absolute cells, 0–1999), `{kind: relative, start, end, snap?}` (0–1 along a strip; `snap` is `cover`, also when absent, or `nearest`, as the [pipeline](../architecture/pipeline.md#surfaces-and-layer-stacks) resolves them) or `{kind: rect, x, y, width, height}` (0–1 of a canvas). Default: the whole surface (`relative`, 0–1).
 - `blend`: `max` (default, today's behaviour), `add`, `alpha` or `multiply`.
 - `axis`: how a 1D effect runs on a canvas: `linear_x` (default), `linear_y`, `radial` or `angular`.
 

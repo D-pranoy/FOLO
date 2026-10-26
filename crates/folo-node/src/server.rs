@@ -87,7 +87,8 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
         .route(&v1("/zones/{id}/test"), later_post("RB-08"))
         .route(&v1("/show"), get(api::show).put(api::put_show))
-        .route(&v1("/scenes/{id}/apply"), later_post("RB-09"))
+        .route(&v1("/show/reset"), later_post("RB-09"))
+        .route(&v1("/scenes/{ref}/apply"), later_post("RB-09"))
         .route(&v1("/effects"), get(api::effects))
         .route(
             &v1("/providers"),
@@ -132,10 +133,21 @@ pub fn router(node: Arc<Node>) -> Router {
             later_get("RB-09").post(later("RB-09")),
         )
         .route(
-            &v1("/library/packs/{id}"),
+            &v1("/library/packs/{pack}"),
             later_get("RB-09").delete(later("RB-09")),
         )
-        .route(&v1("/library/packs/{id}/export"), later_get("RB-09"))
+        .route(&v1("/library/packs/{pack}/export"), later_get("RB-09"))
+        .route(
+            &v1("/library/packs/{pack}/items/{type}/{item}"),
+            later_get("RB-09")
+                .put(later("RB-09"))
+                .delete(later("RB-09")),
+        )
+        .route(
+            &v1("/library/packs/{pack}/previews/{file}"),
+            later_get("RB-09"),
+        )
+        .route(&v1("/library/items"), later_get("RB-09"))
         .route(&v1("/clients"), later_get("RB-15").post(later("RB-15")))
         .route(
             &v1("/clients/{id}"),

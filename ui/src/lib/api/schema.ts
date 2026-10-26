@@ -185,19 +185,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/scenes/{id}/apply": {
+    "/scenes/{ref}/apply": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded. */
+                ref: components["parameters"]["SceneRef"];
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
-        /** Apply a scene to a zone, with role overrides */
+        /** Apply a scene to a zone, with role overrides (ADR-0038 D11 to D15) */
         post: operations["applyScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/show/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset all, applying the default scene to zones (ADR-0038 D21) */
+        post: operations["resetShow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -503,7 +521,7 @@ export interface paths {
         };
         get: operations["getPacks"];
         put?: never;
-        /** Install a .folopack (admin) */
+        /** Install a .folopack, at most 10 MB (admin) */
         post: operations["installPack"];
         delete?: never;
         options?: never;
@@ -511,34 +529,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/library/packs/{id}": {
+    "/library/packs/{pack}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
             };
             cookie?: never;
         };
         get: operations["getPack"];
         put?: never;
         post?: never;
+        /** Remove an installed pack (admin) */
         delete: operations["removePack"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/library/packs/{id}/export": {
+    "/library/packs/{pack}/export": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
             };
             cookie?: never;
         };
         get: operations["exportPack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/packs/{pack}/items/{type}/{item}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
+                type: components["parameters"]["ItemType"];
+                item: components["parameters"]["Item"];
+            };
+            cookie?: never;
+        };
+        get: operations["getPackItem"];
+        /** Write an item of a local pack, clamped as its type (ADR-0038 D10) */
+        put: operations["putPackItem"];
+        post?: never;
+        /** Remove an item of a local pack */
+        delete: operations["deletePackItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/packs/{pack}/previews/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
+                file: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getPackPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every item of a type in the installed packs, for the gallery */
+        get: operations["getLibraryItems"];
         put?: never;
         post?: never;
         delete?: never;
@@ -735,7 +816,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Back up the configuration (secrets excluded) */
+        /** Back up the documents and the library, secrets and client keys excluded (admin; ADR-0038 D25, D26) */
         get: operations["getBackup"];
         put?: never;
         post?: never;
@@ -754,6 +835,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Replace the documents and the library with a backup's, at most 64 MB (admin; ADR-0038 D27) */
         post: operations["restoreBackup"];
         delete?: never;
         options?: never;
@@ -1916,7 +1998,7 @@ export interface components {
             };
         };
         Tags: string[];
-        /** @description Where an applied scene came from. */
+        /** @description Where an applied scene came from (ADR-0038 D11). */
         Provenance: {
             /** @default  */
             pack: string;
@@ -1924,6 +2006,8 @@ export interface components {
             version: string;
             /** @default  */
             item: string;
+            /** @description SHA-256 (hex) of the item's file as applied; absent when unknown. */
+            hash?: string;
         };
         EffectRef: {
             /** @default audio-visualizer */
@@ -1940,7 +2024,7 @@ export interface components {
             /** @default 1999 */
             end: number;
         };
-        /** @description start-end along a strip, 0-1 of its length. */
+        /** @description start-end along a strip, 0-1 of its length. snap: cover takes every cell the range touches; nearest rounds both ends to the nearest cell, halves up, as the studio's built-in builders do (docs/architecture/pipeline.md, ADR-0038 D14). */
         RelativeRegion: {
             /** @constant */
             kind: "relative";
@@ -1948,6 +2032,11 @@ export interface components {
             start: number;
             /** @default 1 */
             end: number;
+            /**
+             * @description Absent means cover.
+             * @enum {unknown}
+             */
+            snap?: "cover" | "nearest";
         };
         /** @description A rectangle of a canvas, 0-1 of its width and height. */
         RectRegion: {
@@ -2044,6 +2133,23 @@ export interface components {
             /** @default [] */
             macros: components["schemas"]["Macro"][];
         };
+        /** @description The surfaces a user chose for a scene's roles in a zone. */
+        RoleBinding: {
+            /** @default  */
+            zone: components["schemas"]["Ref"];
+            /**
+             * @description The scene's reference as resolved: author/pack:item, or a scene id of this document.
+             * @default
+             */
+            scene: string;
+            /**
+             * @description Role: surface id.
+             * @default {}
+             */
+            roles: {
+                [key: string]: components["schemas"]["Ref"];
+            };
+        };
         /**
          * ShowDocument
          * @description show.json: the active scene per zone, the scenes with their layers, and the default scene (docs/specs/config-model.md, docs/architecture/content.md).
@@ -2063,12 +2169,14 @@ export interface components {
                 [key: string]: components["schemas"]["Ref"];
             };
             /**
-             * @description What Reset all restores: a scene id, or a built-in id (fx:*, genre:*) resolved through the alias table.
+             * @description What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).
              * @default
              */
-            default_scene: components["schemas"]["Ref"];
+            default_scene: string;
             /** @default [] */
             scenes: components["schemas"]["Scene"][];
+            /** @description Remembered role overrides per zone and scene (ADR-0038 D13). */
+            bindings?: components["schemas"]["RoleBinding"][];
             $defs: {
                 Scene: {
                     /** @default  */
@@ -2088,7 +2196,7 @@ export interface components {
                     /** @default [] */
                     macros: components["schemas"]["Macro"][];
                 };
-                /** @description Where an applied scene came from. */
+                /** @description Where an applied scene came from (ADR-0038 D11). */
                 Provenance: {
                     /** @default  */
                     pack: string;
@@ -2096,6 +2204,25 @@ export interface components {
                     version: string;
                     /** @default  */
                     item: string;
+                    /** @description SHA-256 (hex) of the item's file as applied; absent when unknown. */
+                    hash?: string;
+                };
+                /** @description The surfaces a user chose for a scene's roles in a zone. */
+                RoleBinding: {
+                    /** @default  */
+                    zone: components["schemas"]["Ref"];
+                    /**
+                     * @description The scene's reference as resolved: author/pack:item, or a scene id of this document.
+                     * @default
+                     */
+                    scene: string;
+                    /**
+                     * @description Role: surface id.
+                     * @default {}
+                     */
+                    roles: {
+                        [key: string]: components["schemas"]["Ref"];
+                    };
                 };
                 /** @description A knob that drives parameters of several layers. */
                 Macro: {
@@ -2175,7 +2302,7 @@ export interface components {
                     /** @default 1999 */
                     end: number;
                 };
-                /** @description start-end along a strip, 0-1 of its length. */
+                /** @description start-end along a strip, 0-1 of its length. snap: cover takes every cell the range touches; nearest rounds both ends to the nearest cell, halves up, as the studio's built-in builders do (docs/architecture/pipeline.md, ADR-0038 D14). */
                 RelativeRegion: {
                     /** @constant */
                     kind: "relative";
@@ -2183,6 +2310,11 @@ export interface components {
                     start: number;
                     /** @default 1 */
                     end: number;
+                    /**
+                     * @description Absent means cover.
+                     * @enum {unknown}
+                     */
+                    snap?: "cover" | "nearest";
                 };
                 /** @description A rectangle of a canvas, 0-1 of its width and height. */
                 RectRegion: {
@@ -2666,12 +2798,38 @@ export interface components {
         SceneApplyRequest: {
             zone: string;
             /**
-             * @description Role: surface id, overriding the automatic match.
+             * @description Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).
              * @default {}
              */
             roles: {
                 [key: string]: string;
             };
+            /**
+             * @description Merge into the zone's active scene, keeping what the user changed since it was applied (ADR-0038 D15).
+             * @default false
+             */
+            keep_changes: boolean;
+        };
+        /** @description What an apply did in one zone. */
+        ApplyResult: {
+            zone: string;
+            /** @description The id of the scene the zone now has active. */
+            scene: string;
+            /** @description Each bound role of the applied scene: the surface it went to. */
+            roles: {
+                [key: string]: string;
+            };
+            /** @description Roles no surface of the zone could take. */
+            skipped: string[];
+        };
+        SceneApplied: {
+            show: components["schemas"]["show"];
+            results: components["schemas"]["ApplyResult"][];
+        };
+        /** @description Reset all: the zones to reset; empty for every zone (ADR-0038 D21). */
+        ShowResetRequest: {
+            /** @default [] */
+            zones: string[];
         };
         DiscoverRequest: {
             /**
@@ -2774,9 +2932,13 @@ export interface components {
             version: string;
             name: string;
             description: string;
-            /** @description folo-core, folo-genres and folo-effects can't be removed. */
+            /** @description folo/core, folo/genres and folo/effects ship with the node and can't be removed. */
             builtin: boolean;
+            /** @description A local pack (author local), whose items can be written. */
+            editable: boolean;
             items: number;
+            /** @description SHA-256 (hex) of the pack's canonical .folopack (ADR-0038 D9). */
+            hash: string;
         };
         /** @description #RRGGBB, or a white stop in kelvin such as 2700K. */
         PaletteColor: string;
@@ -2791,6 +2953,19 @@ export interface components {
             scenes: string[];
             /** @default [] */
             zone_templates: string[];
+        };
+        PackCategory: {
+            /** @default  */
+            id: components["schemas"]["Id"];
+            /** @default Category */
+            name: components["schemas"]["Name"];
+            /** @default  */
+            description: string;
+            /**
+             * @description Item references (author/pack:item), in order.
+             * @default []
+             */
+            items: string[];
         };
         /**
          * PackManifest
@@ -2848,7 +3023,22 @@ export interface components {
             previews: {
                 [key: string]: string;
             };
+            /** @description Groups of the gallery, merged by id across packs (ADR-0038 D17). */
+            categories?: components["schemas"]["PackCategory"][];
             $defs: {
+                PackCategory: {
+                    /** @default  */
+                    id: components["schemas"]["Id"];
+                    /** @default Category */
+                    name: components["schemas"]["Name"];
+                    /** @default  */
+                    description: string;
+                    /**
+                     * @description Item references (author/pack:item), in order.
+                     * @default []
+                     */
+                    items: string[];
+                };
                 PackContents: {
                     /** @default [] */
                     palettes: string[];
@@ -2868,6 +3058,10 @@ export interface components {
                     id: components["schemas"]["Id"];
                     /** @default 2 */
                     schema_version: components["schemas"]["SchemaVersion"];
+                    /** @description Shown in the gallery. */
+                    description?: string;
+                    /** @description Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them. */
+                    hints?: Record<string, never>;
                     /** @default Palette */
                     name: components["schemas"]["Name"];
                     /**
@@ -2883,6 +3077,10 @@ export interface components {
                     id: components["schemas"]["Id"];
                     /** @default 2 */
                     schema_version: components["schemas"]["SchemaVersion"];
+                    /** @description Shown in the gallery. */
+                    description?: string;
+                    /** @description Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them. */
+                    hints?: Record<string, never>;
                     /** @default Reaction */
                     name: components["schemas"]["Name"];
                     /**
@@ -2897,6 +3095,10 @@ export interface components {
                     id: components["schemas"]["Id"];
                     /** @default 2 */
                     schema_version: components["schemas"]["SchemaVersion"];
+                    /** @description Shown in the gallery. */
+                    description?: string;
+                    /** @description Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them. */
+                    hints?: Record<string, never>;
                     /** @default Look */
                     name: components["schemas"]["Name"];
                     /** @default {} */
@@ -2914,6 +3116,10 @@ export interface components {
                     id: components["schemas"]["Id"];
                     /** @default 2 */
                     schema_version: components["schemas"]["SchemaVersion"];
+                    /** @description Shown in the gallery. */
+                    description?: string;
+                    /** @description Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them. */
+                    hints?: Record<string, never>;
                     /** @default {} */
                     scene: components["schemas"]["Scene"];
                     /**
@@ -2935,10 +3141,34 @@ export interface components {
                     id: components["schemas"]["Id"];
                     /** @default 2 */
                     schema_version: components["schemas"]["SchemaVersion"];
+                    /** @description Shown in the gallery. */
+                    description?: string;
+                    /** @description Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them. */
+                    hints?: Record<string, never>;
                     /** @default {} */
                     zone: components["schemas"]["Zone"];
                 };
             };
+        };
+        /**
+         * @description A pack item type, as its folder is named.
+         * @enum {unknown}
+         */
+        ItemType: "palettes" | "reactions" | "looks" | "scenes" | "zone-templates";
+        /** @description An item of an installed pack, for the gallery. */
+        LibraryItem: {
+            /** @description author/pack:item. */
+            ref: string;
+            pack: string;
+            /** @description The pack's version. */
+            version: string;
+            type: components["schemas"]["ItemType"];
+            /** @description SHA-256 (hex) of the item's file, as provenance records it. */
+            hash: string;
+            /** @description The preview's path under /library/packs/{pack}/previews/, or empty. */
+            preview: string;
+            /** @description The item, as clamped (pack.json's item of this type). */
+            item: Record<string, never>;
         };
         ClientInfo: {
             id: string;
@@ -3147,6 +3377,24 @@ export interface components {
                 "application/json": components["schemas"]["show"];
             };
         };
+        /** @description The show as written, and what each zone got. */
+        SceneApplied: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SceneApplied"];
+            };
+        };
+        /** @description The item, as clamped. */
+        PackItem: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         /** @description The provider instance, as clamped. */
         Provider: {
             headers: {
@@ -3186,6 +3434,12 @@ export interface components {
     };
     parameters: {
         Id: string;
+        /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+        Pack: string;
+        /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded. */
+        SceneRef: string;
+        ItemType: components["schemas"]["ItemType"];
+        Item: string;
         /** @description A node id. */
         Node: string;
         /** @description The revision the writer last saw. Without it, the last writer wins. */
@@ -3475,9 +3729,13 @@ export interface operations {
     applyScene: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The revision the writer last saw. Without it, the last writer wins. */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded. */
+                ref: components["parameters"]["SceneRef"];
             };
             cookie?: never;
         };
@@ -3487,7 +3745,27 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["Show"];
+            200: components["responses"]["SceneApplied"];
+            default: components["responses"]["Error"];
+        };
+    };
+    resetShow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The revision the writer last saw. Without it, the last writer wins. */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ShowResetRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SceneApplied"];
             default: components["responses"]["Error"];
         };
     };
@@ -3971,7 +4249,10 @@ export interface operations {
     };
     installPack: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Install over an installed pack of the same or a newer version. */
+                replace?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3999,7 +4280,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
             };
             cookie?: never;
         };
@@ -4022,7 +4304,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
             };
             cookie?: never;
         };
@@ -4043,19 +4326,132 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["Id"];
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The .folopack. */
+            /** @description The pack's canonical .folopack (ADR-0038 D9). */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/zip": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getPackItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
+                type: components["parameters"]["ItemType"];
+                item: components["parameters"]["Item"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["PackItem"];
+            default: components["responses"]["Error"];
+        };
+    };
+    putPackItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
+                type: components["parameters"]["ItemType"];
+                item: components["parameters"]["Item"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            200: components["responses"]["PackItem"];
+            default: components["responses"]["Error"];
+        };
+    };
+    deletePackItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
+                type: components["parameters"]["ItemType"];
+                item: components["parameters"]["Item"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getPackPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pack id (author/name), its slash percent-encoded (folo%2Fcore). */
+                pack: components["parameters"]["Pack"];
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preview image, sandboxed by a Content Security Policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLibraryItems: {
+        parameters: {
+            query?: {
+                type?: components["schemas"]["ItemType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The items, built-in packs first, then by pack id, each pack's in its contents order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryItem"][];
                 };
             };
             default: components["responses"]["Error"];

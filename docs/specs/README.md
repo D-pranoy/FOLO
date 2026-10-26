@@ -25,6 +25,7 @@ Once a machine-readable form exists, it and this prose must agree. A change to e
 | [Source link](source-link.md) | Partial (the AsyncAPI contract, message fixtures, the conformance harness, and both sides of the local link) |
 | [Pairing and connect](pairing-and-connect.md) | Partial (the node's identity) |
 | [Pack format](pack-format.md) | Partial (JSON Schemas for the manifest and the items; nothing reads packs yet) |
+| [Effect specifications](effects/README.md) | Not started (the clean-room rewrite gate is tracked there) |
 | [UI parity checklist](ui-parity-checklist.md) | Not started |
 | [Visual design](visual-design.md) | Partial (the current studio implements the visual language) |
 

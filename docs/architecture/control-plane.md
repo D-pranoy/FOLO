@@ -102,7 +102,7 @@ Recovery: `folo pair reset` or the local UI. You must be at the machine; it can'
 
 ## Folders
 
-Each node has a home folder holding `node.toml`, and a data folder holding the documents, `secrets.json` and `library/`. The node takes the first launch below that applies ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D1, following [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md) D2):
+Each node has a home folder holding `node.toml`, and a data folder holding the documents, `secrets.json`, `library/` (installed and local packs), `applied/` (the bases of applied scenes) and, during a restore, `restore/` ([ADR-0038](../decisions/ADR-0038-content-library.md) D1, D11, D27). The node takes the first launch below that applies ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D1, following [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md) D2):
 
 | Launch | Home | Data, by default | Logs |
 |---|---|---|---|

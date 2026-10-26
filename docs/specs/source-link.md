@@ -63,7 +63,7 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 | Method | Purpose |
 |---|---|
 | `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. Each assigned surface carries its zone's `beat_offset_ms` and `album_colors`, which its layers use. `publish` holds the requested resolution, rate and compression per surface, the signals to send with their signal index, and the surfaces whose layers' levels to send (`levels`). |
-| `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | Content distribution |
+| `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | [Content distribution](#content-distribution); not sent in v1 |
 | `inputs.list` | The inputs available on the source (outputs, inputs, apps playing audio, screens, media session), with capabilities |
 | `media.control {action}` | `play_pause`, `next` or `previous` on the shown media session |
 | `media.art {art_id}` | Returns the album art image (base64) for clients |
@@ -71,6 +71,12 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 | `update.check`, `update.approve {version}`, `update.cancel` | Owner only |
 | `logs.tail {lines, follow}` | Diagnostics |
 | `restart {component}` | Restart a worker or the node |
+
+### Content distribution
+
+Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D22. In v1 the controller sends no packs: an applied scene is a complete copy and reaches the source in `config.apply`. A source that doesn't implement the methods answers `-32601`. When content a source must hold arrives ([content](../architecture/content.md#later)), they work like this:
+- **`packs.install`:** `inline` carries the pack's canonical `.folopack` in base64, and `sha256` its pack hash ([pack format](pack-format.md#validation)). `url` is reserved and not sent. The source checks the hash before anything else and answers `-32000` with the message `hash_mismatch` when it differs. It then validates the pack as the controller's library does, keeps it in its own `library/<author>/<name>/`, replacing any version it had, and answers `{}`.
+- **`packs.remove`:** removes the pack and answers `{}`, also when the source doesn't have it.
 
 ### Source → controller (notifications)
 

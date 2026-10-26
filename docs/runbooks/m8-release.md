@@ -113,11 +113,12 @@ Status: Accepted · Implementation: Not started
    7. Write install-type markers and SHA-256 checksums; upload artifacts.
 2. **Signing:** update signatures with the update signing key from secrets (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). `folo-update.json` lists every artifact by install type and architecture.
 3. **`release.yml`** (on `v*` tags):
-   1. Call build.
-   2. Create a draft release with notes from release-please.
-   3. Upload artifacts, `SHA256SUMS`, `latest.json`, `folo-update.json` and signatures.
-   4. Attest build provenance for every artifact.
-   5. Publish after the `release` environment's approval.
+   1. Run the clean-room rewrite gate, `FOLO_RELEASE_GATE=1 uv run pytest tests/test_clean_room_gate.py`; a failure stops the release ([ADR-0038](../decisions/ADR-0038-content-library.md) D24).
+   2. Call build.
+   3. Create a draft release with notes from release-please.
+   4. Upload artifacts, `SHA256SUMS`, `latest.json`, `folo-update.json` and signatures.
+   5. Attest build provenance for every artifact.
+   6. Publish after the `release` environment's approval.
 4. **`docker.yml`:** multi-arch push to `ghcr.io/d-pranoy/folo` with tags `X.Y.Z`, `X.Y`, `latest` (stable) and `edge` (the default branch, `v1` during the rebuild); provenance (max mode), SBOM, attestations.
 5. **`release-please.yml`:** the release PR and changelog; versions kept in sync across `package.json`, `Cargo.toml` and `tauri.conf.json`.
    - Pull requests and tags made with the default `GITHUB_TOKEN` don't trigger workflows: release PRs would get no CI, and its tags wouldn't start `release.yml`.

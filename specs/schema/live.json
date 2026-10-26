@@ -183,7 +183,7 @@
       "type": "object",
       "properties": {
         "kind": {"type": "string", "maxLength": 64},
-        "id": {"type": "string", "maxLength": 64},
+        "id": {"description": "The job's id; for kind library, the pack's id (ADR-0038).", "type": "string", "maxLength": 130},
         "state": {"type": "string", "maxLength": 32},
         "progress": {"type": "number", "minimum": 0, "maximum": 1},
         "message": {"type": "string", "maxLength": 1000}
