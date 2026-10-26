@@ -116,7 +116,7 @@ fn assert_close(actual: &[u8], expected: &[u8], what: &str) {
 #[test]
 fn an_sdr_desktop_matches_the_core_reference_at_awkward_ratios() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     for (input, output) in [
         ((37, 23), (5, 3)),
         ((37, 23), (37, 23)),
@@ -140,7 +140,7 @@ fn an_sdr_desktop_matches_the_core_reference_at_awkward_ratios() {
 #[test]
 fn channels_keep_their_order() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     // Red, green and blue pixels side by side.
     let source = bgra8(&gpu, (3, 1), &[255, 0, 0, 0, 255, 0, 0, 0, 255]);
     let pixels = scaler.downscale(&source, (3, 1), None).unwrap();
@@ -150,7 +150,7 @@ fn channels_keep_their_order() {
 #[test]
 fn averaging_is_in_linear_light() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     // Black and white: the mean of the light is 0.5, which sRGB encodes as 188, not 128.
     let source = bgra8(&gpu, (2, 1), &[0, 0, 0, 255, 255, 255]);
     let pixels = scaler.downscale(&source, (1, 1), None).unwrap();
@@ -161,7 +161,7 @@ fn averaging_is_in_linear_light() {
 #[test]
 fn the_output_size_follows_each_call() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     let source = bgra8(&gpu, (16, 9), &noise(16, 9));
     for size in [(8_u16, 4_u16), (4, 2), (16, 9), (8, 4)] {
         let pixels = scaler.downscale(&source, size, None).unwrap();
@@ -189,7 +189,7 @@ fn hdr_reference(scrgb: &[f32], sdr_white_nits: f32) -> Vec<u8> {
 #[test]
 fn an_hdr_desktop_is_tone_mapped_against_the_sdr_white_level() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     for (white_nits, colour) in [
         (80.0, [0.5_f32, 0.25, 0.125]),
         (80.0, [1.0, 1.0, 1.0]),
@@ -214,7 +214,7 @@ fn an_hdr_desktop_is_tone_mapped_against_the_sdr_white_level() {
 #[test]
 fn sdr_white_is_white_and_a_highlight_keeps_its_hue() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     let white = fp16(&gpu, (1, 1), &[3.0, 3.0, 3.0]);
     let pixels = scaler
         .downscale(&white, (1, 1), Some(tonemap::scale_for(240.0)))
@@ -229,7 +229,7 @@ fn sdr_white_is_white_and_a_highlight_keeps_its_hue() {
 #[test]
 fn hdr_light_is_averaged_before_it_is_tone_mapped() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     // Black and a highlight of 4 (320 nits) at 80 nits white: the mean is 2, which clips to
     // white. Tone-mapping each pixel first would give black and white, whose mean is 188.
     let source = fp16(&gpu, (2, 1), &[0.0, 0.0, 0.0, 4.0, 4.0, 4.0]);
@@ -240,7 +240,7 @@ fn hdr_light_is_averaged_before_it_is_tone_mapped() {
 #[test]
 fn an_hdr_desktop_downscales_at_awkward_ratios() {
     let mut scaler = downscaler();
-    let gpu = Gpu::warp().unwrap();
+    let gpu = scaler.gpu().clone();
     // A ramp of exactly representable values, 0 to 3 in steps of 1/8, repeated across the picture.
     let (width, height) = (24_usize, 15_usize);
     let scrgb: Vec<f32> = (0..width * height * 3)

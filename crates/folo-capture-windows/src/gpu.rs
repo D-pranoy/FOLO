@@ -258,6 +258,12 @@ impl Downscaler {
         buffer.ok_or_else(|| Fault::Other("Direct3D made no buffer".to_owned()))
     }
 
+    /// The device the downscaler works on: textures it reads must be made on it.
+    #[must_use]
+    pub fn gpu(&self) -> &Gpu {
+        &self.gpu
+    }
+
     /// Downscales `source` to `size` (width, height) and returns `width × height × 3`
     /// bytes of sRGB rgb8. `hdr_scale` is `Some` for an scRGB (FP16) source, as
     /// [`crate::tonemap::scale_for`] gives it, and `None` for an 8-bit sRGB one.
