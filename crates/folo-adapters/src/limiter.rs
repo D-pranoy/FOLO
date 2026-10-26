@@ -53,6 +53,8 @@ impl Run {
     /// is measured from that point.
     fn advance(&mut self, from: f32, to: f32) -> Option<i8> {
         if self.dir == 0 {
+            // Exact on purpose: a step that doesn't change the luminance doesn't start a run.
+            #[allow(clippy::float_cmp)]
             if to == from {
                 return None;
             }
