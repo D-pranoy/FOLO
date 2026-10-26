@@ -66,7 +66,7 @@ This supersedes **ADR-0007 D2's order of stages** only. ADR-0007's other decisio
 - **D17.** **Latency.** The delay line holds each target's frames by `calibration.latency_ms` plus the difference between the largest `limits.latency_ms` among the zone's targets and the target's own, between 0 and 5 s. Faster outputs therefore wait for the slowest.
 - **D18.** **The flash limiter's algorithm** (for zones that switched it on, [ADR-0033](ADR-0033-flash-limiter-off-by-default.md)), in full in [capabilities](../architecture/capabilities.md#algorithm):
   - It works per element on luminance, defined per colour model (the white and CCT channels count; the colour order is undone first).
-  - A **transition** is a run's cumulative change of at least 0.10 whose darker end is below 0.80, stamped with the time of the step that completes it. A **flash** is two opposing transitions.
+  - A **transition** is a run's cumulative change of at least 0.10 whose darker end is below 0.80, stamped with the time of the step that completes it. A run ends only when the luminance turns back by at least 0.02. A **flash** is a pair of opposing transitions: one opens it, the next that opposes it completes it.
   - Each element keeps a sliding window of 1 s. A transition that would complete a fourth flash in it is held: the element's whole colour stays as it was until the window allows the change, and then jumps to the current input.
   - On/off targets hold their state, and test patterns go through it as any frame does.
 
