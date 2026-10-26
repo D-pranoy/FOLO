@@ -361,3 +361,21 @@ fn a_replay_file_over_the_cap_is_refused() {
     assert!(matches!(result, Err(CaptureError::Failed(why)) if why.contains("longer than 64 MiB")));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_report_hides_its_restore_token_when_debug_printed() {
+    use folo_capture_core::backend::BackendReport;
+    use folo_capture_core::types::CaptureState;
+    let report = BackendReport {
+        state: CaptureState::Capturing,
+        message: None,
+        restore_token: Some("token-that-must-not-be-logged".to_owned()),
+        fps: 30.0,
+    };
+    let shown = format!("{report:?}");
+    assert!(
+        shown.contains("Capturing") && shown.contains("<hidden>"),
+        "{shown}"
+    );
+    assert!(!shown.contains("must-not-be-logged"), "{shown}");
+}

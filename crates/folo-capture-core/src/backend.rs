@@ -1,10 +1,42 @@
 //! The interface every capture backend implements (ADR-0037 D20): the
 //! Windows and Linux backends, and the synthetic and replay ones.
 
+use std::fmt;
 use std::time::Duration;
 
 use crate::error::CaptureError;
-use crate::types::{CaptureRequest, Picture, Screen};
+use crate::types::{CaptureRequest, CaptureState, Picture, Screen};
+
+/// What a backend knows about its capture beyond the pictures, for the
+/// agent's `capture.status` (ADR-0037 D3, D14).
+#[derive(Clone, PartialEq)]
+pub struct BackendReport {
+    pub state: CaptureState,
+    /// Why the state is `error`, or a warning that doesn't stop the capture.
+    pub message: Option<String>,
+    /// A restore token the backend got since the last report. It is handed
+    /// over once: the agent passes it on in `capture.status` and the node
+    /// stores it (D14).
+    pub restore_token: Option<String>,
+    /// Pictures a second, over the last second or so.
+    pub fps: f64,
+}
+
+// The restore token stays out of any log line or panic message, as the launch
+// token does in `Environment`.
+impl fmt::Debug for BackendReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BackendReport")
+            .field("state", &self.state)
+            .field("message", &self.message)
+            .field(
+                "restore_token",
+                &self.restore_token.as_ref().map(|_| "<hidden>"),
+            )
+            .field("fps", &self.fps)
+            .finish()
+    }
+}
 
 /// A source of downscaled pictures of one screen. One capture at a time.
 pub trait CaptureBackend: Send {
@@ -41,4 +73,12 @@ pub trait CaptureBackend: Send {
 
     /// Ends the capture. It does nothing when none is started.
     fn stop(&mut self);
+
+    /// The state of the capture and what changed since the last call, for
+    /// backends that have more to say than whether pictures come (the portal
+    /// waits for consent and returns restore tokens). `None` when the backend
+    /// has nothing to add: the agent then derives the state from the pictures.
+    fn report(&mut self) -> Option<BackendReport> {
+        None
+    }
 }
