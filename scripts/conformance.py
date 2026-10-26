@@ -91,8 +91,8 @@ def errored_cases(report: Path) -> list[tuple[str, str]]:
         if 'cases' not in recorder:
             continue
         for case_id, case in recorder['cases'].items():
-            checks: list[Json] = recorder['checks'].get(case_id, [])
-            sent = case_id in recorder['interactions']
+            checks: list[Json] = recorder.get('checks', {}).get(case_id, [])
+            sent = case_id in recorder.get('interactions', {})
             failed: list[Json] = [check for check in checks if check['status'] == 'error']
             if sent and not failed:
                 continue
@@ -141,7 +141,10 @@ def run_api(url: str, key: str | None, extra: list[str]) -> int:
         env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
         status = subprocess.run(cmd + extra, check=False, env=env).returncode
         # schemathesis exits 0 with errored cases, which would pass silently
-        unexpected = unexpected_errors(errored_cases(report)) if report.exists() else []
+        if not report.exists():
+            print('schemathesis wrote no NDJSON report (--report* arguments?)', file=sys.stderr)
+            return status or 1
+        unexpected = unexpected_errors(errored_cases(report))
     if unexpected:
         print(f'{len(unexpected)} errored case(s) not listed in EXPECTED_ERRORS', file=sys.stderr)
         return status or 1
