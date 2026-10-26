@@ -1,0 +1,34 @@
+[package]
+name = "folo-capture-linux"
+description = "The Linux capture backend: the ScreenCast portal and PipeWire (RB-14, ADR-0037). Empty on other platforms."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# The ScreenCast portal and PipeWire backend. It needs the development files of
+# PipeWire 1.0 or newer to build: the `pipewire` crate doesn't build against
+# Ubuntu 22.04's 0.3.48, which is why the feature is off by default (ADR-0037 D22).
+portal = ["dep:ashpd", "dep:futures-util", "dep:pipewire", "dep:tokio"]
+# What the tests that run a real PipeWire daemon and a fake portal need on top.
+portal-tests = ["portal", "dep:zbus", "pipewire/v0_3_34", "tokio/net"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+folo-capture-core = { path = "../folo-capture-core" }
+rustix = { version = "1", features = ["time"] }
+ashpd = { version = "0.13", default-features = false, features = ["tokio", "screencast", "notification"], optional = true }
+futures-util = { version = "0.3", default-features = false, optional = true }
+pipewire = { version = "0.10", optional = true }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"], optional = true }
+zbus = { version = "5", default-features = false, features = ["tokio"], optional = true }
+
+[[test]]
+name = "portal"
+required-features = ["portal-tests"]

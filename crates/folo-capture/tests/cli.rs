@@ -135,13 +135,40 @@ fn the_environment_is_checked_before_the_backend() {
     assert_eq!(code(&output), 2);
 }
 
+/// Whether this build of the agent has the Linux portal backend.
+const PORTAL_BUILT: bool = cfg!(all(target_os = "linux", feature = "portal"));
+
+/// The backends that can't be opened here, with what their message says: the
+/// Windows ones everywhere, and the platform's own where it isn't built.
+fn unbuilt_backends() -> Vec<(&'static str, &'static str)> {
+    let mut backends = vec![
+        ("dda", "dda backend isn't built yet"),
+        ("wgc", "wgc backend isn't built yet"),
+        ("gdi", "gdi backend isn't built yet"),
+    ];
+    if !PORTAL_BUILT {
+        let portal = if cfg!(target_os = "linux") {
+            "built into this binary"
+        } else {
+            "portal backend is for Linux"
+        };
+        let auto = if cfg!(target_os = "linux") {
+            "built into this binary"
+        } else {
+            "platform's capture backend isn't built yet"
+        };
+        backends.extend([("auto", auto), ("portal", portal)]);
+    }
+    backends
+}
+
 #[test]
 fn a_backend_that_is_not_built_yet_exits_with_1_and_says_so() {
-    for backend in ["auto", "dda", "wgc", "gdi", "portal"] {
+    for (backend, said) in unbuilt_backends() {
         let output = agent(&["--backend", backend, "run"], &linked());
         assert_eq!(code(&output), 1, "{backend}");
         let text = stderr(&output);
-        assert!(text.contains("isn't built yet"), "{backend}: {text}");
+        assert!(text.contains(said), "{backend}: {text}");
         assert!(
             !text.contains(SECRET_TOKEN),
             "the token stays out of the output"
@@ -252,16 +279,45 @@ fn screens_without_json_prints_a_line_per_screen() {
 
 #[test]
 fn screens_on_a_backend_that_is_not_built_exits_with_1() {
-    for backend in ["auto", "dda", "wgc", "gdi", "portal"] {
+    for (backend, said) in unbuilt_backends() {
         let output = agent(&["screens", "--json", "--backend", backend], &[]);
         assert_eq!(code(&output), 1, "{backend}");
         assert_eq!(output.stdout, b"", "{backend}");
-        assert!(stderr(&output).contains("isn't built yet"));
+        let text = stderr(&output);
+        assert!(text.contains(said), "{backend}: {text}");
     }
+}
+
+#[cfg(all(target_os = "linux", feature = "portal"))]
+#[test]
+fn screens_json_on_linux_lists_the_portal_without_asking_it_anything() {
+    // No session bus is reachable in this environment: listing must not need one.
+    for backend in ["portal", "auto"] {
+        let output = agent(
+            &["screens", "--json", "--backend", backend],
+            &[("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus")],
+        );
+        assert_eq!(code(&output), 0, "{backend}: {}", stderr(&output));
+        let listed: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            listed["screens"],
+            json!([{"id": "portal", "name": "Screen chosen in the desktop's dialog", "width": 0, "height": 0, "primary": true}]),
+            "{backend}"
+        );
+        assert_eq!(stderr(&output), "");
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "portal"))]
+#[test]
+fn run_on_the_portal_backend_stops_at_the_missing_link_client_like_the_others() {
+    let output = agent(&["--backend", "portal", "run"], &linked());
+    assert_eq!(code(&output), 1);
+    assert!(stderr(&output).contains("capture link isn't built yet"));
 }
 
 #[test]
 fn the_default_backend_is_auto() {
     let output = agent(&["screens", "--json"], &[]);
-    assert_eq!(code(&output), 1);
+    assert_eq!(code(&output), i32::from(!PORTAL_BUILT));
 }
