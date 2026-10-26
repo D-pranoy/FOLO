@@ -189,10 +189,8 @@ fn serve(
         let mut ssl = Ssl::new(context).unwrap();
         ssl.set_mtu(1200).unwrap();
         let Ok(mut session) = ssl.accept(stream) else {
-            // The handshake didn't complete (a dropped datagram, a wrong key): the datagrams
-            // of it are thrown away and the next hello starts again
-            let mut sink = [0u8; 2048];
-            while socket.recv_from(&mut sink).is_ok() {}
+            // The handshake didn't complete (a dropped datagram, a wrong key): the next hello
+            // starts again
             continue;
         };
         observed.lock().unwrap().handshakes += 1;

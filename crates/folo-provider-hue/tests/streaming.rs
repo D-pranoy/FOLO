@@ -444,7 +444,7 @@ async fn a_lost_stream_is_reported_so_the_sender_reconnects_and_stops_the_area_t
     let provider = connected(&bridge).await;
     let out = output(&provider);
     out.start(LAMP).await.unwrap();
-    out.send(&frame(vec![lamp(1.0, 1.0, 1.0)])).await.unwrap();
+    // The endpoint closes after the first datagram, so any send from the first on may be the one that notices
     let error = loop {
         match out.send(&frame(vec![lamp(2.0, 2.0, 2.0)])).await {
             Err(e) => break e,
@@ -569,7 +569,6 @@ async fn another_apps_stream_is_never_stopped_by_a_release_or_a_reconnect() {
         .close_after
         .store(1, std::sync::atomic::Ordering::SeqCst);
     out.start(LAMP).await.unwrap();
-    out.send(&frame(vec![lamp(1.0, 1.0, 1.0)])).await.unwrap();
     while out.send(&frame(vec![lamp(2.0, 2.0, 2.0)])).await.is_ok() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
