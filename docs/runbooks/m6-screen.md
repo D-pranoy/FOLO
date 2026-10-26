@@ -1,6 +1,6 @@
 # M6 Screen
 
-Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; the backends, the bar detector, the link and the Screen effect follow)
+Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; step 4: the Linux portal backend; the Windows backends, the bar detector, the link and the Screen effect follow)
 
 ## RB-14: Display capture and Screen effect
 
@@ -14,6 +14,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - `folo-capture-windows` and `folo-capture-linux` for the backends, and `folo-capture`, the binary (`run`, `screens --json`, `--backend`)
    - `unsafe` code only in the backend crates' FFI modules (ADR-0037 D19)
    - done so far: `folo-capture-core` (the types, the trait, the codec, the colour and sizing reference, the frame pacer, the synthetic and replay backends) and the `folo-capture` binary with `run`, `screens --json` and `--backend`; `run` stops at the link client, which comes with the node's side
+   - `folo-capture-linux` (step 4) is built, with no `unsafe` of its own: the bindings are `ashpd`'s and `pipewire`'s, and the monotonic clock goes through `rustix`
 2. **Windows backend:**
    - Desktop Duplication through `windows-rs`: `DuplicateOutput1` with BGRA8 and R16G16B16A16_FLOAT; a device on the output's adapter
    - Windows.Graphics.Capture fallback: cursor off, free-threaded frame pool, borderless with consent on build 20348+
@@ -26,13 +27,14 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - the app id through the portal's host registry, or a transient scope named `app-io.github.d-pranoy.folo-capture-<random>.scope`
    - the restore token returned in the agent's status and kept by the node in `secrets.json`
    - re-prompts shown as notifications, sent by the agent
+   - **done so far:** all of it except the DMA-BUF import into EGL, which is a documented follow-up (the backend offers no format modifiers, so compositors send shared memory). The portal backend (`PortalBackend`, `--backend portal`, `auto` on Linux) is the `portal` cargo feature, off by default because the `pipewire` crate needs PipeWire 1.0's development files and does not build against Ubuntu 22.04's 0.3.48; the details and the tests are in [display capture](../integrations/display-capture.md#linux-wayland). The node's side of the launch is open: starting the agent as `systemd-run --user --scope --unit=<folo_capture_linux::appid::transient_scope_name(random)> folo-capture run` where the portal has no host registry, with the launch token and link in that command's environment
 5. **Black-bar detection:** a port of Hyperion.NG's black-border detector (MIT; its notice is in `THIRD_PARTY_NOTICES`): the default, letterbox and OSD modes; time-based hysteresis; blur margin; presets (Auto, Off, 21:9, 4:3); video and game profiles. The protected-content flag is reported.
 6. **Agent process** (`folo-capture`) and its link:
    - runs in the user session and starts on demand when an enabled screen input and an enabled Screen layer are in an active scene
    - dials the node's capture link with its launch token, sends `capture.status` at least once a second, and sends frames (`FOLC`) with bars, protected, HDR and held flags
    - the node's side: starting and stopping the agent, `capture.start` and `capture.stop`, forwarding frames to the engine, the screen listing in `inputs.list`, `SourceLive.screen`, the restore token in `secrets.json`
    - started by the node (user mode) or the desktop app (service mode, RB-19 and RB-20)
-   - a Linux user unit `app-io.github.d-pranoy.folo-capture.service` is reserved with service mode (RB-19, RB-20): the node's launch token can't reach it otherwise
+   - a Linux user unit `app-io.github.d-pranoy.folo-capture.service` is reserved with service mode (RB-19, RB-20): the node's launch token can't reach it otherwise; the unit file is `packaging/linux/systemd/user/app-io.github.d-pranoy.folo-capture.service`, installed under the escaped name `app-io.github.d\x2dpranoy.folo\x2dcapture.service` that the portal reads the application id from, and nothing installs it yet
 7. **Screen effect** (Python): a canvas effect that consumes frames, then crop (black bars and margins), edge or area sampling, colour and saturation, smoothing, producing a canvas at the zone's requested resolution. This brings the engine's screen input, `CanvasEffect`, the inputs handle for effect factories, the render trigger and the per-surface screen activity ([pipeline](../architecture/pipeline.md)).
 8. **UX in this milestone:**
    - the `SourceLive.screen` status and the API behind it (state, rate, protected, HDR, bars, the privacy-setting link)
@@ -42,7 +44,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
 9. **Tests:**
    - black-bar golden tests (letterbox, pillarbox, 21:9, subtitles in the bars, logos, fade to black, OSD, noise near the threshold)
    - shader tests on WARP with fixtures
-   - on Linux, on the CI runner: a real PipeWire daemon with a test producer and a fake ScreenCast portal on a private `dbus-daemon`, in an Ubuntu 24.04 job (the workspace must still build on 22.04)
+   - on Linux, on the CI runner: a real PipeWire daemon with a test producer and a fake ScreenCast portal on a private `dbus-daemon`, in an Ubuntu 24.04 job (the workspace must still build on 22.04). Done for the portal backend (`folo-capture-linux/tests/portal.rs`, gated by `FOLO_PIPEWIRE_TESTS`, the job `capture-linux` of `ci.yml`)
    - privacy: marker pixels in the frames of a run must be in no live message, log line or temporary file
    - a replay-driven end-to-end run (node, agent in replay mode, the real engine) asserting the published canvas frames, extended through projection when RB-08 lands
 10. **Live verification** on Windows (SDR and HDR desktop), KDE Plasma (Arch-based and Ubuntu) and GNOME, per the [testing policy](../process/testing-policy.md).
