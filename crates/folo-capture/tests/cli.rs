@@ -310,10 +310,18 @@ fn screens_json_on_linux_lists_the_portal_without_asking_it_anything() {
 
 #[cfg(all(target_os = "linux", feature = "portal"))]
 #[test]
-fn run_on_the_portal_backend_stops_at_the_missing_link_client_like_the_others() {
-    let output = agent(&["--backend", "portal", "run"], &linked());
+fn run_on_the_portal_backend_with_a_link_that_is_not_a_url_exits_with_1() {
+    let output = agent(
+        &["--backend", "portal", "run"],
+        &[
+            ("FOLO_CAPTURE_LINK", "this is not a url"),
+            ("FOLO_CAPTURE_TOKEN", SECRET_TOKEN),
+        ],
+    );
     assert_eq!(code(&output), 1);
-    assert!(stderr(&output).contains("capture link isn't built yet"));
+    let text = stderr(&output);
+    assert!(text.contains("FOLO_CAPTURE_LINK"), "{text}");
+    assert!(!text.contains(SECRET_TOKEN));
 }
 
 #[test]
