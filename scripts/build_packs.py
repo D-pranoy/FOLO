@@ -275,6 +275,7 @@ def write(files: dict[str, bytes], folder: Path) -> None:
 
 
 def generate() -> int:
+    """Rewrites `packs/` whole: anything else in it is removed, as `check` reports it."""
     files = build(run_trace())
     if PACKS.exists():
         shutil.rmtree(PACKS)

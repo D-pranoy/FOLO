@@ -150,7 +150,7 @@ def test_scenes_have_one_role_and_nearest_relative_layers() -> None:
 def test_ledfx_inspired_descriptions_and_hints() -> None:
     for ref, scene in items('folo/effects', 'scenes').items():
         if 'LedFx' in scene['scene']['tags']:
-            assert 'LedFx-inspired' in scene['description'], ref
+            assert scene['description'].startswith('LedFx-inspired. '), ref
             assert scene['hints']['source'] == 'LedFx', ref
         else:
             assert 'source' not in scene['hints'], ref
@@ -317,6 +317,32 @@ def test_reactions_and_palettes_equal_the_builders() -> None:
         assert made['params'] == {**source['range'], **source['response']}
         assert made['hints']['group'] == source['group']
         assert made['description'] == source['desc']
+
+
+@needs_node
+def test_every_builder_has_a_scene_and_a_golden() -> None:
+    ids = {b['id'] for b in traced()['builtins']}
+    assert ids == set(builtin_ids()), 'tests/golden/builtins.json is out of date with web/studio.js'
+    assert {reference(i) for i in ids} <= set(scenes())
+
+
+@needs_node
+def test_reaction_hints_and_categories_equal_the_builders() -> None:
+    data = traced()
+    reactions = items('folo/core', 'reactions')
+    for source in data['reactions']:
+        made = reactions[next(i for i, r in reactions.items() if r['name'] == source['name'])]
+        assert made['hints'] == {k: source[k] for k in ('group', 'tempo', 'anim', 'dur')}
+    categories = read(FOLO / 'core' / 'folo-pack.json')['categories']
+    assert categories == [
+        {
+            'id': c['id'],
+            'name': c['name'],
+            'description': c['blurb'],
+            'items': [reference(item) for item in c['items']],
+        }
+        for c in data['categories']
+    ]
 
 
 @needs_node
