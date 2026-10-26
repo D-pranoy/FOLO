@@ -266,8 +266,10 @@ pub fn decode_surface(data: &[u8]) -> Result<SurfaceFrame, FrameError> {
     let sequence = le_u32(data, 16);
     let timestamp_us = le_u64(data, 20);
     let payload = &data[SURFACE_HEADER_LEN..];
-    let values = usize::from(width) * usize::from(height) * CHANNELS;
-    let expected = values * format.bytes_per_channel();
+    // at most 65,535 × 65,535 × 3 × 4: fits a usize of 64 bits, and saturates on 32
+    let expected = usize::from(width)
+        .saturating_mul(usize::from(height))
+        .saturating_mul(CHANNELS * format.bytes_per_channel());
     if payload.len() != expected {
         return Err(FrameError::BadPayloadSize {
             expected,

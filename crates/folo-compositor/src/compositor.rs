@@ -27,10 +27,14 @@ use crate::ambient::parse_hex;
 
 /// A source is active for this long after it last reported activity (µs).
 pub const ACTIVITY_HOLD_US: u64 = 2_000_000;
-/// A frame older than this counts as no frame (µs).
+/// A frame older than this counts as no frame (µs). Fixed: no document carries a per-surface value.
 pub const STALE_US: u64 = 500_000;
 /// The time a change of winner takes to fade (µs).
 pub const CROSSFADE_US: u64 = 300_000;
+/// A frame numbered below this, against a held one numbered [`RESTART_AFTER`] or more,
+/// is a source that started over.
+const RESTART_SEQUENCE_MAX: u32 = 8;
+const RESTART_AFTER: u32 = 1_024;
 
 /// What the compositor needs of a surface.
 #[derive(Clone, Debug, PartialEq)]
@@ -44,7 +48,8 @@ pub struct SurfaceSettings {
     /// The colour shown when no source has a fresh frame.
     pub background: [u8; 3],
     /// The output scale (0–1), applied to the background; the sources' frames have it already.
-    pub master: f32,
+    /// The zone's ambient light needs the same value ([`Compositor::master`] gives it back).
+    pub master: f64,
     /// Cells across, as the frames arrive (the resolution the controller asked the engine for).
     pub width: u16,
     /// Cells down.
@@ -65,9 +70,7 @@ impl SurfaceSettings {
                 .collect(),
             blend_sources: surface.blend_sources,
             background: parse_hex(&surface.background),
-            // f64 → f32: a factor between 0 and 1
-            #[allow(clippy::cast_possible_truncation)]
-            master: surface.master as f32,
+            master: surface.master,
             width,
             height,
         }
@@ -94,6 +97,14 @@ pub enum FrameRefused {
     UnknownSurface,
     /// The surface doesn't list the source.
     UnknownSource,
+    /// The frame holds other than `width × height × 3` values (a hand-built one;
+    /// decoded frames can't).
+    WrongPixelCount {
+        /// What the surface's size calls for.
+        expected: usize,
+        /// What the frame holds.
+        actual: usize,
+    },
     /// The frame isn't the surface's resolution.
     WrongSize {
         /// The surface's width and height.
@@ -201,6 +212,19 @@ impl Compositor {
                 },
             );
         }
+        // reports for surfaces that are gone
+        let surfaces = &self.surfaces;
+        self.reports
+            .retain(|(_, surface), _| surface.as_ref().is_none_or(|id| surfaces.contains_key(id)));
+    }
+
+    /// The surface's `master`, for the zone's ambient light, which takes the
+    /// same value ([`ZoneAmbient::apply`](crate::ZoneAmbient::apply)).
+    #[must_use]
+    pub fn master(&self, surface: &str) -> Option<f64> {
+        self.surfaces
+            .get(surface)
+            .map(|state| state.settings.master)
     }
 
     /// Takes a source's frame for a surface. `now_us` is when it arrived, on
@@ -208,7 +232,7 @@ impl Compositor {
     ///
     /// # Errors
     /// [`FrameRefused`] when the surface or the source isn't known, or the
-    /// frame isn't the surface's resolution.
+    /// frame isn't the surface's resolution and size.
     pub fn frame(
         &mut self,
         surface: &str,
@@ -227,6 +251,12 @@ impl Compositor {
                 actual: (frame.width, frame.height),
             });
         }
+        if frame.pixels.len() != state.settings.values() {
+            return Err(FrameRefused::WrongPixelCount {
+                expected: state.settings.values(),
+                actual: frame.pixels.len(),
+            });
+        }
         let slot = state
             .slots
             .iter_mut()
@@ -236,8 +266,12 @@ impl Compositor {
             // newer by serial number arithmetic: within half the range ahead
             let ahead = frame.sequence.wrapping_sub(held.sequence);
             let newer = ahead != 0 && ahead < 1 << 31;
-            // a restarted source counts from 0 again: once the last frame is stale it doesn't matter
-            if !newer && now_us.saturating_sub(held.received_us) <= STALE_US {
+            // a restarted source counts from 0 again (the spec keeps the count across
+            // reconnects, not across restarts): its first frames, at the very start of
+            // the count while the held one is far into it, are taken
+            let restarted = frame.sequence < RESTART_SEQUENCE_MAX && held.sequence >= RESTART_AFTER;
+            // and once the last frame is stale, any sequence number is
+            if !newer && !restarted && now_us.saturating_sub(held.received_us) <= STALE_US {
                 return Ok(FrameOutcome::Superseded);
             }
         }
@@ -260,7 +294,12 @@ impl Compositor {
 
     /// Takes an `activity` report. `surface` is the notification's, `None` for
     /// the whole source. `now_us` is when it arrived.
+    /// A report for a surface that isn't configured is ignored (reports repeat 10 times
+    /// a second, and this keeps a source from growing the table with made-up names).
     pub fn activity(&mut self, source: &str, surface: Option<&str>, active: bool, now_us: u64) {
+        if surface.is_some_and(|surface| !self.surfaces.contains_key(surface)) {
+            return;
+        }
         let report = self
             .reports
             .entry((source.to_owned(), surface.map(ToOwned::to_owned)))
@@ -276,8 +315,11 @@ impl Compositor {
         }
     }
 
-    /// Forgets a source's frames and reports, for when its link goes away: its
-    /// next frames needn't be newer than the last ones of the one before.
+    /// Forgets a source's frames and reports. **The caller (P5b's supervisor) must
+    /// call this when a source's link drops or its engine restarts**: until then a
+    /// source that starts over at a sequence number the compositor doesn't take
+    /// for a restart (anything but a frame 0–7 after 1,024 or more) is dropped
+    /// as late for up to [`STALE_US`], and the last frame stays on screen.
     pub fn forget_source(&mut self, source: &str) {
         for state in self.surfaces.values_mut() {
             for slot in state.slots.iter_mut().filter(|s| s.source == source) {
@@ -403,7 +445,11 @@ impl Compositor {
 /// `background × master`, truncated like the engine's frames are.
 fn background(settings: &SurfaceSettings) -> Composed {
     let master = settings.master.clamp(0.0, 1.0);
-    let cell = settings.background.map(|c| (f32::from(c) * master).trunc());
+    // a product of at most 255: truncated to a whole step, so it fits an f32 exactly
+    #[allow(clippy::cast_possible_truncation)]
+    let cell = settings
+        .background
+        .map(|c| (f64::from(c) * master).trunc() as f32);
     Composed {
         width: settings.width,
         height: settings.height,
@@ -676,22 +722,56 @@ mod tests {
     }
 
     #[test]
-    fn a_restarted_source_is_taken_once_its_last_frame_is_stale() {
+    fn a_source_that_starts_over_is_taken_at_once() {
+        let mut c = compositor(&["a"], false);
+        c.frame("main", "a", &flat(50, 5_000), 0).unwrap();
+        // the first frames of a count that began again, 0 to 7
+        assert_eq!(
+            c.frame("main", "a", &flat(60, 0), 10 * MS),
+            Ok(FrameOutcome::Accepted)
+        );
+        assert_eq!(
+            c.frame("main", "a", &flat(61, 1), 20 * MS),
+            Ok(FrameOutcome::Accepted)
+        );
+        assert_eq!(shown(&mut c, 20 * MS), vec![61.0; 6]);
+        // a late frame of the old count is not one: held is near 0 now
+        assert_eq!(
+            c.frame("main", "a", &flat(1, 0), 30 * MS),
+            Ok(FrameOutcome::Superseded)
+        );
+        // while a small number against a small held one is only late
+        assert_eq!(
+            c.frame("main", "a", &flat(2, 7), 40 * MS),
+            Ok(FrameOutcome::Accepted)
+        );
+        assert_eq!(
+            c.frame("main", "a", &flat(3, 3), 50 * MS),
+            Ok(FrameOutcome::Superseded)
+        );
+    }
+
+    #[test]
+    fn other_sequence_numbers_that_go_back_wait_for_the_last_frame_to_go_stale() {
         let mut c = compositor(&["a"], false);
         c.frame("main", "a", &flat(50, 5_000), 0).unwrap();
         assert_eq!(
-            c.frame("main", "a", &flat(60, 0), 100 * MS),
+            c.frame("main", "a", &flat(60, 100), 100 * MS),
             Ok(FrameOutcome::Superseded)
         );
         assert_eq!(
-            c.frame("main", "a", &flat(60, 0), 600 * MS),
+            c.frame("main", "a", &flat(60, 100), 500 * MS),
+            Ok(FrameOutcome::Superseded)
+        );
+        assert_eq!(
+            c.frame("main", "a", &flat(60, 100), 500 * MS + 1),
             Ok(FrameOutcome::Accepted)
         );
         // or at once, once its link is forgotten
         c.frame("main", "a", &flat(70, 5_000), 700 * MS).unwrap();
         c.forget_source("a");
         assert_eq!(
-            c.frame("main", "a", &flat(80, 0), 710 * MS),
+            c.frame("main", "a", &flat(80, 100), 710 * MS),
             Ok(FrameOutcome::Accepted)
         );
     }
@@ -806,6 +886,40 @@ mod tests {
         );
         c.frame("main", "a", &frame, 0).unwrap();
         assert_eq!(shown(&mut c, 0), vec![0.0, 0.0, 255.0, 1.5, 255.0, 0.0]);
+    }
+
+    #[test]
+    fn a_frame_with_the_wrong_number_of_values_is_refused() {
+        let mut c = compositor(&["a"], false);
+        let short = SurfaceFrame::new(0, 0, 0, 2, 1, Pixels::Rgb8(vec![0; 5]));
+        assert_eq!(
+            c.frame("main", "a", &short, 0),
+            Err(FrameRefused::WrongPixelCount {
+                expected: 6,
+                actual: 5
+            })
+        );
+        assert_eq!(c.compose("main", 0).unwrap().winner, None);
+    }
+
+    #[test]
+    fn reports_for_surfaces_that_are_not_configured_are_ignored() {
+        let mut c = compositor(&["a"], false);
+        c.activity("a", Some("made-up"), true, 0);
+        assert!(!c.is_active("a", "made-up", 0));
+        c.activity("a", Some("main"), true, 0);
+        assert!(c.is_active("a", "main", 0));
+        // and a surface that goes takes its reports with it
+        c.configure(vec![]);
+        c.configure(vec![settings(&["a"], false)]);
+        assert!(!c.is_active("a", "main", 0));
+    }
+
+    #[test]
+    fn the_masters_of_the_surfaces_are_the_documents() {
+        let c = compositor(&["a"], false);
+        assert_eq!(c.master("main"), Some(0.5));
+        assert_eq!(c.master("nope"), None);
     }
 
     #[test]

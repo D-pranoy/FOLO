@@ -218,6 +218,10 @@ impl ZoneAmbient {
     /// Mixes the ambient light into `pixels` (cells × rgb, `master` already in
     /// them), by [`eased`](Self::eased), and truncates the result to whole
     /// steps like the legacy path's bytes. At amount 0 `pixels` stays as it is.
+    ///
+    /// `master` is the surface's own ([`SurfaceSettings::master`](crate::SurfaceSettings),
+    /// or [`Compositor::master`](crate::Compositor::master)): the frame has it already
+    /// and the light needs it too, so a caller passes the same value to both.
     pub fn apply(&self, pixels: &mut [f32], master: f64) {
         if self.amount <= 0.0 {
             return;
