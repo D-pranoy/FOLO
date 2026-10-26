@@ -9,6 +9,7 @@ use semver::Version;
 use serde_json::{Value, json};
 
 use crate::archive::{self, Entries};
+use crate::backup;
 use crate::compat;
 use crate::disk;
 use crate::error::LibraryError;
@@ -28,6 +29,7 @@ pub enum State {
     Installed,
     Removed,
     Changed,
+    Restored,
 }
 
 impl State {
@@ -37,6 +39,7 @@ impl State {
             Self::Installed => "installed",
             Self::Removed => "removed",
             Self::Changed => "changed",
+            Self::Restored => "restored",
         }
     }
 }
@@ -129,8 +132,16 @@ impl Library {
 
     /// Writes the empty `local/my-presets`, only when its folder doesn't exist.
     fn create_my_presets(&self) {
+        if let Some(pack) = self.make_my_presets() {
+            self.lock().packs.insert(MY_PRESETS.to_owned(), pack);
+        }
+    }
+
+    /// The new empty `local/my-presets`, written; `None` when its folder
+    /// exists already or it can't be written.
+    fn make_my_presets(&self) -> Option<Pack> {
         if disk::folder(&self.root, MY_PRESETS).exists() {
-            return;
+            return None;
         }
         let manifest = json!({
             "id": MY_PRESETS, "version": "1.0.0", "folo": ">=1.0 <2", "name": "My presets",
@@ -142,10 +153,11 @@ impl Library {
         let result = pack::assemble(entries, Some(MY_PRESETS), false)
             .and_then(|a| disk::place(&self.root, MY_PRESETS, &a.pack.files).map(|()| a.pack));
         match result {
-            Ok(pack) => {
-                self.lock().packs.insert(MY_PRESETS.to_owned(), pack);
+            Ok(pack) => Some(pack),
+            Err(error) => {
+                log::error!("library: {MY_PRESETS} can't be created: {error}");
+                None
             }
-            Err(error) => log::error!("library: {MY_PRESETS} can't be created: {error}"),
         }
     }
 
@@ -361,6 +373,80 @@ impl Library {
         Ok(())
     }
 
+    // ------------------------------------------------------------ backup and restore
+
+    /// The canonical entries of every installed and local pack, by pack id
+    /// (ADR-0038 D26).
+    ///
+    /// # Errors
+    ///
+    /// [`LibraryError::Io`] when a preview can't be read.
+    pub fn backup_packs(&self) -> Result<BTreeMap<String, Entries>, LibraryError> {
+        let inner = self.lock();
+        let mut packs = BTreeMap::new();
+        for pack in inner.packs.values().filter(|p| !p.builtin) {
+            let previews = self.previews_of(pack)?;
+            packs.insert(pack.id.clone(), pack::canonical_entries(pack, &previews)?);
+        }
+        Ok(packs)
+    }
+
+    /// A backup's packs, checked as an install checks them: this node's
+    /// version, and `requires` among the backup's packs and the built-in ones
+    /// (ADR-0038 D27).
+    ///
+    /// # Errors
+    ///
+    /// The errors of `POST /system/restore` that concern the archive or the packs.
+    pub fn check_backup(&self, restored: &backup::Restored) -> Result<(), LibraryError> {
+        for assembled in &restored.packs {
+            self.check_compatible(&assembled.pack)?;
+        }
+        let inner = self.lock();
+        let version_of = |id: &str| {
+            restored
+                .packs
+                .iter()
+                .map(|a| &a.pack)
+                .find(|p| p.id == id)
+                .or_else(|| inner.packs.get(id).filter(|p| p.builtin))
+                .map(|p| p.version().to_owned())
+        };
+        for assembled in &restored.packs {
+            missing_requires(&assembled.pack, version_of)?;
+        }
+        Ok(())
+    }
+
+    /// Makes the installed and local packs exactly `packs` (ADR-0038 D27).
+    /// `swap` moves the new folder into place while the library is locked, so
+    /// nothing reads it half replaced; the packs in memory change only when
+    /// it succeeds.
+    ///
+    /// # Errors
+    ///
+    /// What `swap` returns.
+    pub fn replace_all(
+        &self,
+        packs: &[pack::Assembled],
+        swap: impl FnOnce() -> Result<(), LibraryError>,
+    ) -> Result<(), LibraryError> {
+        let mut inner = self.lock();
+        swap()?;
+        inner.packs.retain(|_, pack| pack.builtin);
+        inner.unreadable.clear();
+        for assembled in packs {
+            inner
+                .packs
+                .insert(assembled.pack.id.clone(), assembled.pack.clone());
+        }
+        if let Some(pack) = self.make_my_presets() {
+            inner.packs.insert(MY_PRESETS.to_owned(), pack);
+        }
+        self.announce("", State::Restored);
+        Ok(())
+    }
+
     // ------------------------------------------------------------ items of local packs
 
     /// Writes an item of a local pack (ADR-0038 D10): clamped, its id the
@@ -508,13 +594,21 @@ fn requires_of(pack: &Pack) -> Vec<(String, String)> {
 
 /// Every `requires` entry is a pack installed in a matching version.
 fn check_requires(inner: &Inner, pack: &Pack) -> Result<(), LibraryError> {
+    missing_requires(pack, |id| {
+        inner.packs.get(id).map(|p| p.version().to_owned())
+    })
+}
+
+/// The `requires` entries of `pack` that `version_of` (a pack id's installed
+/// version) doesn't satisfy.
+fn missing_requires(
+    pack: &Pack,
+    version_of: impl Fn(&str) -> Option<String>,
+) -> Result<(), LibraryError> {
     let missing: Vec<(String, String)> = requires_of(pack)
         .into_iter()
         .filter(|(id, range)| {
-            let installed = inner
-                .packs
-                .get(id)
-                .and_then(|p| Version::parse(p.version()).ok());
+            let installed = version_of(id).and_then(|v| Version::parse(&v).ok());
             let wanted = compat::parse_range(range).ok();
             !matches!((installed, wanted), (Some(v), Some(r)) if compat::meets(&r, &v))
         })

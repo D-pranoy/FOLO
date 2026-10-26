@@ -30,7 +30,7 @@ Every request goes through these checks in order. The first that fails answers:
 | Authentication: loopback clients and the unauthenticated endpoints need no key; every other request to `/api/` does. Until client keys and sessions arrive ([RB-15](../runbooks/m7-network.md#rb-15-client-access)), no key is valid. | 401 `unauthorized` |
 | The resource exists | 404 `not_found` |
 | The resource takes the method | 405 `method_not_allowed` |
-| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either (the install route today; the restore route when it lands) | 415 `json_required` / `zip_required` |
+| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either | 415 `json_required` / `zip_required` |
 | The body fits the limit | 413 `body_too_large` |
 
 Routes that answer loopback clients only (`/system/status`, `/system/reload`) answer others with 403 `loopback_only`.
@@ -54,7 +54,6 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 | Endpoints | Run book |
 |---|---|
 | `/zones/{id}/activate`, `/deactivate`, `/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
-| `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
 | `DELETE /sources/{id}`; `/sources/invites`; `/sources/join-requests/...`; `/ingest/surfaces` | [RB-16](../runbooks/m7-network.md#rb-16-source-pairing-and-link) |

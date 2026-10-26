@@ -20,7 +20,7 @@ type Shared = State<Arc<Node>>;
 type Refusal = Box<Response>;
 
 /// The API's answer for a refused library operation.
-fn refused(failure: &LibraryError) -> Response {
+pub(crate) fn refused(failure: &LibraryError) -> Response {
     if let LibraryError::Io { reason } = failure {
         log::error!("library: {reason}");
     }

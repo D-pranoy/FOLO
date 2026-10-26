@@ -111,7 +111,12 @@ pub fn place(root: &Path, id: &str, files: &Entries) -> Result<(), LibraryError>
     result
 }
 
-fn write_all(dir: &Path, files: &Entries) -> Result<(), LibraryError> {
+/// Writes `files` below `dir`, each flushed, and `dir` itself even when empty.
+///
+/// # Errors
+///
+/// [`LibraryError::Io`] when a file can't be written.
+pub fn write_all(dir: &Path, files: &Entries) -> Result<(), LibraryError> {
     for (path, bytes) in files {
         let target = dir.join(path);
         if let Some(parent) = target.parent() {

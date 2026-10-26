@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod apply_api;
+pub mod backup_api;
 pub mod cli;
 pub mod client;
 pub mod import;
@@ -13,6 +14,7 @@ pub mod live;
 pub mod lock;
 pub mod logs;
 pub mod node;
+pub mod restore;
 pub mod server;
 pub mod status;
 pub mod ui;

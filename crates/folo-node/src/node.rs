@@ -21,7 +21,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, live, lock, logs, server};
+use crate::{import, live, lock, logs, restore, server};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -333,6 +333,13 @@ async fn start(
     let engine = engine.unwrap_or_else(|| EngineCommand::find(&place.exe_dir));
     std::fs::create_dir_all(&folders.data)
         .map_err(|e| Failure::new(EXIT_FAILED, format!("{}: {e}", folders.data.display())))?;
+    // Before the first-run check and the documents: a restore may be half done
+    restore::recover(&folders.data).map_err(|e| {
+        Failure::new(
+            EXIT_FAILED,
+            format!("the interrupted restore can't be finished: {e}"),
+        )
+    })?;
     if !folders.data.join(Doc::Zones.file()).exists() {
         import::first_run(&engine, &folders.home, &place.cwd, &folders.data);
     }

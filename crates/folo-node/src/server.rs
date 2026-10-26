@@ -19,16 +19,21 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::node::Node;
-use crate::{api, apply_api, library_api, live, ui};
+use crate::{api, apply_api, backup_api, library_api, live, ui};
 
 /// The client API's body limit (docs/specs/client-api.md#conventions).
 const BODY_LIMIT: usize = 1024 * 1024;
 /// A pack install's body limit: 10 MB (docs/specs/client-api.md#conventions).
 const INSTALL_BODY_LIMIT: usize = 10 * 1024 * 1024;
+/// A restore's body limit: 256 MB (docs/specs/client-api.md#conventions).
+const RESTORE_BODY_LIMIT: usize = 256 * 1024 * 1024;
 /// Mutating requests that send a zip archive instead of JSON (ADR-0038 D28).
 /// `application/zip` isn't a type a page can send without a preflight, so
 /// the JSON rule's protection holds.
-const ZIP_ROUTES: [(Method, &str); 1] = [(Method::POST, "/api/v1/library/packs")];
+const ZIP_ROUTES: [(Method, &str); 2] = [
+    (Method::POST, "/api/v1/library/packs"),
+    (Method::POST, "/api/v1/system/restore"),
+];
 /// Host names always allowed by the Host check.
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
@@ -181,8 +186,11 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/system/status"), get(api::system_status))
         .route(&v1("/system/reload"), post(api::system_reload))
         .route(&v1("/system/logs"), get(api::system_logs))
-        .route(&v1("/system/backup"), later_get("RB-09"))
-        .route(&v1("/system/restore"), later_post("RB-09"))
+        .route(&v1("/system/backup"), get(backup_api::backup))
+        .route(
+            &v1("/system/restore"),
+            post(backup_api::restore).layer(DefaultBodyLimit::max(RESTORE_BODY_LIMIT)),
+        )
         .route(&v1("/auth/login"), later_post("RB-15"))
         .route(&v1("/auth/logout"), later_post("RB-15"))
         .route(&v1("/auth/requests"), later_post("RB-15"))
