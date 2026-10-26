@@ -130,6 +130,17 @@ def test_zone_table(config_model: str) -> None:
         check_field(field('Zone', row['Field'].strip('`')), row['Range / values'], row['Default'])
 
 
+def test_reference_size(config_model: str) -> None:
+    text = group(r'`size \{width, height\}`([^)]*)\)', config_model)
+    low, high = number_range(text)
+    width = float(group(rf'default ({NUMBER}) \u00d7', text))
+    height = float(group(rf'\u00d7 ({NUMBER})', text))
+    size = resolve(field('Reference', 'size'))['properties']
+    for key, default in (('width', width), ('height', height)):
+        assert (size[key]['minimum'], size[key]['maximum']) == (low, high)
+        assert size[key]['default'] == default
+
+
 def test_calibration_table(config_model: str) -> None:
     for row in table(config_model, '- `calibration`:'):
         name = row['Field'].split()[0].strip('`')
