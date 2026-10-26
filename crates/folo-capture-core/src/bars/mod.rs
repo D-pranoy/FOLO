@@ -66,11 +66,17 @@ impl BarDetector {
     }
 
     /// Applies new settings in place (`capture.start` sent again, D3). What
-    /// the detector has seen is kept, except when the threshold or the mode
-    /// changed: a border found one way says nothing of the other.
+    /// the detector has seen is kept, except when the threshold, the mode, the
+    /// profile or whether detection is on changed: a border found one way says
+    /// nothing of the other.
     pub fn reconfigure(&mut self, settings: BlackBarSettings, profile: Profile) {
+        // The profile changes what a scan sees (its edge margin), and a border
+        // found before a stretch of `off` or a forced preset is old news.
         let looks_the_same = settings.mode == self.settings.mode
-            && (settings.threshold - self.settings.threshold).abs() <= f64::EPSILON;
+            && (settings.threshold - self.settings.threshold).abs() <= f64::EPSILON
+            && profile == self.profile
+            && (settings.preset == BlackBarPreset::Auto)
+                == (self.settings.preset == BlackBarPreset::Auto);
         self.settings = settings;
         self.profile = profile;
         if looks_the_same {
@@ -90,6 +96,9 @@ impl BarDetector {
     /// and returns the bars in force. A frame that isn't `width × height × 3`
     /// bytes, or has no cells, changes nothing.
     pub fn update(&mut self, width: u16, height: u16, pixels: &[u8], now_us: u64) -> Bars {
+        if Image::new(width, height, pixels).is_none() {
+            return self.bars;
+        }
         if self.size != Some((width, height)) {
             self.hysteresis = Hysteresis::new(Timing::of(self.profile));
             self.size = Some((width, height));

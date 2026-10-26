@@ -25,7 +25,8 @@ pub struct Timing {
     /// "Unknown" is adopted after being seen this long (`unknownFrameCnt`).
     pub unknown_hold: Duration,
     /// Frames that differ from the border being watched are ignored for this
-    /// long (`maxInconsistentCnt`).
+    /// long (`maxInconsistentCnt`): the differing frame that arrives this long
+    /// after the first replaces it, as the 11th does in Hyperion.NG.
     pub tolerance: Duration,
 }
 
@@ -133,7 +134,7 @@ impl Hysteresis {
             }
             Differing::Since(since) => {
                 let lasted = Duration::from_micros(now_us.saturating_sub(since));
-                if lasted <= self.timing.tolerance {
+                if lasted < self.timing.tolerance {
                     true
                 } else {
                     self.differing = Differing::Past;

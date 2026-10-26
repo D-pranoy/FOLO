@@ -253,10 +253,21 @@ fn tiny_frames_are_unknown_in_every_mode() {
             BlackBarMode::Letterbox,
             BlackBarMode::Osd,
         ] {
-            let _ = scan(mode, width, height, &pixels);
+            // No line of the mode fits a side under 3 cells; the letterbox mode
+            // looks at rows only.
+            let rows_only = mode == BlackBarMode::Letterbox;
+            let fits = if rows_only {
+                height >= 3
+            } else {
+                width >= 3 && height >= 3
+            };
+            assert_eq!(
+                scan(mode, width, height, &pixels).unknown,
+                !fits,
+                "{mode:?} on {width} × {height}"
+            );
         }
     }
-    assert!(scan(BlackBarMode::Default, 2, 2, &[255; 12]).unknown);
 }
 
 // The hysteresis, worked by hand ------------------------------------------
@@ -282,15 +293,16 @@ fn a_new_border_waits_out_the_tolerance_and_then_the_hold() {
     // Hyperion.NG.
     hysteresis.update(known(5, 0), 0);
     hysteresis.update(known(5, 0), at(1));
-    // Seen from 1.0 s; 0.4 s are tolerated (the 1.4 s frame still is), the
-    // 1.5 s frame is the first that is watched, and it is adopted 2 s later.
-    for tenths in 10..=14 {
+    // Seen from 1.0 s; the frames less than 0.4 s after that are tolerated (the
+    // 11th differing frame replaces the watched border in Hyperion.NG), the
+    // 1.4 s frame is the first that is watched, and it is adopted 2 s later.
+    for tenths in 10..=13 {
         assert!(!hysteresis.update(known(8, 0), at(tenths)));
     }
-    for tenths in 15..=34 {
+    for tenths in 14..=33 {
         assert!(!hysteresis.update(known(8, 0), at(tenths)), "at {tenths}");
     }
-    assert!(hysteresis.update(known(8, 0), at(35)));
+    assert!(hysteresis.update(known(8, 0), at(34)));
     assert_eq!(hysteresis.current(), known(8, 0));
 }
 
@@ -315,21 +327,21 @@ fn unknown_is_adopted_after_24_seconds_and_a_known_border_after_unknown_at_once(
     let mut hysteresis = Hysteresis::new(Timing::of(Profile::Video));
     hysteresis.update(known(5, 0), 0);
     hysteresis.update(known(5, 0), at(1));
-    // Unknown from 1 s: tolerated until 1.4 s, watched from 1.5 s.
-    for tenths in (10..=15).chain((16..=254).step_by(1)) {
+    // Unknown from 1 s: tolerated until 1.3 s, watched from 1.4 s.
+    for tenths in 10..=253 {
         assert!(
             !hysteresis.update(Border::UNKNOWN, at(tenths)),
             "at {tenths}"
         );
     }
-    assert!(hysteresis.update(Border::UNKNOWN, at(255)));
+    assert!(hysteresis.update(Border::UNKNOWN, at(254)));
     assert!(hysteresis.current().unknown);
     // A border after unknown needs no hold, only the tolerance: the frames
-    // of 25.6 to 26.0 s are tolerated and the one at 26.1 s is adopted.
-    for tenths in 256..=260 {
+    // of 25.5 to 25.8 s are tolerated and the one at 25.9 s is adopted.
+    for tenths in 255..=258 {
         assert!(!hysteresis.update(known(6, 0), at(tenths)), "at {tenths}");
     }
-    assert!(hysteresis.update(known(6, 0), at(261)));
+    assert!(hysteresis.update(known(6, 0), at(259)));
     assert_eq!(hysteresis.current(), known(6, 0));
 }
 
@@ -427,10 +439,11 @@ fn a_subtitle_in_the_bars_fools_the_default_mode_after_the_hold_but_not_letterbo
     feed(&mut default, SIZE, &plain, 0, FRAME, 10);
     let found = feed(&mut default, SIZE, &captioned, 10 * FRAME, FRAME, 100);
     // Rows 5 → the subtitle ends the scan at y = 2, plus the blur: 3. Seen
-    // from frame 0 of this run (0.4 s), tolerated for 0.4 s (11 frames),
-    // watched from frame 11 and adopted 2 s (50 frames) later, at frame 61.
-    assert_eq!(first_at(&found, bars(3, 0)), Some(61));
-    assert_eq!(found[60], bars(6, 0));
+    // from frame 0 of this run, tolerated for 10 frames (the 11th, 0.4 s on,
+    // replaces the watched border), watched from frame 10 and adopted 2 s
+    // (50 frames) later, at frame 60.
+    assert_eq!(first_at(&found, bars(3, 0)), Some(60));
+    assert_eq!(found[59], bars(6, 0));
 
     let mut letterbox = BarDetector::new(auto(BlackBarMode::Letterbox), Profile::Video);
     feed(&mut letterbox, SIZE, &plain, 0, FRAME, 10);
@@ -495,11 +508,11 @@ fn a_fade_to_black_keeps_the_bars_until_24_seconds_of_black() {
     let found = feed(&mut detector, SIZE, &black, start, FRAME, 650);
     // The picture is below the threshold (13) on its lines from step 24, 6
     // frames before the black ones. Unknown differs from then, is tolerated
-    // for 11 frames (0.44 s is the first beyond 0.4 s), and is adopted 600
-    // frames (24 s) after that: at frame 11 + 600 − 6 of the black ones.
+    // for 10 frames (the 11th, 0.4 s on, is watched), and is adopted 600
+    // frames (24 s) after that: at frame 10 + 600 − 6 of the black ones.
     let adopted = first_at(&found, Bars::default()).expect("adopted");
     assert!(found[..adopted].iter().all(|&seen| seen == bars(6, 0)));
-    assert_eq!(adopted, 11 + 600 - 6);
+    assert_eq!(adopted, 10 + 600 - 6);
 }
 
 /// 5 black rows at the top and bottom of the frame, with an on-screen display
@@ -541,14 +554,15 @@ fn noise_below_the_threshold_is_black_and_at_the_threshold_is_not() {
         let found = detector.update(W, H, &pixels, index * FRAME);
         assert_eq!(found, bars(6, 0), "frame {index}");
     }
-    // One pixel of 13 on the centre line, at row 2: one frame of it is a blip.
+    // One pixel of 13 in the bottom bar at row 33, on the centre column the
+    // default mode reads from the bottom: 13 isn't black, so the scan ends
+    // there (2 rows), and one frame of it is a blip the hysteresis ignores.
     let mut blip = letterbox_picture();
-    let at = (2 * usize::from(W) + 32) * 3;
+    let at = (usize::from(H - 3) * usize::from(W) + 32) * 3;
     blip[at] = 13;
-    let found = detector.update(W, H, &blip, 100 * FRAME);
-    assert_eq!(found, bars(6, 0));
-    assert_eq!(scan(BlackBarMode::Default, W, H, &blip).rows, 5);
-    // Down to 12, it's black again and the scan runs on to the picture.
+    assert_eq!(scan(BlackBarMode::Default, W, H, &blip).rows, 2);
+    assert_eq!(detector.update(W, H, &blip, 100 * FRAME), bars(6, 0));
+    // 12 is black: the scan runs on to the picture.
     blip[at] = 12;
     assert_eq!(scan(BlackBarMode::Default, W, H, &blip).rows, 5);
 }
@@ -745,4 +759,141 @@ fn held_and_protected_pictures_carry_the_bars_in_force_and_are_not_looked_at() {
         assert_eq!(other.bars, first.bars);
     }
     assert_eq!(detector.bars(), first.bars);
+}
+
+#[test]
+fn a_border_from_before_off_or_a_forced_preset_is_forgotten() {
+    let mut detector = video();
+    assert_eq!(detector.update(W, H, &letterbox_picture(), 0), bars(6, 0));
+    detector.reconfigure(
+        settings(BlackBarPreset::Off, BlackBarMode::Default),
+        Profile::Video,
+    );
+    detector.update(W, H, &letterbox_picture(), FRAME);
+    detector.reconfigure(auto(BlackBarMode::Default), Profile::Video);
+    // Minutes later a picture without bars: the old border isn't reported.
+    let full = boxed(W, H, 0, W, 0, H);
+    assert_eq!(detector.update(W, H, &full, 600_000_000), Bars::default());
+}
+
+#[test]
+fn a_new_profile_starts_the_detection_over() {
+    let mut detector = video();
+    assert_eq!(detector.update(W, H, &letterbox_picture(), 0), bars(6, 0));
+    detector.reconfigure(auto(BlackBarMode::Default), Profile::Game);
+    let full = boxed(W, H, 0, W, 0, H);
+    assert_eq!(detector.update(W, H, &full, FRAME), Bars::default());
+}
+
+#[test]
+fn a_malformed_frame_of_another_size_changes_nothing() {
+    let mut detector = video();
+    assert_eq!(detector.update(W, H, &letterbox_picture(), 0), bars(6, 0));
+    assert_eq!(detector.update(32, 18, &[0; 10], FRAME), bars(6, 0));
+    // The detector still has the border it watched: a differing frame is
+    // only tolerated.
+    let wide = boxed(W, H, 0, W, 8, 28);
+    assert_eq!(detector.update(W, H, &wide, 2 * FRAME), bars(6, 0));
+}
+
+/// A forced preset on a frame too small for it still leaves a row and a column.
+#[test]
+fn a_forced_preset_is_cut_to_leave_a_row_and_a_column() {
+    let mut cinema = BarDetector::new(
+        settings(BlackBarPreset::Cinema, BlackBarMode::Default),
+        Profile::Video,
+    );
+    let found = cinema.update(1, 10, &[0; 30], 0);
+    assert!(found.fit(10, 10) && found.fit(1, 10));
+    // The picture is 21:9 of a 1-wide frame: 0 rows tall, so 5 rows on each
+    // side would be asked of a 10-row frame; 4 leave a row.
+    assert_eq!(found, bars(4, 0));
+}
+
+/// Hyperion.NG's `updateBorder`, as written there with its frame counts, for
+/// the differential test below: an oracle independent of the time-based port.
+struct FrameCountPort {
+    current: Border,
+    previous: Border,
+    consistent: u32,
+    inconsistent: u32,
+}
+
+impl FrameCountPort {
+    const UNKNOWN_SWITCH: u32 = 600;
+    const BORDER_SWITCH: u32 = 50;
+    const MAX_INCONSISTENT: u32 = 10;
+
+    fn new() -> Self {
+        Self {
+            current: Border::UNKNOWN,
+            previous: Border::UNKNOWN,
+            consistent: 0,
+            inconsistent: 10,
+        }
+    }
+
+    fn update(&mut self, new: Border) {
+        if new.same_as(&self.previous) {
+            self.consistent += 1;
+            self.inconsistent = 0;
+        } else {
+            self.inconsistent += 1;
+            if self.inconsistent <= Self::MAX_INCONSISTENT {
+                return;
+            }
+            self.previous = new;
+            self.consistent = 0;
+        }
+        if self.current.same_as(&new) {
+            self.inconsistent = 0;
+            return;
+        }
+        if new.unknown {
+            if self.consistent == Self::UNKNOWN_SWITCH {
+                self.current = new;
+            }
+        } else if self.current.unknown || self.consistent == Self::BORDER_SWITCH {
+            self.current = new;
+        }
+    }
+}
+
+/// At 25 frames a second, on runs of 11 frames or more (shorter ones are
+/// blips, which Hyperion.NG leaves out of its consistent count and the time
+/// port counts as time), both hold the same border after every frame.
+#[test]
+fn the_time_port_matches_a_frame_count_port_of_update_border_at_25_fps() {
+    let borders = [
+        known(5, 0),
+        known(8, 0),
+        known(0, 6),
+        known(0, 0),
+        Border::UNKNOWN,
+    ];
+    let mut state = 7u32;
+    let mut next = move |modulus: u32| {
+        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (state >> 8) % modulus
+    };
+    for _ in 0..20 {
+        let mut oracle = FrameCountPort::new();
+        let mut port = Hysteresis::new(Timing::of(Profile::Video));
+        let mut time_us = 0;
+        for _ in 0..12 {
+            let border = borders[usize::try_from(next(5)).unwrap()];
+            let length = 11 + next(if border.unknown { 700 } else { 140 });
+            for _ in 0..length {
+                oracle.update(border);
+                port.update(border, time_us);
+                assert!(
+                    oracle.current.same_as(&port.current()),
+                    "{border:?} at {time_us} µs: {:?} against {:?}",
+                    oracle.current,
+                    port.current()
+                );
+                time_us += FRAME;
+            }
+        }
+    }
 }
