@@ -70,6 +70,32 @@ fn later_post(runbook: &'static str) -> MethodRouter<Arc<Node>> {
     post(later(runbook))
 }
 
+/// The content library's paths (RB-09), apart for `router`'s length.
+fn library_routes() -> Router<Arc<Node>> {
+    let v1 = |path: &str| format!("/api/v1{path}");
+    Router::new()
+        .route(
+            &v1("/library/packs"),
+            later_get("RB-09").post(later("RB-09")),
+        )
+        .route(
+            &v1("/library/packs/{pack}"),
+            later_get("RB-09").delete(later("RB-09")),
+        )
+        .route(&v1("/library/packs/{pack}/export"), later_get("RB-09"))
+        .route(
+            &v1("/library/packs/{pack}/items/{type}/{item}"),
+            later_get("RB-09")
+                .put(later("RB-09"))
+                .delete(later("RB-09")),
+        )
+        .route(
+            &v1("/library/packs/{pack}/previews/{file}"),
+            later_get("RB-09"),
+        )
+        .route(&v1("/library/items"), later_get("RB-09"))
+}
+
 /// Every path of specs/openapi.yaml, with the methods it lists.
 pub fn router(node: Arc<Node>) -> Router {
     let v1 = |path: &str| format!("/api/v1{path}");
@@ -128,26 +154,7 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/sources/join-requests/{id}/reject"),
             later_post("RB-16"),
         )
-        .route(
-            &v1("/library/packs"),
-            later_get("RB-09").post(later("RB-09")),
-        )
-        .route(
-            &v1("/library/packs/{pack}"),
-            later_get("RB-09").delete(later("RB-09")),
-        )
-        .route(&v1("/library/packs/{pack}/export"), later_get("RB-09"))
-        .route(
-            &v1("/library/packs/{pack}/items/{type}/{item}"),
-            later_get("RB-09")
-                .put(later("RB-09"))
-                .delete(later("RB-09")),
-        )
-        .route(
-            &v1("/library/packs/{pack}/previews/{file}"),
-            later_get("RB-09"),
-        )
-        .route(&v1("/library/items"), later_get("RB-09"))
+        .merge(library_routes())
         .route(&v1("/clients"), later_get("RB-15").post(later("RB-15")))
         .route(
             &v1("/clients/{id}"),
