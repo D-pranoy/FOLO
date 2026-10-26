@@ -23,6 +23,10 @@
           "yaw": 0.0,
           "pitch": 0.0,
           "roll": 0.0
+        },
+        "size": {
+          "width": 1.2,
+          "height": 0.68
         }
       },
       "targets": [
@@ -83,7 +87,13 @@
             "brightness_min": 0.0,
             "brightness_max": 1.0,
             "color_order": "rgb",
-            "latency_ms": 0.0
+            "latency_ms": 0.0,
+            "white": "accurate",
+            "onoff": {
+              "threshold": 0.5,
+              "hysteresis": 0.1,
+              "min_interval_ms": 1000.0
+            }
           }
         }
       ],
@@ -151,7 +161,8 @@
         "on_pause": false
       },
       "beat_offset_ms": -40,
-      "album_colors": true
+      "album_colors": true,
+      "active": true
     }
   ]
 }
