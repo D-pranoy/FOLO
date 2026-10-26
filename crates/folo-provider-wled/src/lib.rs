@@ -8,7 +8,7 @@
 //!   of devices, for these tests and the node's
 //!
 //! Gamma is not applied here: FOLO's adapter chain does it before the frame reaches a provider.
-//! Nothing here is registered in a node; the node's controller output wires kinds in.
+//! The node registers the kind (`folo-node`'s `providers::built_in`).
 
 mod admin;
 mod api;

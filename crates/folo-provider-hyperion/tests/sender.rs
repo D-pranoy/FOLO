@@ -228,3 +228,24 @@ async fn the_replies_are_read_so_a_long_run_never_stalls() {
         .expect("sending never blocks on unread replies");
     provider.disconnect().await;
 }
+
+/// A target no instance number names (the migration's `strip`) drives the default instance 0,
+/// which is what the legacy studio drove.
+#[tokio::test(start_paused = true)]
+async fn a_target_named_by_no_instance_number_drives_instance_zero() {
+    let fake = FakeHyperion::start().await;
+    let provider = provider(&fake);
+    let sender = start_sender(&provider, &["strip"]);
+    sender.submit(folo_provider::ElementFrame::new(
+        0,
+        vec![output("strip", &[[4.0, 5.0, 6.0]; 2])],
+    ));
+    pass(ms(300)).await;
+    let sent = fake.color_frames();
+    assert!(!sent.is_empty());
+    assert!(
+        sent.iter()
+            .all(|f| f.instance == 0 && f.levels() == [4, 5, 6, 4, 5, 6])
+    );
+    sender.shutdown().await;
+}

@@ -167,13 +167,7 @@ impl Home {
         instance["settings"]["port"] = json!(hyperion.port());
         instance["settings"]["origin"] = json!(origin);
         std::fs::write(&providers_file, providers.to_string()).unwrap();
-        // The migration names the target `strip`, and Hyperion's targets are its instance
-        // numbers (hyperion.md): the legacy studio drove instance 0
-        let zones_file = path.join("zones.json");
-        let zones = std::fs::read_to_string(&zones_file)
-            .unwrap()
-            .replace("\"strip\"", "\"0\"");
-        std::fs::write(&zones_file, zones).unwrap();
+        // The migration's target `strip` is left as it is: it drives Hyperion instance 0
         Self(path)
     }
 }
