@@ -692,6 +692,9 @@ async fn empty_ids_in_paths(node: &Running) {
         assert_eq!(answer.status, 404, "{method} {path}");
         assert_eq!(answer.code(), "not_found", "{method} {path}");
     }
+    // Not JSON is still a 404 (the resource check comes before the body's)
+    let raw = request_text(node.port, "POST", "/api/v1/zones//identify", &[], Some("x"));
+    assert_eq!(send(node.port, &raw).status, 404);
     // The path without the segment is another resource: the zone `identify`
     let other = node
         .send_json("POST", "/api/v1/zones/identify", &json!({}))
