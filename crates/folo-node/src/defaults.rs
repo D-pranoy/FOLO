@@ -14,18 +14,25 @@ const CANVAS_CELLS: (u64, u64) = (64, 36);
 /// The most surfaces a zone holds (its schema's `maxItems`).
 const MAX_SURFACES: usize = 64;
 /// The most mappings a zone holds (its schema's `maxItems`).
+/// The longest surface role (its schema's `maxLength`).
+const MAX_ROLE: usize = 64;
 const MAX_MAPPINGS: usize = 512;
 
 /// Fills in `zone`, the clamped form of `sent`, with the defaults its `type`
 /// calls for. `surfaces` is filled in only when `sent` has no such key, and
 /// likewise `mappings`, so whatever the client sent stays as sent.
 pub fn apply(sent: &Value, zone: &mut Value, new_id: NewId) {
-    if sent.get("surfaces").is_none() {
+    if omitted(sent, "surfaces") {
         zone["surfaces"] = Value::Array(surfaces(zone, new_id));
     }
-    if sent.get("mappings").is_none() {
+    if omitted(sent, "mappings") {
         zone["mappings"] = Value::Array(mappings(zone, new_id));
     }
+}
+
+/// Whether the client left `key` out; a `null` is as good as nothing.
+fn omitted(sent: &Value, key: &str) -> bool {
+    sent.get(key).is_none_or(Value::is_null)
 }
 
 fn number(value: &Value, fallback: f64) -> f64 {
@@ -125,8 +132,8 @@ fn surfaces(zone: &Value, new_id: NewId) -> Vec<Value> {
         .flatten()
         .filter(|t| is_line(t))
     {
-        if all.len() >= MAX_SURFACES {
-            break;
+        if all.len() >= MAX_SURFACES || strip_role(target).len() > MAX_ROLE {
+            continue;
         }
         all.push(json!({
             "id": new_id(),
@@ -159,7 +166,9 @@ fn mappings(zone: &Value, new_id: NewId) -> Vec<Value> {
     let mut all = Vec::new();
     for target in zone["targets"].as_array().into_iter().flatten() {
         let id = target["id"].clone();
-        let mapping = if is_line(target) {
+        let mapping = if target["kind"] == "display" {
+            None // a display has no positions to map onto
+        } else if is_line(target) {
             let count = target["geometry"]["count"].as_u64().unwrap_or(1);
             surface_with_role(zone, &strip_role(target)).map(|surface| {
                 json!({"surface": surface, "target": id, "method": "manual",
@@ -258,16 +267,26 @@ mod tests {
 
     #[test]
     fn the_orientation_turns_the_screen_about_its_centre() {
-        let mut zone = zone("screen", "tv", &[]);
-        zone["reference"]["orientation"]["yaw"] = json!(90.0);
-        apply(&json!({}), &mut zone, &mut ids());
-        let plane = &zone["surfaces"][1]["placement"]["plane"];
+        let mut first = zone("screen", "tv", &[]);
+        first["reference"]["orientation"]["yaw"] = json!(90.0);
+        apply(&json!({}), &mut first, &mut ids());
+        let plane = &first["surfaces"][1]["placement"]["plane"];
         assert_eq!(plane["u"], json!({"x": 0.0, "y": 1.2, "z": 0.0}));
         assert_eq!(plane["origin"], json!({"x": 0.0, "y": -0.6, "z": 0.34}));
         assert_eq!(
             rotate([1.0, 0.0, 0.0], [0.0, 90.0, 0.0]),
             [1.0, 0.0, 0.0].map(|v: f64| v)
         );
+        for (angle, key, field, expected) in [
+            (90.0, "pitch", "v", json!({"x": 0.0, "y": 0.68, "z": 0.0})),
+            (90.0, "roll", "u", json!({"x": 0.0, "y": 0.0, "z": -1.2})),
+        ] {
+            let mut turned = zone("screen", "tv", &[]);
+            turned["reference"]["orientation"][key] = json!(angle);
+            apply(&json!({}), &mut turned, &mut ids());
+            let plane = &turned["surfaces"][1]["placement"]["plane"];
+            assert_eq!(plane[field], expected, "{key}");
+        }
         let up = rotate([0.0, 1.0, 0.0], [0.0, 90.0, 0.0]);
         assert!(
             (up[2] - 1.0).abs() < 1e-9,
@@ -317,6 +336,19 @@ mod tests {
             assert_eq!(mapping["kernel"], json!({"type": "area", "radius": 0.5}));
             assert_eq!(mapping["edge"], "clamp");
         }
+    }
+
+    #[test]
+    fn a_null_counts_as_left_out_and_a_long_role_gets_no_strip() {
+        let long = "x".repeat(60);
+        let mut made = zone(
+            "room",
+            "none",
+            &[line(&long, 5), json!({"id": "d", "kind": "display"})],
+        );
+        apply(&json!({"surfaces": null}), &mut made, &mut ids());
+        assert_eq!(roles(&made), ["canvas.room"]);
+        assert_eq!(made["mappings"], json!([]));
     }
 
     #[test]

@@ -76,7 +76,7 @@ Zone types create default surfaces with **roles**, which scenes bind to ([conten
 
 ### Defaults
 
-Defaults are applied only when a zone is created through the API or a target is added to one, **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
+Defaults are applied only when a zone is created through the API (a target added to an existing zone is not covered yet: the API has no such call apart from replacing the zone, and replacing never applies defaults), **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
 - `canvas.room`: 64 × 36 cells on the floor plane, covering the room, with **row 0 on the +y side**: the plane's origin is the corner at `(−x/2, +y/2, 0)`, with `u` along +x and `v` along −y.
 - `canvas.screen` (zones of type `screen` whose reference is a TV): 64 × 36 cells on the TV's plane, which comes from the reference object. At orientation 0 the TV faces the room: its centre is `reference.position`, its screen's normal points towards −y, and a viewer looking along +y sees +x to the right. Its rectangle has the origin corner at the top left as the viewer sees it, `(−w/2, 0, +h/2)` from the centre, with `u = (w, 0, 0)` and `v = (0, 0, −h)`, `w` and `h` being the reference's `size`. `orientation` then turns the rectangle about its centre: `yaw` about +z (counter-clockwise seen from above), then `pitch` about the TV's own x axis, then `roll` about its own y axis, in degrees. A zone whose reference isn't a TV has no `canvas.screen`. The default `reference.position` is `(0, 0, 0)`, the centre of the floor.
 - `strip.<target>`: one strip surface per line target, with the target's element count as its resolution.
@@ -87,7 +87,7 @@ The node applies them in `POST /zones`, to each of `surfaces` and `mappings` the
 - Surface and mapping ids are generated like any missing id. The roles are what scenes bind to.
 - The `canvas.room` plane is as wide and deep as the zone's `bounds` (`u = (x, 0, 0)`, `v = (0, −y, 0)`); the `canvas.screen` plane is the TV's rectangle turned by `Rz(yaw) · Rx(pitch) · Ry(roll)`, right-handed, about its centre.
 - A `strip.<target>` is unplaced (`placement` `none`), and a line target's manual mapping covers all its elements (`geometry.count`).
-- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the targets past it unmapped. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
+- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the line targets past it unmapped. A line target whose `strip.<id>` role would pass 64 characters gets no strip, and a `display` target no mapping. A `null` counts as left out. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
 
 ## Mappings and projection
 
