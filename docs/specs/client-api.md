@@ -105,6 +105,31 @@ Until then:
 - **`/effects`:** the built-in effects as the contract lists them (`x-folo-effects` in the show schema), each `params_schema` with its references resolved so it stands alone ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D3).
 - **`/system/logs`:** the newest `lines` records of the node's log (`folo.log` and its rotated files), oldest first. `source` is `folo-source` for the effect engine's records and `node` for the node's own; the levels `warning` and `critical` read `warn` and `error`.
 
+### Zone activation
+
+Decided in [ADR-0036](../decisions/ADR-0036-controller-output.md) D3 to D6, with the rules in the [spatial model](../architecture/spatial-model.md#zone-activation-rules). Both endpoints answer 200 with a `ZoneActivation`: the zone, whether it is active now, and the active zones it conflicts with.
+- **`POST /zones/{id}/activate`** activates the zone when none of its targets is driven by another active zone.
+  - **With conflicts** and without `take_over`, the answer is `{active: false, conflicts: [...]}`, and nothing changes: the client asks the user, then sends the request again with `take_over: true`.
+  - With `take_over: true`, the conflicting zones are deactivated entirely and the zone is activated.
+  - Activating an active zone answers `{active: true, conflicts: []}`.
+- **`POST /zones/{id}/deactivate`** deactivates the zone, and releases its targets that no other active zone drives.
+- The state is the zone's `active` flag in `zones.json`: each change is a write, gives the document its next revision and sends `config_changed`.
+
+### Test patterns
+
+`POST /zones/{id}/identify` and `/test` start a pattern on the zone's real lights and answer `202`, with the pattern running for `seconds` (1–60, default 5). `target` limits it to one of the zone's targets; empty means all of them.
+- `identify`: white at 25%, pulsing at 1 Hz.
+- `sweep`: one lit element moving along the target's elements in their order.
+- `position`: each element's x, y and z as red, green and blue.
+- A pattern replaces what its targets show, goes through the adapters (the [flash limiter](../architecture/capabilities.md#flash-limiter) included), and ends by itself.
+- A target that **another active zone drives** is refused with 409 `target_busy`. An inactive zone's targets can be tested.
+
+### Providers
+
+- **Discovery:** `POST /providers/discover` answers the devices every registered provider kind found, as a list of `DiscoveredDevice`s: empty until a provider arrives. It changes no configuration ([providers](../architecture/providers.md#describe-discover-and-administration)).
+- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`.
+- **States:** `ProviderStatus.state` here and `ProviderLive.state` on the live channel are two lists for one thing, mapped as in [providers](../architecture/providers.md#states): `stopped` is `off`, `connecting` is `disconnected`, `connected` and `error` are the same. A kind without an implementation shows `off`, with the message "arrives with RB-NN".
+
 ### Requests to sources
 
 The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` through the source's link, with `inputs.list`, `media.art` and `media.control` ([source link](source-link.md#controller--source-json-rpc-methods)). It answers `/media` from the source's latest `media` notification.
@@ -123,14 +148,14 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
   | Topic | Sent as |
   |---|---|
   | `status` | `status` messages: every source's state, every zone and every provider |
-  | `zone:<id>` | `status` messages: that zone (reactive state: ambient fade 0–1, seconds of silence) |
+  | `zone:<id>` | `status` messages: that zone (whether it is active, and its reactive state: ambient fade 0–1, seconds of silence) |
   | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) |
   | `beat:<source>` | `status` messages: the source's beat (BPM, confidence, locked, phase, bar beat) |
   | `media:<source>` | `status` messages: the source's now playing |
   | `levels:<source>` | `levels` messages, one per surface of the source |
   | `spectrum:<source>` | signal frames: the source's [spectrum](source-link.md#signal-frames) |
   | `surface:<id>` | surface frames: the surface's pixels |
-  | `target:<id>` | surface frames: the target's element colours |
+  | `target:<id>` | surface frames: the target's projected element colours after the ambient light and before the adapters (`rgb8`, one row of as many cells as the target has elements) |
 
 - **Server → client:**
   - JSON messages: `status`, `levels`, `config_changed {document, revision}`, `event` (job progress, update states), and `subscribed`, which acknowledges a subscription and gives each binary topic its frame index.
