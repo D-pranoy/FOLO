@@ -89,6 +89,18 @@ pub trait ElementOutput: Send + Sync {
     /// Starts realtime output for a target: Hue's entertainment stream, WLED's realtime mode.
     /// Called when an active zone, or a test pattern, first drives the target, and again after
     /// the connection was lost. A provider that needs nothing returns at once.
+    ///
+    /// - **Per target, in turn:** starts and releases are per target and one after the other,
+    ///   even when the device's realtime output is device-wide (WLED's one session, a Hue
+    ///   bridge's one stream). Such a provider counts them: it begins on the first target
+    ///   started and ends on the last one released, and a Hue provider that must rebuild its
+    ///   area when the set changes does that on the count, not once per target.
+    /// - **Failures:** `Unreachable` means the connection is the trouble, and the instance
+    ///   reconnects. `Refused` or `Failed` (an unknown target, a bridge in use by another app)
+    ///   is about this target only: the others carry on, and the sender tries it again later.
+    /// - **Cancelled or repeated:** a shutdown may cancel this call, and after a lost connection
+    ///   it may be called for a target that already runs. It must cope with both, and the
+    ///   target is released afterwards either way.
     fn start(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>>;
 
     /// Sends the colours of the targets in the frame, which holds only those to send now.
@@ -105,7 +117,9 @@ pub trait ElementOutput: Send + Sync {
 
     /// Gives one target's lights back: clears the priority (Hyperion), ends realtime (WLED),
     /// closes the stream (Hue). Called when nothing drives the target any more, and for every
-    /// started target when the instance stops.
+    /// started target when the instance stops, including one whose `start` was cancelled or
+    /// refused: it must be harmless for a target that isn't running. On a device-wide output,
+    /// only the last target's release ends the output (see [`start`](Self::start)).
     fn release(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>>;
 }
 

@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use folo_protocol::generated::{
     DiscoveredDevice, ProviderInstance, ProviderInstanceKind, ProviderSecrets,
@@ -28,13 +29,25 @@ pub enum Event {
     Admin { action: String, method: AdminMethod },
 }
 
+/// A call of the provider that a test can slow down.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum Op {
+    Connect,
+    Describe,
+    Disconnect,
+    Start,
+    Send,
+    Release,
+}
+
 #[derive(Default)]
 struct State {
+    delays: HashMap<Op, Duration>,
+    start_error: Option<ProviderError>,
     events: Vec<Event>,
     described: Vec<DescribedTarget>,
     connect_failures: u32,
     fail_sends: bool,
-    fail_starts: bool,
     admin: HashMap<String, Value>,
 }
 
@@ -119,17 +132,39 @@ impl RecordingProvider {
         self.lock().fail_sends = fail;
     }
 
-    /// Whether `start` fails.
+    /// Whether `start` fails with a refusal, which is about its target only.
     pub fn set_fail_starts(&self, fail: bool) {
-        self.lock().fail_starts = fail;
+        self.set_start_error(
+            fail.then(|| ProviderError::Refused("the recording provider won't start".to_owned())),
+        );
+    }
+
+    /// What `start` fails with, or `None` for it to work.
+    pub fn set_start_error(&self, error: Option<ProviderError>) {
+        self.lock().start_error = error;
+    }
+
+    /// Makes a call take this long (on Tokio's clock, so paused tests see it). A very long
+    /// delay hangs it. `Release` is recorded when it finishes, so a release cancelled before
+    /// that isn't recorded; `Start` is recorded when it begins.
+    pub fn set_delay(&self, op: Op, delay: Duration) {
+        self.lock().delays.insert(op, delay);
+    }
+
+    async fn pause(&self, op: Op) {
+        let delay = self.lock().delays.get(&op).copied();
+        if let Some(delay) = delay {
+            tokio::time::sleep(delay).await;
+        }
     }
 }
 
 impl Provider for RecordingProvider {
     fn connect(&self) -> BoxFuture<'_, Result<(), ProviderError>> {
         Box::pin(async move {
+            self.record(Event::Connect);
+            self.pause(Op::Connect).await;
             let mut state = self.lock();
-            state.events.push(Event::Connect);
             if state.connect_failures > 0 {
                 state.connect_failures -= 1;
                 return Err(ProviderError::Unreachable(
@@ -143,12 +178,16 @@ impl Provider for RecordingProvider {
     fn describe(&self) -> BoxFuture<'_, Result<Vec<DescribedTarget>, ProviderError>> {
         Box::pin(async move {
             self.record(Event::Describe);
+            self.pause(Op::Describe).await;
             Ok(self.lock().described.clone())
         })
     }
 
     fn disconnect(&self) -> BoxFuture<'_, ()> {
-        Box::pin(async move { self.record(Event::Disconnect) })
+        Box::pin(async move {
+            self.pause(Op::Disconnect).await;
+            self.record(Event::Disconnect);
+        })
     }
 
     fn admin(
@@ -185,19 +224,18 @@ impl ElementOutput for RecordingProvider {
     fn start(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>> {
         let target = target.to_owned();
         Box::pin(async move {
-            let mut state = self.lock();
-            state.events.push(Event::Start(target));
-            if state.fail_starts {
-                return Err(ProviderError::Refused(
-                    "the recording provider won't start".to_owned(),
-                ));
+            self.record(Event::Start(target));
+            self.pause(Op::Start).await;
+            match self.lock().start_error.clone() {
+                Some(error) => Err(error),
+                None => Ok(()),
             }
-            Ok(())
         })
     }
 
     fn send<'a>(&'a self, frame: &'a ElementFrame) -> BoxFuture<'a, Result<(), ProviderError>> {
         Box::pin(async move {
+            self.pause(Op::Send).await;
             let mut state = self.lock();
             if state.fail_sends {
                 return Err(ProviderError::Unreachable(
@@ -220,6 +258,7 @@ impl ElementOutput for RecordingProvider {
     fn release(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>> {
         let target = target.to_owned();
         Box::pin(async move {
+            self.pause(Op::Release).await;
             self.record(Event::Release(target));
             Ok(())
         })
