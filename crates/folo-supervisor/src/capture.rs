@@ -129,14 +129,26 @@ impl CaptureCommand {
     }
 }
 
-/// `systemd-run` on the `PATH` on Linux; nothing elsewhere.
+/// `systemd-run` on the `PATH` on Linux, if it can make a scope for this user
+/// (no reachable user manager makes it fail, and a direct start still works).
 fn find_scope_launcher() -> Option<PathBuf> {
     if !cfg!(target_os = "linux") {
         return None;
     }
-    std::env::split_paths(&std::env::var_os("PATH")?)
+    let launcher = std::env::split_paths(&std::env::var_os("PATH")?)
         .map(|folder| folder.join("systemd-run"))
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| candidate.is_file())?;
+    let works = std::process::Command::new(&launcher)
+        .args(["--user", "--scope", "--quiet", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !works {
+        log::warn!("systemd-run can't make a user scope here");
+    }
+    works.then_some(launcher)
 }
 
 /// Why `screens()` has no list.
@@ -1136,6 +1148,10 @@ async fn stop(shared: &Shared, child: &mut Child) {
     }
 }
 
+/// The missing-launcher warning is logged once, not at every restart.
+#[cfg(target_os = "linux")]
+static WARNED: std::sync::Once = std::sync::Once::new();
+
 /// How the agent is started on this platform. `systemd-run --scope` replaces
 /// itself with the agent once the scope exists, so the child is the agent and
 /// it inherits the environment that carries the link's token.
@@ -1146,10 +1162,12 @@ fn launch_plan(command: &CaptureCommand) -> (&Path, Vec<OsString>) {
             let random = launch_token();
             return command.launch(&folo_capture_linux::appid::transient_scope_name(&random));
         }
-        log::warn!(
-            "systemd-run isn't available; starting the capture agent outside a scope, so the \
+        WARNED.call_once(|| {
+            log::warn!(
+                "systemd-run isn't available; starting the capture agent outside a scope, so the \
              desktop portal may not know it (ADR-0037 D16)"
-        );
+            );
+        });
     }
     (&command.program, command.run_args.clone())
 }
