@@ -1,6 +1,6 @@
 # WLED
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (RB-12 steps 1–8 built on fakes; live verification pending)
 
 Decided in [ADR-0012](../decisions/ADR-0012-wled-provider.md). Facts come from the WLED source (v16.0.1 stable and main, `wled00/`) and the WLED documentation.
 
@@ -57,7 +57,7 @@ PWM and relay outputs count as **one LED** each.
   - a 2D matrix as a grid target
   - PWM and relay outputs as point targets with the colour model of their bus type
 - **Main-segment-only mode:** detected through `info.liveseg`; indices are made relative to the main segment.
-- **Release:** a DNRGB packet with timeout 0, or let the timeout run out.
+- **Release:** a DNRGB packet with timeout 0, sent when the last started target is released (see [Implementation](#implementation)).
 
 ## Basic administration
 
@@ -68,6 +68,43 @@ PWM and relay outputs count as **one LED** each.
 - open the device's own UI
 
 The effect editor, presets and playlists, and firmware flashing stay in WLED.
+
+## Implementation
+
+The provider is the crate `crates/folo-provider-wled` (RB-12). The choices below are the ones the sections above leave open.
+
+**Describe.** Target ids are `strip`, `seg:<id>`, `matrix` and `bus:<index>` (the bus's place in `hw.led.ins`).
+- **Strip:** the digital buses' LEDs, from the first bus's start to the last one's end. A device with only PWM or relay outputs has no strip, and its segments aren't offered. A device whose settings can't be read (PIN) offers the strip from `leds.count` alone, as RGB, with a warning.
+- **Colour model:** from `lc` (`seg[].lc` for a segment). RGB with a CCT bit is `rgbcct`; RGB with white is `rgbw` only when the **white channel is honoured**; RGB is `rgb`; CCT alone is `cct`; white alone is `dimmer`; `lc = 0` is `onoff`. Point targets take the model of their bus type (40 on/off, 41 dimmer, 42 CCT, 43 RGB, 44 RGBW, 45 and 46 RGB+CCT).
+- **White honoured:** the global auto-white mode (`hw.led.rgbwm`, unless it is 255) or each bus's own (`ins[].rgbwm`) is Manual (0) or Dual (3). Else white goes unsent and the packets are RGB.
+- **CCT:** realtime data has no colour-temperature channel. A CCT, RGB+CCT or dimmer element sends its brightness as the white byte (as grey RGB when white isn't honoured, which every auto-white mode turns into white); its kelvin is dropped, and WLED uses the segment's own `cct`.
+- **Matrix:** one grid target (`matrix`, `w × h` LEDs in row order) with its shape as a layout. Segments are rectangles there, not LED ranges, so they aren't offered.
+- **Main segment only:** only that segment is a target, indices are relative to its first LED, and a warning says the rest can't be driven.
+- **Warnings** (logged on each describe, and in the `info` action's `warnings`): grouping or spacing on a segment, a DMX start address other than 1, a main-segment-only device, and unreadable settings. The provider interface carries no warnings with a target.
+- **Rate:** the targets' `max_rate_hz` is 66.
+
+**Output.**
+- **DDP:** the sequence counts packets, 1–15 and back to 1. One `send` is one frame: only its last packet has the push flag, whichever targets it covers.
+- **DNRGB(W):** the timeout byte is the instance's `timeout_s`, kept to 1–254, since 255 would never time out. WLED ignores a packet of one pixel, so a lone trailing pixel is paired with the one before it, and a frame of a single pixel goes out with a copy of itself on the next LED. Prefer DDP for point targets. The UDP port is `info.udpport`.
+- **Release:** both transports end realtime with a DNRGB packet of timeout 0, sent when the last started target is released. Starts and releases are counted per target, and a release of a target that isn't running sends nothing. If the packet is lost, the device's timeout ends the output.
+- **Refresh:** the provider's keepalive is 1 s, which the sender applies to unchanged frames.
+
+**Discovery.** mDNS `_wled._tcp` (the `mdns-sd` crate, a 3 s window); a device's id is the TXT record's `mac`, else its instance name; the address is the first IPv4 address, with `:port` when not 80. Manual entry is `probe`, which asks `/json/info` and accepts a device whose `brand` is WLED.
+
+**Administration** (`/providers/{id}/admin/{action}`). A `GET` states the change (`summary` and `changes`) and a `POST` makes exactly that, answering with `changed` and `current`.
+
+| Action | Body | Request made |
+|---|---|---|
+| `info` | | none: name, version, MAC, LEDs, segments, realtime settings, targets, warnings, UI URL |
+| `power` | `{"on": bool}` | `POST /json/state` `{"on"}` |
+| `brightness` | `{"bri": 0–255}` | `POST /json/state` `{"bri"}` |
+| `rename` | `{"name": "…"}` (1–32 characters) | `POST /json/cfg` `{"id": {"name"}}` |
+| `segments` | `{"op": "create"\|"edit"\|"delete", "id", "start", "stop", "name", "grp", "spc", "on", "bri"}` | `POST /json/state` `{"seg": [...]}`; a delete sends `stop: 0`; a create takes the lowest free id |
+| `realtime` | | `POST /json/cfg` `{"if": {"live": {...}}}` with what differs of: `en` on, `timeout` the instance's `timeout_s` in tenths of a second, `maxbri` on, `no-gc` on (the device's realtime gamma off) |
+| `reboot` | | `POST /json/state` `{"rb": true}` |
+| `ui` | | none: `http://<host>/` |
+
+The device PIN (`secrets.json`) goes in the body of settings requests as `pin`, as WLED reads it; reading `/json/cfg` unlocks the device with it first when needed. The `current` of the realtime action also shows `main_segment_only` and the DMX start address, which the fix leaves alone.
 
 ## Sources
 
