@@ -1,7 +1,8 @@
 # CI v0 (RB-01 step 9 and 10, ADR-0019): Python and Rust checks on Windows
-# and Linux, cargo-deny, the contract checks (RB-02 step 6) and the packaging
-# smoke tests. Actions are pinned by commit (the comment gives the release);
-# the token is read-only.
+# and Linux, cargo-deny, the contract checks (RB-02 step 6), the packaging
+# smoke tests and the Linux capture backend's tests (RB-14, ADR-0037 D22).
+# Actions are pinned by commit (the comment gives the release); the token is
+# read-only.
 name: CI
 
 on:
@@ -101,6 +102,33 @@ jobs:
       - run: cargo test --locked
       - name: The live messages the node sent in its tests against AsyncAPI (RB-07 step 7)
         run: uv run python scripts/conformance.py messages target/tmp/live-messages
+
+  # The Linux capture backend needs PipeWire 1.0's development files to build
+  # (Ubuntu 24.04 has them, 22.04's 0.3.48 is too old for the `pipewire` crate),
+  # so it is a feature that the Ubuntu 22.04 jobs above leave off: they still
+  # build the whole workspace. Here the feature is on, and its tests run against
+  # a real PipeWire daemon and a fake ScreenCast portal on a private session bus.
+  capture-linux:
+    name: Linux capture (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: PipeWire, its session manager, dbus-daemon and the headers to build against
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pipewire wireplumber dbus-daemon libpipewire-0.3-dev libspa-0.2-dev libclang-dev pkg-config
+          pipewire --version
+          dbus-daemon --version
+          echo "FOLO_PIPEWIRE_TESTS=1" >> "$GITHUB_ENV"
+      - run: cargo clippy -p folo-capture-core -p folo-capture-linux -p folo-capture --all-targets --all-features --locked -- -D warnings
+      - name: Tests (the portal backend against a fake portal and a real PipeWire daemon)
+        run: cargo test -p folo-capture-core -p folo-capture-linux -p folo-capture --all-features --locked
 
   cargo-deny:
     name: cargo-deny
