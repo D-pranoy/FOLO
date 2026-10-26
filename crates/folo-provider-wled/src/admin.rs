@@ -15,8 +15,8 @@ use crate::device::{Device, RealtimeSettings, Segment};
 use crate::reader::{CFG_PATH, STATE_PATH, read_device};
 use crate::settings::Config;
 
-/// The longest name WLED keeps (its buffer is 33 bytes).
-const NAME_MAX_CHARS: usize = 32;
+/// The longest name WLED keeps, in bytes (its buffer is 33).
+const NAME_MAX_BYTES: usize = 32;
 
 /// Segments a device has room for when it doesn't say.
 const SEGMENTS_DEFAULT_MAX: u32 = 32;
@@ -55,6 +55,21 @@ struct Plan {
     summary: String,
     changes: Vec<Value>,
     request: Option<Request>,
+}
+
+/// Adds to `into` what `from` has and `into` hasn't, at any depth.
+fn merge_missing(into: &mut Value, from: &Value) {
+    let (Some(into), Some(from)) = (into.as_object_mut(), from.as_object()) else {
+        return;
+    };
+    for (key, value) in from {
+        match into.get_mut(key) {
+            Some(existing) => merge_missing(existing, value),
+            None => {
+                into.insert(key.clone(), value.clone());
+            }
+        }
+    }
 }
 
 fn invalid(message: impl Into<String>) -> AdminError {
@@ -163,26 +178,78 @@ impl Admin<'_> {
                 device: None,
             });
         };
-        self.send(&request).await?;
-        let after = read_device(self.api, self.config.pin.as_deref()).await?;
-        answer["changed"] = Value::Array(plan.changes);
-        answer["current"] = Self::current(action, &after);
-        Ok(AdminOutcome {
-            answer,
-            device: Some(after),
-        })
+        self.send(&request, &device.preserved_cfg).await?;
+        answer["changed"] = Value::Array(plan.changes.clone());
+        // A device that is restarting can't be read back, and the change was made
+        if action == "reboot" {
+            answer["current"] = Value::Null;
+            return Ok(AdminOutcome {
+                answer,
+                device: None,
+            });
+        }
+        match read_device(self.api, self.config.pin.as_deref()).await {
+            Ok(after) => {
+                answer["current"] = Self::current(action, &after);
+                Self::verify_segment(action, body, &after)?;
+                Ok(AdminOutcome {
+                    answer,
+                    device: Some(after),
+                })
+            }
+            Err(e) => {
+                answer["warning"] = json!(format!(
+                    "The change was sent, but the device's values couldn't be read back: {e}"
+                ));
+                Ok(AdminOutcome {
+                    answer,
+                    device: None,
+                })
+            }
+        }
+    }
+
+    /// WLED puts a new segment at the next free index whatever id was asked for, so a create is
+    /// checked against what the device holds afterwards.
+    fn verify_segment(action: &str, body: &Value, after: &Device) -> Result<(), AdminError> {
+        if action != "segments" || body.get("op").and_then(Value::as_str) != Some("create") {
+            return Ok(());
+        }
+        let wanted = (field_u32(body, "start")?, field_u32(body, "stop")?);
+        let found = after
+            .segments
+            .iter()
+            .any(|s| (Some(s.start), Some(s.stop)) == wanted && s.name == Self::name_of(body));
+        if found {
+            Ok(())
+        } else {
+            Err(AdminError::Provider(ProviderError::Failed(
+                "the segment was sent, but the device doesn't hold it as asked: read the \
+                 segments again"
+                    .into(),
+            )))
+        }
+    }
+
+    fn name_of(body: &Value) -> String {
+        body.get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
     }
 
     fn ui_url(&self) -> String {
         format!("http://{}/", self.api.authority())
     }
 
-    async fn send(&self, request: &Request) -> Result<(), ProviderError> {
+    async fn send(&self, request: &Request, preserved_cfg: &Value) -> Result<(), ProviderError> {
         let mut body = request.body.clone();
-        if request.path == CFG_PATH
-            && let (Some(pin), Some(map)) = (&self.config.pin, body.as_object_mut())
-        {
-            map.insert("pin".into(), Value::String(pin.clone()));
+        if request.path == CFG_PATH {
+            // WLED resets a few settings to their defaults when a settings body leaves them out
+            merge_missing(&mut body, preserved_cfg);
+            if let (Some(pin), Some(map)) = (&self.config.pin, body.as_object_mut()) {
+                map.insert("pin".into(), Value::String(pin.clone()));
+            }
         }
         self.api.post(request.path, &body).await.map(|_| ())
     }
@@ -300,10 +367,8 @@ impl Admin<'_> {
             ));
         };
         let name = name.trim();
-        if name.is_empty() || name.chars().count() > NAME_MAX_CHARS {
-            return Err(invalid(format!(
-                "name must be 1–{NAME_MAX_CHARS} characters"
-            )));
+        if name.is_empty() || name.len() > NAME_MAX_BYTES {
+            return Err(invalid(format!("name must be 1–{NAME_MAX_BYTES} bytes")));
         }
         if name == device.name {
             return Ok(Self::nothing("The device already has that name."));
@@ -361,7 +426,8 @@ impl Admin<'_> {
             }
         }
         let summary = if changes.is_empty() {
-            "The realtime settings are right: UDP receive on, the timeout set, full brightness              and no gamma on the device."
+            "The realtime settings are right: UDP receive on, the timeout set, full brightness \
+             and no gamma on the device."
                 .to_owned()
         } else {
             let keys: Vec<&str> = changes
@@ -369,7 +435,8 @@ impl Admin<'_> {
                 .filter_map(|c| c.get("setting").and_then(Value::as_str))
                 .collect();
             format!(
-                "Change the realtime settings ({}): UDP receive on, a timeout of {} s, force                  max brightness on and the device's realtime gamma off (FOLO applies gamma).",
+                "Change the realtime settings ({}): UDP receive on, a timeout of {} s, force \
+                 max brightness on and the device's realtime gamma off (FOLO applies gamma).",
                 keys.join(", "),
                 self.config.timeout_s
             )
@@ -426,9 +493,9 @@ impl Admin<'_> {
             entry.insert("on".to_owned(), json!(on));
         }
         if let Some(name) = body.get("name").and_then(Value::as_str) {
-            if name.chars().count() > NAME_MAX_CHARS {
+            if name.len() > NAME_MAX_BYTES {
                 return Err(invalid(format!(
-                    "name must be at most {NAME_MAX_CHARS} characters"
+                    "name must be at most {NAME_MAX_BYTES} bytes"
                 )));
             }
             entry.insert("n".to_owned(), json!(name));
@@ -457,10 +524,13 @@ impl Admin<'_> {
                 .find(|id| device.segment(*id).is_none())
                 .ok_or_else(|| invalid("the device has no free segment"))?,
         };
-        if id >= max || device.segment(id).is_some() {
+        // WLED fills a free slot or appends, and ignores an id beyond the next one
+        let next = device.segments.iter().map(|s| s.id + 1).max().unwrap_or(0);
+        if id >= max || device.segment(id).is_some() || id > next {
             return Err(invalid(format!(
-                "segment {id} exists or is out of range (0–{})",
-                max - 1
+                "segment {id} exists, is out of range (0–{}) or is beyond the next free one \
+                 ({next}): WLED puts a new segment at the next free index",
+                max.saturating_sub(1)
             )));
         }
         let (Some(start), Some(stop)) = (field_u32(body, "start")?, field_u32(body, "stop")?)

@@ -249,7 +249,12 @@ async fn the_provider_describes_through_the_api() {
 
 #[tokio::test]
 async fn a_pin_unlocks_the_settings_for_describe() {
-    let locked = Arc::new(FakeDevice::fixture("rgbw-strip").with_pin("1234"));
+    // Older firmware wants the PIN to read the settings too
+    let locked = Arc::new(
+        FakeDevice::fixture("rgbw-strip")
+            .with_pin("1234")
+            .with_gated_reads(),
+    );
 
     // Without the PIN: the strip from info alone, as RGB, and a warning
     let provider = WledProvider::new(config(), locked.clone(), Arc::new(MemorySink::new()));
@@ -273,10 +278,78 @@ async fn a_pin_unlocks_the_settings_for_describe() {
 
 #[tokio::test]
 async fn a_wrong_pin_is_refused() {
-    let locked = Arc::new(FakeDevice::fixture("rgb-strip").with_pin("1234"));
+    let locked = Arc::new(
+        FakeDevice::fixture("rgb-strip")
+            .with_pin("1234")
+            .with_gated_reads(),
+    );
     let mut wrong = config();
     wrong.pin = Some("0000".into());
     let provider = WledProvider::new(wrong, locked, Arc::new(MemorySink::new()));
     let error = provider.describe().await.unwrap_err();
     assert!(matches!(error, folo_provider::ProviderError::Refused(_)));
+}
+
+#[tokio::test]
+async fn newer_firmware_lets_describe_read_the_settings_without_the_pin() {
+    let device = Arc::new(FakeDevice::fixture("rgbw-strip").with_pin("1234"));
+    let provider = WledProvider::new(config(), device, Arc::new(MemorySink::new()));
+    let targets = provider.describe().await.unwrap();
+    assert_eq!(targets[0].capabilities.color_model, Model::Rgbw);
+}
+
+#[test]
+fn rgb_cct_leds_in_an_auto_white_mode_are_plain_rgb() {
+    // The chain would take white out of the RGB; without our white byte that would come out dim
+    let description = describe("rgbcct-auto-white");
+    assert_eq!(description.targets[0].color_model, Model::Rgb);
+    assert!(!description.targets[0].send_white);
+}
+
+fn warnings_after(
+    change: impl FnOnce(&mut serde_json::Value, &mut serde_json::Value),
+) -> Vec<String> {
+    let documents = fixture("rgb-strip");
+    let (mut state, mut cfg) = (documents["state"].clone(), documents["cfg"].clone());
+    change(&mut state, &mut cfg);
+    let device = Device::from_json(&documents["info"], &state, Some(&cfg));
+    Description::of(&device).warnings
+}
+
+#[test]
+fn settings_that_undo_the_output_are_warned_about() {
+    let receive_off = warnings_after(|_, cfg| cfg["if"]["live"]["en"] = false.into());
+    assert!(
+        receive_off[0].contains("Receive UDP realtime"),
+        "{receive_off:?}"
+    );
+
+    let short = warnings_after(|_, cfg| cfg["if"]["live"]["timeout"] = 5.into());
+    assert!(short[0].contains("shorter"), "{short:?}");
+
+    let forever = warnings_after(|_, cfg| cfg["if"]["live"]["timeout"] = 650.into());
+    assert!(forever[0].contains("stay in realtime"), "{forever:?}");
+
+    let offset = warnings_after(|_, cfg| cfg["if"]["live"]["offset"] = 3.into());
+    assert!(offset[0].contains("offset"), "{offset:?}");
+
+    let live_override = warnings_after(|state, _| state["lor"] = 2.into());
+    assert!(
+        live_override[0].contains("live override"),
+        "{live_override:?}"
+    );
+}
+
+#[test]
+fn odd_numbers_from_a_device_do_not_overflow() {
+    let documents = fixture("rgb-strip");
+    let mut cfg = documents["cfg"].clone();
+    cfg["hw"]["led"]["ins"][0]["start"] = 4_294_967_295u64.into();
+    cfg["hw"]["led"]["ins"][0]["len"] = 4_294_967_295u64.into();
+    let device = Device::from_json(&documents["info"], &documents["state"], Some(&cfg));
+    let _ = Description::of(&device);
+    let mut info = documents["info"].clone();
+    info["leds"]["matrix"] = serde_json::json!({"w": 4_294_967_295u64, "h": 4_294_967_295u64});
+    let device = Device::from_json(&info, &documents["state"], Some(&documents["cfg"]));
+    let _ = Description::of(&device);
 }

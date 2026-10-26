@@ -24,6 +24,7 @@ pub const FIXTURES: &[&str] = &[
     "segments",
     "rgbw-strip",
     "rgbw-auto-white",
+    "rgbcct-auto-white",
     "cct-strip",
     "analog-and-relay",
     "analog-rgb",
@@ -43,6 +44,7 @@ pub fn fixture(name: &str) -> Value {
         "segments" => include_str!("../fixtures/segments.json"),
         "rgbw-strip" => include_str!("../fixtures/rgbw-strip.json"),
         "rgbw-auto-white" => include_str!("../fixtures/rgbw-auto-white.json"),
+        "rgbcct-auto-white" => include_str!("../fixtures/rgbcct-auto-white.json"),
         "cct-strip" => include_str!("../fixtures/cct-strip.json"),
         "analog-and-relay" => include_str!("../fixtures/analog-and-relay.json"),
         "analog-rgb" => include_str!("../fixtures/analog-rgb.json"),
@@ -67,6 +69,9 @@ struct Inner {
     state: Value,
     cfg: Value,
     pin: Option<String>,
+    /// Whether reading `/json/cfg` wants the PIN too (older firmware); newer firmware only
+    /// refuses a write.
+    gated_reads: bool,
     unlocked: bool,
     rebooted: bool,
     requests: Vec<Recorded>,
@@ -74,8 +79,10 @@ struct Inner {
 
 /// A device's JSON API in memory: it answers `/json/info`, `/json/state` and `/json/cfg`, and
 /// applies the writes the provider makes (power, brightness, segments, `id.name`, `if.live`,
-/// `rb`), so a second read shows them. With a PIN, `/json/cfg` answers 401 until a `POST`
-/// carries it as `pin`, as WLED does.
+/// `rb`), so a second read shows them. A `POST` to `/json/cfg` also resets what WLED resets when
+/// a body leaves it out (`hw.led.rgbwm`, `hw.led.fps`, `nw.linked_remote`). With a PIN, writing
+/// `/json/cfg` answers 401 until a `POST` carries it as `pin`, as WLED does (reading it too, with
+/// [`with_gated_reads`](Self::with_gated_reads)).
 pub struct FakeDevice {
     inner: Mutex<Inner>,
 }
@@ -101,6 +108,7 @@ impl FakeDevice {
                 state: documents["state"].clone(),
                 cfg: documents["cfg"].clone(),
                 pin: None,
+                gated_reads: false,
                 unlocked: false,
                 rebooted: false,
                 requests: Vec::new(),
@@ -118,6 +126,13 @@ impl FakeDevice {
     #[must_use]
     pub fn with_pin(self, pin: &str) -> Self {
         self.lock().pin = Some(pin.to_owned());
+        self
+    }
+
+    /// With the PIN wanted for reading `/json/cfg` as well as for writing it.
+    #[must_use]
+    pub fn with_gated_reads(self) -> Self {
+        self.lock().gated_reads = true;
         self
     }
 
@@ -197,7 +212,7 @@ impl FakeDevice {
         match path {
             "/json/info" => (200, inner.info.clone()),
             "/json/state" => (200, inner.state.clone()),
-            "/json/cfg" if Self::locked(inner) => (401, json!({"error": 1})),
+            "/json/cfg" if inner.gated_reads && Self::locked(inner) => (401, json!({"error": 1})),
             "/json/cfg" => (200, inner.cfg.clone()),
             _ => (404, json!({"error": 404})),
         }
@@ -243,6 +258,13 @@ impl FakeDevice {
                 }
                 continue;
             }
+            // WLED appends a new segment at the next index, whatever id was asked for
+            let next = segments
+                .iter()
+                .filter_map(|s| s["id"].as_u64())
+                .max()
+                .map_or(0, |m| m + 1);
+            let id = if position.is_none() { id.min(next) } else { id };
             let position = position.unwrap_or_else(|| {
                 segments.push(json!({
                     "id": id, "start": 0, "stop": 0, "len": 0, "grp": 1, "spc": 0, "of": 0,
@@ -265,6 +287,17 @@ impl FakeDevice {
         let mut settings = body.clone();
         if let Some(map) = settings.as_object_mut() {
             map.remove("pin");
+        }
+        // What WLED's `deserializeConfig` does with a setting a body leaves out
+        let led = &settings["hw"]["led"];
+        if led.get("rgbwm").is_none() {
+            inner.cfg["hw"]["led"]["rgbwm"] = json!(255);
+        }
+        if led.get("fps").is_none() {
+            inner.cfg["hw"]["led"]["fps"] = json!(42);
+        }
+        if settings["nw"].get("linked_remote").is_none() {
+            inner.cfg["nw"]["linked_remote"] = json!([]);
         }
         merge(&mut inner.cfg, &settings);
         if let Some(name) = settings["id"]["name"].as_str() {

@@ -201,9 +201,10 @@ fn a_lone_trailing_pixel_is_paired_with_the_one_before() {
 }
 
 #[test]
-fn a_single_pixel_goes_out_with_a_copy_on_the_next_led() {
+fn a_single_pixel_has_no_dnrgb_packet() {
+    // WLED ignores a packet of one pixel, and a copy on the next LED would overwrite it
     let packets = DnrgbEncoder::new(2).pixels(PixelFormat::Rgb, 7, &[9, 8, 7]);
-    assert_eq!(packets, vec![vec![4, 2, 0, 7, 9, 8, 7, 9, 8, 7]]);
+    assert_eq!(packets.len(), 0);
 }
 
 #[test]

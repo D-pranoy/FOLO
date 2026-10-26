@@ -13,7 +13,7 @@ pub enum Transport {
 }
 
 /// What a provider needs of its instance.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Config {
     /// `host` or `host:port` for the HTTP API.
     pub authority: String,
@@ -39,6 +39,17 @@ fn bare_host(authority: &str) -> &str {
             host
         }
         _ => authority,
+    }
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("authority", &self.authority)
+            .field("transport", &self.transport)
+            .field("timeout_s", &self.timeout_s)
+            .field("pin", &self.pin.as_ref().map(|_| "<set>"))
+            .finish_non_exhaustive()
     }
 }
 

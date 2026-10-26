@@ -31,7 +31,7 @@ pub use describe::{Description, WledTarget};
 pub use device::{Bus, BusModel, Device, RealtimeSettings, Segment};
 pub use discovery::{Browse, MdnsBrowser, ServiceAnswer, device_from_answer, instance_name, probe};
 pub use pixels::pixel_bytes;
-pub use provider::{WledKind, WledProvider};
+pub use provider::{DEFAULT_RATE_HZ, WledKind, WledProvider};
 pub use reader::{read_cfg, read_device};
 pub use settings::{Config, Transport};
 pub use sink::{DatagramSink, UdpSink};

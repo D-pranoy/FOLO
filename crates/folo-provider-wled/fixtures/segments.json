@@ -221,7 +221,8 @@
             "maxpwr": 0,
             "ledma": 55
           }
-        ]
+        ],
+        "fps": 42
       }
     },
     "if": {
@@ -244,6 +245,12 @@
         "no-gc": true,
         "offset": 0
       }
+    },
+    "nw": {
+      "linked_remote": [
+        "aabbccddeeff"
+      ],
+      "ins": []
     }
   }
 }

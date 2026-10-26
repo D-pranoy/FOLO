@@ -26,6 +26,14 @@ fn setup(fixture: &str) -> (Arc<FakeDevice>, WledProvider) {
     (device, provider)
 }
 
+/// What every settings body also carries: the values WLED would reset to defaults if they were
+/// left out (the fixtures' `hw.led.rgbwm` 255, `hw.led.fps` 42 and one linked remote).
+fn with_preserved(mut body: Value) -> Value {
+    body["hw"] = json!({"led": {"rgbwm": 255, "fps": 42}});
+    body["nw"] = json!({"linked_remote": ["aabbccddeeff"]});
+    body
+}
+
 async fn read(provider: &WledProvider, action: &str, body: Value) -> Value {
     provider
         .admin(action, AdminMethod::Read, body)
@@ -146,7 +154,7 @@ async fn rename_writes_the_server_description() {
     assert_eq!(done["current"], json!({"name": "Hall"}));
     assert_eq!(
         device.posts("/json/cfg"),
-        vec![json!({"id": {"name": "Hall"}})]
+        vec![with_preserved(json!({"id": {"name": "Hall"}}))]
     );
     assert_eq!(device.cfg()["id"]["name"], "Hall");
 }
@@ -310,7 +318,9 @@ async fn realtime_settings_are_checked_and_fixed() {
     assert_eq!(done["changed"], announced["changes"]);
     assert_eq!(
         device.posts("/json/cfg"),
-        vec![json!({"if": {"live": {"timeout": 20, "maxbri": true}}})]
+        vec![with_preserved(
+            json!({"if": {"live": {"timeout": 20, "maxbri": true}}})
+        )]
     );
     assert_eq!(device.cfg()["if"]["live"]["timeout"], 20);
 
@@ -350,29 +360,118 @@ async fn settings_that_need_a_pin_carry_it() {
     );
     change(&provider, "rename", json!({"name": "Locked"})).await;
     let posts = device.posts("/json/cfg");
-    assert_eq!(
-        posts,
-        vec![json!({"id": {"name": "Locked"}, "pin": "1234"})]
-    );
+    let mut expected = with_preserved(json!({"id": {"name": "Locked"}}));
+    expected["pin"] = json!("1234");
+    assert_eq!(posts, vec![expected]);
     assert_eq!(device.cfg()["id"]["name"], "Locked");
     assert!(device.cfg().get("pin").is_none());
 }
 
 #[tokio::test]
-async fn settings_without_the_pin_are_refused() {
+async fn writing_settings_without_the_pin_is_refused() {
     let device = Arc::new(FakeDevice::fixture("rgb-strip").with_pin("1234"));
     let provider = WledProvider::new(config(None), device.clone(), Arc::new(MemorySink::new()));
-    // Everything that doesn't touch settings still works
+    // Reading, and everything that doesn't touch settings, still works
+    read(&provider, "realtime", Value::Null).await;
     change(&provider, "power", json!({"on": false})).await;
-    // The realtime check needs them
     let error = provider
-        .admin("realtime", AdminMethod::Read, Value::Null)
+        .admin("rename", AdminMethod::Change, json!({"name": "X"}))
         .await
         .unwrap_err();
     assert!(matches!(
         error,
         AdminError::Provider(ProviderError::Refused(_))
     ));
+    assert_ne!(device.cfg()["id"]["name"], "X");
+}
+
+#[tokio::test]
+async fn a_settings_write_keeps_what_wled_would_reset() {
+    let (device, provider) = setup("rgbw-strip");
+    device.edit(|_, _, cfg| cfg["hw"]["led"]["rgbwm"] = 0.into());
+    change(&provider, "rename", json!({"name": "Kept"})).await;
+    let cfg = device.cfg();
+    assert_eq!(cfg["hw"]["led"]["rgbwm"], 0, "the global auto-white mode");
+    assert_eq!(cfg["hw"]["led"]["fps"], 42);
+    assert_eq!(cfg["nw"]["linked_remote"], json!(["aabbccddeeff"]));
+}
+
+#[tokio::test]
+async fn a_new_segment_cannot_name_an_id_beyond_the_next_one() {
+    let (device, provider) = setup("rgb-strip");
+    let message = rejected(
+        &provider,
+        "segments",
+        json!({"op": "create", "id": 7, "start": 1, "stop": 5}),
+    )
+    .await;
+    assert!(message.contains("next free"), "{message}");
+    assert_eq!(device.posts("/json/state").len(), 0);
+    change(
+        &provider,
+        "segments",
+        json!({"op": "create", "id": 1, "start": 1, "stop": 5}),
+    )
+    .await;
+    assert_eq!(segments_of(&device.state()).len(), 2);
+}
+
+#[tokio::test]
+async fn names_are_limited_in_bytes() {
+    let (_, provider) = setup("rgb-strip");
+    // 17 two-byte characters are 34 bytes
+    let message = rejected(&provider, "rename", json!({"name": "é".repeat(17)})).await;
+    assert!(message.contains("32 bytes"), "{message}");
+}
+
+#[tokio::test]
+async fn a_reboot_does_not_read_the_device_back() {
+    let (device, provider) = setup("rgb-strip");
+    let done = change(&provider, "reboot", Value::Null).await;
+    assert_eq!(done["current"], Value::Null);
+    assert_eq!(device.requests().last().unwrap().method, "POST");
+}
+
+struct DiesAfterWrite(Arc<FakeDevice>, std::sync::atomic::AtomicBool);
+
+impl folo_provider_wled::DeviceApi for DiesAfterWrite {
+    fn get<'a>(
+        &'a self,
+        path: &'a str,
+    ) -> folo_provider::BoxFuture<'a, Result<Value, ProviderError>> {
+        Box::pin(async move {
+            if self.1.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(ProviderError::Unreachable("gone".into()));
+            }
+            self.0.get(path).await
+        })
+    }
+
+    fn post<'a>(
+        &'a self,
+        path: &'a str,
+        body: &'a Value,
+    ) -> folo_provider::BoxFuture<'a, Result<Value, ProviderError>> {
+        Box::pin(async move {
+            let answer = self.0.post(path, body).await;
+            self.1.store(true, std::sync::atomic::Ordering::SeqCst);
+            answer
+        })
+    }
+
+    fn authority(&self) -> String {
+        "dies".into()
+    }
+}
+
+#[tokio::test]
+async fn a_failed_read_back_after_a_change_is_a_warning_not_an_error() {
+    let device = Arc::new(FakeDevice::fixture("rgb-strip"));
+    let api = Arc::new(DiesAfterWrite(device.clone(), false.into()));
+    let provider = WledProvider::new(config(None), api, Arc::new(MemorySink::new()));
+    let done = change(&provider, "power", json!({"on": false})).await;
+    assert!(done["warning"].as_str().unwrap().contains("read back"));
+    assert_eq!(device.state()["on"], false);
 }
 
 #[tokio::test]

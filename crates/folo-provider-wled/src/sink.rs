@@ -3,6 +3,7 @@
 
 use std::io;
 use std::net::SocketAddr;
+use std::time::{Duration, Instant};
 
 use folo_provider::BoxFuture;
 use tokio::net::{UdpSocket, lookup_host};
@@ -18,10 +19,22 @@ pub trait DatagramSink: Send + Sync {
     fn reset(&self) -> BoxFuture<'_, ()>;
 }
 
+/// How long a resolved address is used: a device that moves (DHCP) is found again by then.
+const ADDRESS_TTL: Duration = Duration::from_secs(60);
+
+/// How long a lookup may take.
+const LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
+
+struct Open {
+    socket: UdpSocket,
+    ip: std::net::IpAddr,
+    resolved: Instant,
+}
+
 /// UDP from a socket of our own to the device's host.
 pub struct UdpSink {
     host: String,
-    socket: Mutex<Option<(UdpSocket, std::net::IpAddr)>>,
+    socket: Mutex<Option<Open>>,
 }
 
 impl UdpSink {
@@ -33,9 +46,10 @@ impl UdpSink {
         }
     }
 
-    async fn open(&self) -> io::Result<(UdpSocket, std::net::IpAddr)> {
-        let ip = lookup_host((self.host.as_str(), 0))
-            .await?
+    async fn open(&self) -> io::Result<Open> {
+        let ip = tokio::time::timeout(LOOKUP_TIMEOUT, lookup_host((self.host.as_str(), 0)))
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "the host lookup took too long"))??
             .next()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "the host has no address"))?
             .ip();
@@ -44,7 +58,11 @@ impl UdpSink {
         } else {
             ([0u16; 8], 0).into()
         };
-        Ok((UdpSocket::bind(local).await?, ip))
+        Ok(Open {
+            socket: UdpSocket::bind(local).await?,
+            ip,
+            resolved: Instant::now(),
+        })
     }
 }
 
@@ -52,13 +70,19 @@ impl DatagramSink for UdpSink {
     fn send(&self, port: u16, payload: Vec<u8>) -> BoxFuture<'_, io::Result<()>> {
         Box::pin(async move {
             let mut guard = self.socket.lock().await;
-            if guard.is_none() {
+            if guard
+                .as_ref()
+                .is_none_or(|o| o.resolved.elapsed() > ADDRESS_TTL)
+            {
                 *guard = Some(self.open().await?);
             }
-            let Some((socket, ip)) = guard.as_ref() else {
+            let Some(open) = guard.as_ref() else {
                 return Ok(());
             };
-            socket.send_to(&payload, (*ip, port)).await.map(|_| ())
+            open.socket
+                .send_to(&payload, (open.ip, port))
+                .await
+                .map(|_| ())
         })
     }
 

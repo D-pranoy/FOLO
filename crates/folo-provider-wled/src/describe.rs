@@ -20,6 +20,11 @@ use crate::device::{Bus, BusModel, DMX_ADDRESS_DEFAULT, Device, LC_CCT, LC_RGB, 
 /// How often WLED renders at most (every 15 ms, about 66 a second).
 const MAX_RATE_HZ: f64 = 66.0;
 
+/// A realtime timeout below this (in tenths of a second) is shorter than the refresh, and above
+/// the other is long enough to count as "stays on" if FOLO dies.
+const REALTIME_TIMEOUT_MIN_DS: u32 = 15;
+const REALTIME_TIMEOUT_MAX_DS: u32 = 600;
+
 /// Ids of the targets this provider describes.
 pub const STRIP_ID: &str = "strip";
 pub const MATRIX_ID: &str = "matrix";
@@ -68,7 +73,9 @@ fn model_of(lc: u8, send_white: bool) -> ColorModel {
     let cct = lc & LC_CCT != 0;
     let white = lc & LC_WHITE != 0;
     match (rgb, cct, white) {
-        (true, true, _) => ColorModel::Rgbcct,
+        // Colour temperature isn't sent, and without our white the RGB the chain made (white
+        // taken out of it) would come out dim: plain RGB is right
+        (true, true, _) if send_white => ColorModel::Rgbcct,
         (true, false, true) if send_white => ColorModel::Rgbw,
         (true, ..) => ColorModel::Rgb,
         (false, true, _) => ColorModel::Cct,
@@ -95,7 +102,7 @@ fn has_white_channel(lc: u8) -> bool {
 fn overlapping(buses: &[Bus], start: u32, stop: u32) -> Vec<&Bus> {
     buses
         .iter()
-        .filter(|b| !b.is_point() && b.start < stop && b.start + b.len > start)
+        .filter(|b| !b.is_point() && b.start < stop && b.start.saturating_add(b.len) > start)
         .collect()
 }
 
@@ -133,12 +140,49 @@ impl Description {
             );
             return;
         };
+        self.realtime_warnings(device, realtime);
         if realtime.dmx_address != DMX_ADDRESS_DEFAULT {
             self.warnings.push(format!(
                 "The DMX start address is {}, not {DMX_ADDRESS_DEFAULT}: it shifts the LEDs \
                  DDP writes to. Set it back to {DMX_ADDRESS_DEFAULT} on the device.",
                 realtime.dmx_address
             ));
+        }
+    }
+
+    fn realtime_warnings(&mut self, device: &Device, realtime: &crate::device::RealtimeSettings) {
+        if !realtime.receive {
+            self.warnings.push(
+                "\"Receive UDP realtime\" is off: the device may ignore FOLO's packets, and its \
+                 release packet. Turn it on with the realtime fix."
+                    .into(),
+            );
+        }
+        if realtime.timeout_ds < REALTIME_TIMEOUT_MIN_DS {
+            self.warnings.push(format!(
+                "The realtime timeout is {} s, shorter than the {} s FOLO needs to refresh in \
+                 time; the lights fall back to the device's own now and then.",
+                f64::from(realtime.timeout_ds) / 10.0,
+                f64::from(REALTIME_TIMEOUT_MIN_DS) / 10.0
+            ));
+        }
+        if realtime.timeout_ds > REALTIME_TIMEOUT_MAX_DS {
+            self.warnings.push(format!(
+                "The realtime timeout is {} s: if FOLO stops, the lights stay in realtime that long.",
+                f64::from(realtime.timeout_ds) / 10.0
+            ));
+        }
+        if realtime.offset != 0 {
+            self.warnings.push(format!(
+                "The device shifts every realtime pixel by {} (its realtime offset).",
+                realtime.offset
+            ));
+        }
+        if device.live_override != 0 {
+            self.warnings.push(
+                "The device's live override is on: it shows its own effects while it takes packets."
+                    .into(),
+            );
         }
     }
 
@@ -153,7 +197,11 @@ impl Description {
             Some(all) => {
                 let digital: Vec<&Bus> = all.iter().filter(|b| !b.is_point()).collect();
                 let first = digital.iter().map(|b| b.start).min().unwrap_or(0);
-                let end = digital.iter().map(|b| b.start + b.len).max().unwrap_or(0);
+                let end = digital
+                    .iter()
+                    .map(|b| b.start.saturating_add(b.len))
+                    .max()
+                    .unwrap_or(0);
                 (first, end, digital)
             }
             None => (0, device.led_count, Vec::new()),
@@ -245,7 +293,7 @@ impl Description {
             },
             kind: TargetKind::Grid,
             first_pixel: 0,
-            count: width * height,
+            count: width.saturating_mul(height),
             color_model,
             addressing: CapabilityDescriptorAddressing::Pixel,
             send_white,
@@ -256,16 +304,21 @@ impl Description {
     fn points(&mut self, device: &Device) {
         let Some(buses) = &device.buses else { return };
         for (index, bus) in buses.iter().enumerate().filter(|(_, b)| b.is_point()) {
-            let model = bus.point_model();
+            let send_white = bus.has_white() && device.honours_white(&[bus]);
+            let color_model = match model_of_bus(bus.point_model()) {
+                // As for a strip: without our white byte the RGB alone is what shows
+                ColorModel::Rgbw | ColorModel::Rgbcct if !send_white => ColorModel::Rgb,
+                other => other,
+            };
             self.targets.push(WledTarget {
                 id: bus_id(index),
                 name: format!("Output {}", index + 1),
                 kind: TargetKind::Point,
                 first_pixel: bus.start,
                 count: 1,
-                color_model: model_of_bus(model),
+                color_model,
                 addressing: CapabilityDescriptorAddressing::Single,
-                send_white: bus.has_white() && device.honours_white(&[bus]),
+                send_white,
                 grid: None,
             });
         }

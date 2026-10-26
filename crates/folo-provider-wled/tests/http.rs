@@ -44,7 +44,9 @@ async fn a_pin_wall_is_a_refusal_and_a_missing_path_a_failure() {
     let server = FakeHttpServer::start(device).await;
     let api = HttpApi::new(&server.authority());
     assert!(matches!(
-        api.get("/json/cfg").await.unwrap_err(),
+        api.post("/json/cfg", &json!({"id": {"name": "x"}}))
+            .await
+            .unwrap_err(),
         ProviderError::Refused(_)
     ));
     assert!(matches!(

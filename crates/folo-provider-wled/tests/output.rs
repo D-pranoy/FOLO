@@ -468,3 +468,53 @@ async fn a_changed_frame_goes_out_at_once_and_the_stop_releases() {
     assert_eq!(sent.last().unwrap(), &(DNRGB_PORT, vec![4, 0, 0, 0]));
     assert_eq!(sent.len(), 3);
 }
+
+#[tokio::test]
+async fn a_single_pixel_target_goes_by_ddp_even_when_the_frame_uses_dnrgb() {
+    let rig = rig("analog-and-relay", "dnrgb", 2).await;
+    let out = output(&rig);
+    for target in ["strip", "bus:2"] {
+        out.start(target).await.unwrap();
+    }
+    out.send(&frame(vec![
+        ("strip", red(4, 5.0)),
+        ("bus:2", ElementColors::OnOff(vec![true])),
+    ]))
+    .await
+    .unwrap();
+    let strip = DnrgbPacket::parse(&rig.dnrgb.wait_for(1).await[0]).unwrap();
+    assert_eq!((strip.start, strip.data.len()), (0, 12));
+    let relay = DdpPacket::parse(&rig.ddp.wait_for(1).await[0]).unwrap();
+    assert_eq!(
+        (relay.offset, relay.data.clone()),
+        (93, vec![255, 255, 255])
+    );
+    assert!(relay.push());
+}
+
+#[test]
+fn the_keepalive_stays_inside_the_realtime_timeout() {
+    let keepalive = |timeout_s: u64| {
+        let config = Config {
+            authority: "wled.test".into(),
+            host: "wled.test".into(),
+            transport: Transport::Ddp,
+            timeout_s,
+            pin: None,
+            ddp_port: 4048,
+            dnrgb_port: None,
+        };
+        let device = Arc::new(FakeDevice::fixture("rgb-strip"));
+        WledProvider::new(config, device, Arc::new(MemorySink::new()))
+            .delivery_policy()
+            .keepalive
+    };
+    assert_eq!(keepalive(2), Duration::from_secs(1));
+    assert_eq!(keepalive(10), Duration::from_secs(1));
+    assert_eq!(keepalive(1), Duration::from_millis(500));
+}
+
+#[test]
+fn new_instances_run_at_60_hz() {
+    assert_eq!(folo_provider_wled::DEFAULT_RATE_HZ, 60);
+}

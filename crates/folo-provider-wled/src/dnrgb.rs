@@ -72,8 +72,9 @@ impl DnrgbEncoder {
     }
 
     /// The packets that write `data` (whole pixels of `format`) from `first_pixel` on. Pixels
-    /// beyond index 65535 can't be addressed and are dropped. A single pixel can't be sent alone
-    /// either: it goes out with a copy of itself on the next LED.
+    /// beyond index 65535 can't be addressed and are dropped. A single pixel can't be sent: WLED
+    /// ignores a packet of one, and a copy on the next LED would overwrite it, so there are none
+    /// (the provider sends those by DDP).
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
     pub fn pixels(self, format: PixelFormat, first_pixel: u32, data: &[u8]) -> Vec<Vec<u8>> {
@@ -81,8 +82,8 @@ impl DnrgbEncoder {
         let mut data = data[..data.len() / pixel * pixel].to_vec();
         let reachable = (u32::from(u16::MAX) + 1).saturating_sub(first_pixel) as usize;
         data.truncate(reachable * pixel);
-        if data.len() == pixel {
-            data.extend_from_within(..pixel);
+        if data.len() <= pixel {
+            return Vec::new();
         }
         let mut packets = Vec::new();
         let mut index = first_pixel;

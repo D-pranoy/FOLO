@@ -2,7 +2,7 @@
 //! (`docs/integrations/wled.md`, capabilities). A field the device doesn't send takes the value
 //! WLED itself would assume.
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// `info.leds.lc` bits.
 pub const LC_RGB: u8 = 0x01;
@@ -144,11 +144,12 @@ impl Bus {
         }
     }
 
-    /// Whether the bus has a white LED: the digital types with one (the white-only chips, WWA,
-    /// FW1906, UCS8904, SK6812, TM1814, WS2805, SM16825) and the analog types 41, 42, 44–46.
+    /// Whether the bus has a white LED, as WLED's `Bus::hasWhite` says: the digital types with one
+    /// (the white-only chips, WWA, FW1906, UCS8904, SK6812, TM1814, WS2805, SM16825), the analog
+    /// types 41, 42, 44 and 45, and the network RGBW types.
     #[must_use]
     pub fn has_white(&self) -> bool {
-        matches!(self.kind, 18..=19 | 21 | 28..=32 | 34 | 41 | 42 | 44..=46)
+        matches!(self.kind, 18..=21 | 28..=32 | 34 | 41 | 42 | 44 | 45 | 88 | 89)
     }
 }
 
@@ -167,6 +168,8 @@ pub struct RealtimeSettings {
     /// "Disable realtime gamma correction" (`no-gc`).
     pub disable_gamma: bool,
     pub dmx_address: u32,
+    /// The offset added to every realtime pixel (`offset`).
+    pub offset: u32,
 }
 
 impl RealtimeSettings {
@@ -180,6 +183,7 @@ impl RealtimeSettings {
             dmx_address: value.get("dmx").map_or(DMX_ADDRESS_DEFAULT, |d| {
                 count(d, "addr", DMX_ADDRESS_DEFAULT)
             }),
+            offset: count(value, "offset", 0),
         }
     }
 }
@@ -207,6 +211,35 @@ pub struct Device {
     /// `hw.led.rgbwm`: 255 when each bus has its own.
     pub global_auto_white: u8,
     pub realtime: Option<RealtimeSettings>,
+    /// `state.lor`: 1 (until realtime ends) or 2 (always) makes the device show its own effects
+    /// while it takes packets.
+    pub live_override: u8,
+    /// The parts of `/json/cfg` that WLED resets when a `POST` leaves them out, so a partial
+    /// `POST` can carry them back: `hw.led.rgbwm`, `hw.led.fps` and `nw.linked_remote`.
+    pub preserved_cfg: Value,
+}
+
+/// What `deserializeConfig` resets to a default when a body doesn't have it.
+fn preserved(cfg: Option<&Value>) -> Value {
+    let mut out = serde_json::Map::new();
+    if let Some(led) = cfg.and_then(|c| c.get("hw")).and_then(|h| h.get("led")) {
+        let mut keep = serde_json::Map::new();
+        for key in ["rgbwm", "fps"] {
+            if let Some(v) = led.get(key) {
+                keep.insert(key.to_owned(), v.clone());
+            }
+        }
+        if !keep.is_empty() {
+            out.insert("hw".into(), json!({"led": Value::Object(keep)}));
+        }
+    }
+    if let Some(remotes) = cfg
+        .and_then(|c| c.get("nw"))
+        .and_then(|n| n.get("linked_remote"))
+    {
+        out.insert("nw".into(), json!({"linked_remote": remotes}));
+    }
+    Value::Object(out)
 }
 
 impl Device {
@@ -252,6 +285,8 @@ impl Device {
                 .and_then(|c| c.get("if"))
                 .and_then(|i| i.get("live"))
                 .map(RealtimeSettings::from_json),
+            live_override: small(state, "lor", 0),
+            preserved_cfg: preserved(cfg),
         }
     }
 

@@ -29,6 +29,11 @@ use crate::sink::{DatagramSink, UdpSink};
 /// realtime timeout (2.5 s by default).
 const KEEPALIVE: Duration = Duration::from_secs(1);
 
+/// The output rate for a new WLED instance (the instance's `rate_hz`, which the contract defaults
+/// to 40): WLED renders at most every 15 ms, and RB-12 sets 60. The node applies it when it makes
+/// an instance of this kind.
+pub const DEFAULT_RATE_HZ: u32 = 60;
+
 /// The WLED kind: discovery and making instances.
 pub struct WledKind {
     browser: Arc<dyn Browse>,
@@ -95,7 +100,7 @@ impl ProviderKind for WledKind {
 }
 
 struct State {
-    description: Option<Description>,
+    description: Option<Arc<Description>>,
     /// The device's own UDP realtime port (`info.udpport`).
     device_udp_port: Option<u16>,
     /// The targets realtime output was started for. The output is device-wide: it ends when the
@@ -112,11 +117,8 @@ pub struct WledProvider {
     state: Mutex<State>,
 }
 
-/// What a frame turned into: datagrams for one port.
-struct Datagrams {
-    port: u16,
-    packets: Vec<Vec<u8>>,
-}
+/// What a frame turned into: datagrams, each with the UDP port it goes to.
+struct Datagrams(Vec<(u16, Vec<u8>)>);
 
 impl WledProvider {
     #[must_use]
@@ -147,15 +149,16 @@ impl WledProvider {
             .unwrap_or(DNRGB_PORT)
     }
 
-    fn remember(&self, device: &Device) -> Description {
-        let description = Description::of(device);
+    fn remember(&self, device: &Device) -> Arc<Description> {
+        let description = Arc::new(Description::of(device));
         let mut state = self.lock();
-        state.device_udp_port = device.udp_port;
+        // A port of 0 is no port
+        state.device_udp_port = device.udp_port.filter(|port| *port != 0);
         state.description = Some(description.clone());
         description
     }
 
-    /// The datagrams of a frame, and their port.
+    /// The datagrams of a frame, each with its port.
     fn datagrams(&self, frame: &ElementFrame) -> Result<Datagrams, ProviderError> {
         let mut state = self.lock();
         let description = state
@@ -171,38 +174,41 @@ impl WledProvider {
             let first = target.first_pixel.saturating_sub(description.base_pixel);
             runs.push((format, first, bytes));
         }
-        Ok(match self.config.transport {
-            Transport::Ddp => {
-                let borrowed: Vec<PixelRun<'_>> = runs
-                    .iter()
-                    .map(|(format, first_pixel, data)| PixelRun {
-                        format: *format,
-                        first_pixel: *first_pixel,
-                        data,
-                    })
-                    .collect();
-                Datagrams {
-                    port: self.config.ddp_port,
-                    packets: state.ddp.frame(&borrowed),
-                }
-            }
-            Transport::Dnrgb => {
-                let encoder = DnrgbEncoder::new(self.config.timeout_s);
-                Datagrams {
-                    port: self.dnrgb_port(&state),
-                    packets: runs
-                        .iter()
-                        .flat_map(|(format, first, data)| encoder.pixels(*format, *first, data))
-                        .collect(),
-                }
-            }
-        })
+        let dnrgb_port = self.dnrgb_port(&state);
+        let encoder = DnrgbEncoder::new(self.config.timeout_s);
+        let ddp_port = self.config.ddp_port;
+        let mut out = Vec::new();
+        // DNRGB can't carry a single pixel (WLED ignores such a packet), so those go by DDP
+        let by_ddp = |run: &&(PixelFormat, u32, Vec<u8>)| {
+            self.config.transport == Transport::Ddp || run.2.len() == run.0.bytes()
+        };
+        let ddp_runs: Vec<PixelRun<'_>> = runs
+            .iter()
+            .filter(by_ddp)
+            .map(|(format, first_pixel, data)| PixelRun {
+                format: *format,
+                first_pixel: *first_pixel,
+                data,
+            })
+            .collect();
+        for (format, first, data) in runs.iter().filter(|run| !by_ddp(run)) {
+            let packets = encoder.pixels(*format, *first, data);
+            out.extend(packets.into_iter().map(|p| (dnrgb_port, p)));
+        }
+        out.extend(
+            state
+                .ddp
+                .frame(&ddp_runs)
+                .into_iter()
+                .map(|p| (ddp_port, p)),
+        );
+        Ok(Datagrams(out))
     }
 
     async fn transmit(&self, datagrams: Datagrams) -> Result<(), ProviderError> {
-        for packet in datagrams.packets {
+        for (port, packet) in datagrams.0 {
             self.sink
-                .send(datagrams.port, packet)
+                .send(port, packet)
                 .await
                 .map_err(|e| ProviderError::Unreachable(format!("sending to the device: {e}")))?;
         }
@@ -257,7 +263,8 @@ impl Provider for WledProvider {
 
     fn delivery_policy(&self) -> DeliveryPolicy {
         DeliveryPolicy {
-            keepalive: KEEPALIVE,
+            // Inside the realtime timeout we ask the device for, with room for a tick
+            keepalive: KEEPALIVE.min(Duration::from_secs(self.config.timeout_s) / 2),
             ..DeliveryPolicy::default()
         }
     }
@@ -312,9 +319,11 @@ impl ElementOutput for WledProvider {
             let release = {
                 let mut state = self.lock();
                 let was_started = state.started.remove(&target);
-                (was_started && state.started.is_empty()).then(|| Datagrams {
-                    port: self.dnrgb_port(&state),
-                    packets: vec![DnrgbEncoder::new(self.config.timeout_s).release()],
+                (was_started && state.started.is_empty()).then(|| {
+                    Datagrams(vec![(
+                        self.dnrgb_port(&state),
+                        DnrgbEncoder::new(self.config.timeout_s).release(),
+                    )])
                 })
             };
             match release {
