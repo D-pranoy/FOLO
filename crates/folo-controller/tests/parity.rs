@@ -229,9 +229,27 @@ enum Clock {
     Cumulative,
 }
 
-/// Each frame's largest difference per channel between the core's frames and the legacy
-/// renderer's, and how many frames are exactly equal.
-fn ambient_case(case: &Case, clock: Clock) -> (Vec<i16>, usize) {
+/// What a case gave on one clock.
+struct AmbientRun {
+    /// Each frame's largest difference per channel from the legacy frame at the same index.
+    diffs: Vec<i16>,
+    /// The core's frames.
+    frames: Vec<Vec<u8>>,
+    /// How many frames are exactly equal to the legacy frame at the same index.
+    exact: usize,
+}
+
+/// The largest difference per channel between two frames.
+fn biggest(a: &[u8], b: &[u8]) -> i16 {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (i16::from(*x) - i16::from(*y)).abs())
+        .max()
+        .unwrap_or(0)
+}
+
+/// The core's frames on one clock against the legacy renderer's.
+fn ambient_case(case: &Case, clock: Clock) -> AmbientRun {
     let input = read_png(&golden().join("ambient").join(&case.input));
     let expected = read_png(&golden().join(&case.expected));
     let leds = u32::try_from(input.width).unwrap();
@@ -260,6 +278,7 @@ fn ambient_case(case: &Case, clock: Clock) -> (Vec<i16>, usize) {
     core.step(start);
     let (mut now, mut elapsed) = (start, 0.0_f64);
     let mut diffs = Vec::with_capacity(input.rows.len());
+    let mut frames = Vec::with_capacity(input.rows.len());
     let mut exact = 0;
     for (i, (row, want)) in input.rows.iter().zip(&expected.rows).enumerate() {
         elapsed += case.dts[i];
@@ -272,23 +291,23 @@ fn ambient_case(case: &Case, clock: Clock) -> (Vec<i16>, usize) {
             .unwrap();
         let out = core.step(now);
         let got = out.frames[INSTANCE].targets[0].colors.to_bytes();
-        let biggest = got
-            .iter()
-            .zip(want)
-            .map(|(g, w)| (i16::from(*g) - i16::from(*w)).abs())
-            .max()
-            .unwrap_or(0);
-        exact += usize::from(biggest == 0);
-        diffs.push(biggest);
+        let diff = biggest(&got, want);
+        exact += usize::from(diff == 0);
+        diffs.push(diff);
         assert_eq!(out.targets["z-strip"], got, "frame {i}");
+        frames.push(got);
     }
-    (diffs, exact)
+    AmbientRun {
+        diffs,
+        frames,
+        exact,
+    }
 }
 
 /// How close below or above a threshold the legacy engine's float silence counts as a tie.
 const TIE_S: f64 = 1e-6;
 
-/// The frames a microsecond clock may legitimately place a step off the legacy engine
+/// The frames a microsecond clock may place a step off the legacy engine, compared one frame shifted
 /// (`docs/architecture/pipeline.md#parity-mode`): each frame where the legacy engine's float
 /// sum of silence is within [`TIE_S`] of a switch threshold (`idle_after`, and the 0.3 s pause
 /// when the player is paused and the zone switches on pause), and the fade that follows it, up
@@ -325,6 +344,37 @@ fn tie_frames(case: &Case) -> BTreeSet<usize> {
     excluded
 }
 
+/// The legacy engine's ambient light after each step, stepped in its own seconds (which
+/// `crates/folo-compositor/tests/ambient_golden.rs` holds within ±1 of the legacy frames).
+fn legacy_states(case: &Case) -> Vec<ZoneAmbient> {
+    let mut legacy = ZoneAmbient::new(ambient_settings(case));
+    case.dts
+        .iter()
+        .enumerate()
+        .map(|(i, &dt)| {
+            legacy.step(dt, case.active.as_bytes()[i] == b'1', case.paused);
+            legacy.clone()
+        })
+        .collect()
+}
+
+/// How far frame `i` is from the shifted legacy timeline: this frame's input blended with the
+/// legacy light of one step earlier, the same step, or one step later, whichever is closest.
+/// A tie moves the switch by one step, so the fade runs a frame early or late.
+fn shifted_difference(case: &Case, states: &[ZoneAmbient], i: usize, got: &[u8]) -> i16 {
+    let input = read_png(&golden().join("ambient").join(&case.input));
+    let row: Vec<f32> = input.rows[i].iter().map(|&v| f32::from(v)).collect();
+    (i.saturating_sub(1)..=(i + 1).min(states.len() - 1))
+        .map(|j| {
+            let mut pixels = row.clone();
+            states[j].apply(&mut pixels, case.master);
+            let bytes: Vec<u8> = pixels.iter().map(|&v| v as u8).collect();
+            biggest(got, &bytes)
+        })
+        .min()
+        .unwrap_or(0)
+}
+
 fn ambient_settings(case: &Case) -> AmbientSettings {
     let hex = case.ambient.color.trim_start_matches('#');
     let byte = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).unwrap();
@@ -347,11 +397,12 @@ fn ambient_settings(case: &Case) -> AmbientSettings {
 }
 
 /// The ambient light through the whole path, on the controller's clock in whole microseconds,
-/// against the legacy renderer's frames: every frame within ±1 per channel, but the frames where
-/// the legacy engine's float sum of silence ties a threshold and the fade that follows
-/// ([`tie_frames`]). There the legacy engine switched on float rounding (it reads 0.3 at one
-/// tie and 0.9999999999999999 at another, both exact on a microsecond clock), so no clock can
-/// follow it on every case. Of the two ways to turn the golden steps into microseconds, the one
+/// against the legacy renderer's frames: every frame within ±1 per channel of the legacy frame
+/// at the same index, or, for the frames where the legacy engine's float sum of silence ties a
+/// threshold and the fade that follows ([`tie_frames`]), within ±1 of the shifted legacy timeline
+/// ([`shifted_difference`]). There the legacy engine switched on float rounding (it reads 0.3 at
+/// one tie and 0.9999999999999999 at another, both exact on a microsecond clock), so no clock
+/// follows it on every case. Of the two ways to turn the golden steps into microseconds, the one
 /// that keeps more frames exact is used. The compositor's own test
 /// (`crates/folo-compositor/tests/ambient_golden.rs`) holds every frame to ±1 in the legacy
 /// path's own seconds.
@@ -360,7 +411,7 @@ fn the_ambient_light_matches_the_legacy_frames() {
     let manifest: Manifest =
         serde_json::from_str(&fs::read_to_string(golden().join("ambient/manifest.json")).unwrap())
             .unwrap();
-    let runs = |clock: Clock| -> Vec<(Vec<i16>, usize)> {
+    let runs = |clock: Clock| -> Vec<AmbientRun> {
         manifest
             .cases
             .values()
@@ -368,32 +419,40 @@ fn the_ambient_light_matches_the_legacy_frames() {
             .collect()
     };
     let (per_step, cumulative) = (runs(Clock::PerStep), runs(Clock::Cumulative));
-    let exact = |runs: &[(Vec<i16>, usize)]| runs.iter().map(|r| r.1).sum::<usize>();
+    let exact = |runs: &[AmbientRun]| runs.iter().map(|r| r.exact).sum::<usize>();
     let (clock, chosen) = if exact(&per_step) >= exact(&cumulative) {
         (Clock::PerStep, per_step)
     } else {
         (Clock::Cumulative, cumulative)
     };
-    let mut excluded_frames = 0;
-    let mut beyond = 0;
-    let mut checked = 0;
-    for ((name, case), (diffs, _)) in manifest.cases.iter().zip(&chosen) {
-        let excluded = tie_frames(case);
-        excluded_frames += excluded.len();
-        for (i, diff) in diffs.iter().enumerate() {
-            if !excluded.contains(&i) {
-                assert!(
-                    *diff <= 1,
-                    "{name} frame {i}: {diff} per channel ({clock:?} clock)"
-                );
+    let (mut tie_frames_seen, mut used_shift, mut frames, mut checked) = (0, 0, 0, 0);
+    for ((name, case), run) in manifest.cases.iter().zip(&chosen) {
+        let ties = tie_frames(case);
+        tie_frames_seen += ties.len();
+        let shifted_states = legacy_states(case);
+        frames += run.diffs.len();
+        for (i, &diff) in run.diffs.iter().enumerate() {
+            if diff <= 1 {
+                continue;
             }
+            // only a tie frame may be a step off, and then within ±1 of the shifted legacy frame
+            assert!(
+                ties.contains(&i),
+                "{name} frame {i}: {diff} per channel ({clock:?} clock)"
+            );
+            let shifted = shifted_difference(case, &shifted_states, i, &run.frames[i]);
+            assert!(
+                shifted <= 1,
+                "{name} frame {i}: {shifted} per channel even one frame shifted ({clock:?} clock)"
+            );
+            used_shift += 1;
         }
-        beyond += excluded.iter().filter(|&&i| diffs[i] > 1).count();
         checked += usize::from(case.expected.starts_with("renderer/"));
     }
     assert_eq!(checked, 5, "the existing renderer goldens");
     eprintln!(
-        "{clock:?} clock: {excluded_frames} frames excluded at threshold ties, {beyond} of them beyond ±1"
+        "{clock:?} clock: {frames} frames; {tie_frames_seen} at threshold ties, of which \
+         {used_shift} matched only one frame shifted; every other frame within ±1"
     );
 }
 
