@@ -774,13 +774,13 @@ components:
       name: id
       in: path
       required: true
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     Node:
       name: node
       in: path
       required: true
       description: A node id.
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     IfMatch:
       name: If-Match
       in: header

@@ -663,6 +663,41 @@ async fn the_rest(node: &Running) {
     );
     assert_eq!(page.header("cache-control"), Some("no-store"));
     assert_eq!(node.get("/api/v1/live").await.code(), "websocket_required");
+    empty_ids_in_paths(node).await;
+}
+
+/// An empty id segment names no resource: 404, whatever the route behind it
+/// (docs/specs/client-api.md#conventions).
+async fn empty_ids_in_paths(node: &Running) {
+    let paths = [
+        ("POST", "/api/v1/zones//identify"),
+        ("POST", "/api/v1/zones//test"),
+        ("POST", "/api/v1/zones//activate"),
+        ("POST", "/api/v1/zones//deactivate"),
+        ("GET", "/api/v1/zones//"),
+        ("GET", "/api/v1/zones/"),
+        ("PUT", "/api/v1/zones//"),
+        ("DELETE", "/api/v1/providers//"),
+        ("POST", "/api/v1/providers//admin/x"),
+        ("POST", "/api/v1/providers//hue/pair"),
+        ("GET", "/api/v1/sources//media"),
+        ("GET", "/api/v1/sources//media/art"),
+        ("POST", "/api/v1/scenes//apply"),
+        ("GET", "/api/v1/library/packs//export"),
+        ("POST", "/api/v1/updates//approve"),
+        ("POST", "/api/v1/sources/join-requests//approve"),
+    ];
+    for (method, path) in paths {
+        let answer = node.send_json(method, path, &json!({})).await;
+        assert_eq!(answer.status, 404, "{method} {path}");
+        assert_eq!(answer.code(), "not_found", "{method} {path}");
+    }
+    // The path without the segment is another resource: the zone `identify`
+    let other = node
+        .send_json("POST", "/api/v1/zones/identify", &json!({}))
+        .await;
+    assert_eq!(other.status, 405);
+    assert_eq!(other.code(), "method_not_allowed");
 }
 
 /// Sets up a zone with the surface `main`, a scene on it, and the local

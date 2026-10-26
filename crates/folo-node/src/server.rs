@@ -166,6 +166,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .fallback(fallback)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(middleware::from_fn(no_empty_segments))
         .layer(middleware::from_fn_with_state(Arc::clone(&node), guard))
         .layer(middleware::from_fn(headers))
         .with_state(node)
@@ -322,6 +323,18 @@ fn is_json(headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(';').next())
         .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
+}
+
+/// An empty segment in an API path names no resource, so it gets the 404 of
+/// any id that isn't there, rather than the `{id}` route its neighbours match
+/// (`/zones//identify`) (docs/specs/client-api.md#conventions). Runs after
+/// the request checks, as "the resource exists" does.
+async fn no_empty_segments(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    if path.starts_with("/api/") && path.contains("//") {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such resource");
+    }
+    next.run(request).await
 }
 
 /// Paths no route takes: 404 under `/api/`, the UI's files elsewhere.
