@@ -64,39 +64,50 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
 
 **Goal:** the spatial model and the controller half of the pipeline.
 **Depends on:** RB-07.
+**Decided in:** [ADR-0036](../decisions/ADR-0036-controller-output.md), with [providers](../architecture/providers.md).
 
 1. **Geometry crate:**
-   - zones (bounds, reference object, type)
-   - target element positions (point, line, grid with wiring orders); `display` validated only
+   - zones (bounds, reference object, type), with the origin at the floor's centre
+   - target element positions (point, line, grid with wiring orders), and unplaced paths; `display` validated only ([element positions](../architecture/spatial-model.md#element-positions))
    - surface placements (path, plane) and manual mappings
 2. **Projector:**
    - sample coordinates per element
-   - nearest, bilinear and area-average kernels
+   - nearest, bilinear and area-average kernels, at most 64 taps ([sampling kernels](../architecture/spatial-model.md#sampling-kernels))
    - gather plans `(elements, taps)`, cached per configuration revision
-   - edge policy; mapping priority and blend
+   - edge policy; mapping priority and blend; manual ranges with one tap of weight 1 when the counts are equal
    - an abstract `Projector` trait with a CPU implementation
 3. **Compositor:**
    - per-surface source priority lists, activity handling, a 300 ms crossfade, optional blend
-   - newest frame wins; staleness timeout
+   - newest frame wins; 500 ms staleness timeout; with no active source, the newest fresh frame of the highest-priority source, else background × master
+   - a steppable core, `step(now_us)`, run when a frame arrives and at least every 1/60 s, so tests drive it deterministically
    - **reactive mode and ambient light per zone** ([pipeline](../architecture/pipeline.md#controller-stages)):
      - on / auto / off
      - solid or breathe (30–100% over 8 s)
      - fade in 1.5 s eased, fade out 0.15 s
-     - silence from the sources' gain-free activity; the on-pause switch after 0.3 s from media state
+     - blended into the composited surface before projection, as `colour × level × master`; a fade of 0 leaves the frame byte-exact; the result is truncated
+     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when every linked player that has a media session is paused
    - golden tests against the current engine's ambient frames (within ±1 per channel)
-4. **Adapter chain** per [capabilities](../architecture/capabilities.md):
-   - resolution, colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, rate (streaming or state with a token bucket), latency delay line
-   - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md))
-5. **Zone activation:** exclusive targets, with conflicts reported for the UI to confirm. Default surfaces and roles per zone type.
-6. **Provider interface:**
+4. **Adapter chain** per [capabilities](../architecture/capabilities.md#adapter-chain-per-target-in-order), in the order resolution → colour model → calibration → latency → flash limiter:
+   - resolution (fitting to `address.count`), colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, the latency delay line
+   - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)), by the [algorithm](../architecture/capabilities.md#algorithm)
+   - the rate belongs to step 6's sender
+5. **Zone activation and test patterns:**
+   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation))
+   - the engine's `config.apply` assigns the surfaces of active zones only
+   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns))
+   - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults))
+6. **Provider interface** ([providers](../architecture/providers.md)):
    - discover, describe (targets with capabilities), connect, send, release, status, admin
    - `ElementOutput` now; `RasterOutput` reserved
    - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
+   - a recording provider for tests
+   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...`
 7. **Tests:**
    - geometry unit tests
-   - projection golden images (frames stacked into PNGs)
+   - projection golden images (frames stacked into PNGs in `tests/golden/projection/`, written when `FOLO_BLESS=1` is set)
+   - ambient inputs from `scripts/make_golden.py --only ambient`, checked against the **existing** `tests/golden/renderer/ambient-*.png` frames; no existing golden is regenerated
    - adapter unit tests, flash limiter tests
-   - parity path: identity adapters reproduce the input bytes exactly
+   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames
 
 **Done when:** golden images and adapter tests are green, and parity-path frames equal the engine's output.
 
@@ -124,7 +135,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
 ## RB-10: Hyperion provider
 
 **Goal:** Hyperion on the provider interface, with parity and basic administration.
-**Depends on:** RB-08.
+**Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)); step 5 below also needs the rest of RB-08, the controller's output.
 
 1. **Fake first:** a Hyperion JSON server in tests that records frames and answers `serverinfo`, `clear`, `sourceselect` and `componentstate`.
 2. **Provider:**
