@@ -31,8 +31,7 @@ const ALL_PRIORITIES: i64 = -1;
 type Outcome = Result<Value, AdminError>;
 
 fn invalid(why: &str) -> AdminError {
-    // AdminError has no variant for a bad request, so it is a refusal
-    AdminError::Provider(ProviderError::Refused(format!("invalid request: {why}")))
+    AdminError::BadRequest(format!("invalid request: {why}"))
 }
 
 fn read_only(method: AdminMethod, mut values: Value, change: &str) -> Value {

@@ -148,9 +148,10 @@ async fn bad_requests_are_refused_without_touching_the_bridge() {
     ] {
         let error = change(&provider, action, body.clone()).await.unwrap_err();
         assert!(
-            matches!(&error, AdminError::Provider(ProviderError::Failed(m)) if m.starts_with("invalid request")),
+            matches!(&error, AdminError::BadRequest(m) if m.starts_with("invalid request")),
             "{action} {body}: {error}"
         );
+        assert_eq!((error.status(), error.code()), (400, "bad_body"));
     }
     assert_eq!(writes(&bridge), before);
 }

@@ -73,10 +73,7 @@ fn merge_missing(into: &mut Value, from: &Value) {
 }
 
 fn invalid(message: impl Into<String>) -> AdminError {
-    AdminError::Provider(ProviderError::Failed(format!(
-        "invalid request: {}",
-        message.into()
-    )))
+    AdminError::BadRequest(format!("invalid request: {}", message.into()))
 }
 
 fn field_u32(body: &Value, key: &str) -> Result<Option<u32>, AdminError> {

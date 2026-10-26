@@ -17,7 +17,7 @@
 //! | `entertainment_take_over` | whose stream would stop | stops another app's stream |
 //! | `update_status` | the bridge's software update state | |
 
-use folo_provider::{AdminError, AdminMethod, ProviderError};
+use folo_provider::{AdminError, AdminMethod};
 use serde_json::{Value, json};
 
 use crate::model::{EntertainmentConfiguration, Inventory, Light};
@@ -32,10 +32,7 @@ const CONFIGURATION_TYPES: [&str; 5] = ["screen", "monitor", "music", "3dspace",
 const NAME_LIMIT: usize = 32;
 
 fn invalid(message: impl Into<String>) -> AdminError {
-    AdminError::Provider(ProviderError::Failed(format!(
-        "invalid request: {}",
-        message.into()
-    )))
+    AdminError::BadRequest(format!("invalid request: {}", message.into()))
 }
 
 fn rest(e: RestError) -> AdminError {

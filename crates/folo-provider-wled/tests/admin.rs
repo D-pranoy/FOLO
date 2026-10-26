@@ -51,7 +51,8 @@ async fn change(provider: &WledProvider, action: &str, body: Value) -> Value {
 async fn rejected(provider: &WledProvider, action: &str, body: Value) -> String {
     match provider.admin(action, AdminMethod::Change, body).await {
         Err(AdminError::Provider(e)) => e.message().to_owned(),
-        other => panic!("expected a provider error, got {other:?}"),
+        Err(AdminError::BadRequest(why)) => why,
+        other => panic!("expected a refusal, got {other:?}"),
     }
 }
 
@@ -292,7 +293,14 @@ async fn invalid_segment_requests_are_refused_before_anything_is_sent() {
         (json!({"op": "edit", "id": 0, "stop": 200}), "has 90 LEDs"),
         (json!({"op": "edit", "id": 0, "bri": 999}), "0–255"),
     ] {
-        let message = rejected(&provider, "segments", body.clone()).await;
+        let error = provider
+            .admin("segments", AdminMethod::Change, body.clone())
+            .await
+            .unwrap_err();
+        assert_eq!((error.status(), error.code()), (400, "bad_body"), "{body}");
+        let AdminError::BadRequest(message) = error else {
+            panic!("{body}: expected a bad request");
+        };
         assert!(message.contains(expected), "{body}: {message}");
     }
     assert_eq!(device.posts("/json/state").len(), 0);
