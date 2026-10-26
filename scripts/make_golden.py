@@ -125,13 +125,21 @@ def write_migration() -> None:
 def write_ambient() -> None:
     out = golden_cases.AMBIENT_DIR
     out.mkdir(parents=True, exist_ok=True)
-    cases = golden_cases.ambient_cases()
+    cases = golden_cases.all_ambient_cases()
     entries: dict[str, object] = {}
+    names: set[str] = set()
     for case in cases:
         inputs = golden_cases.ambient_inputs(case)
         golden_cases.write_png(out / f'{case.name}.png', inputs.frames)
-        entries[case.name] = golden_cases.ambient_entry(case, inputs)
-    names = {f'{c.name}.png' for c in cases}
+        names.add(f'{case.name}.png')
+        expected = golden_cases.ambient_expected_path(case)
+        if case.name not in golden_cases.AMBIENT_NAMES:
+            # these have no PNG in renderer/: the legacy renderer's frames go beside the input
+            golden_cases.write_png(
+                golden_cases.GOLDEN_DIR / expected, golden_cases.render(case).frames
+            )
+            names.add(Path(expected).name)
+        entries[case.name] = golden_cases.ambient_entry(case, inputs, expected)
     for stale in out.glob('*.png'):
         if stale.name not in names:
             stale.unlink()

@@ -114,6 +114,7 @@ struct Outcome {
     biggest: i16,
     differing: usize,
     changed_by_the_light: usize,
+    brighter: usize,
 }
 
 fn input_of(case: &Case) -> (Image, Image) {
@@ -144,6 +145,7 @@ fn against_legacy(case: &Case) -> Outcome {
         biggest: 0,
         differing: 0,
         changed_by_the_light: 0,
+        brighter: 0,
     };
     for (i, (row, want)) in input.rows.iter().zip(&expected.rows).enumerate() {
         ambient.step(case.dts[i], case.active.as_bytes()[i] == b'1', case.paused);
@@ -151,6 +153,7 @@ fn against_legacy(case: &Case) -> Outcome {
         ambient.apply(&mut pixels, case.master);
         let mut differs = false;
         for (got, (&want, &input)) in pixels.iter().zip(want.iter().zip(row)) {
+            outcome.brighter += usize::from(*got as i16 > i16::from(want));
             let diff = (*got as i16 - i16::from(want)).abs();
             outcome.biggest = outcome.biggest.max(diff);
             differs |= diff != 0;
@@ -191,6 +194,36 @@ fn clock_against_seconds(case: &Case) -> usize {
     lit
 }
 
+/// How far a fade that starts one step off may be from the legacy frame. The
+/// eased fade-in moves at most 255 × (1 / 1.5 s) × 1.5 = 255 levels a second
+/// (the slope of the ease is 1.5 at its middle), so one idle step (1/30 s) moves it by
+/// 8.5 levels, and the ±1 of the maths and the truncation come on top.
+const CLOCK_TOLERANCE: i16 = 11;
+
+/// `step_to` on a clock in whole microseconds against the legacy frames: the
+/// biggest difference. The clock can't land the legacy float sums on the same
+/// side of a threshold (`quiet >= idle` at exactly 0.3 s in one case: legacy
+/// 0.3, the clock's 0.2999997 a step before), so a fade may start one step
+/// early or late, and that is all [`CLOCK_TOLERANCE`] allows for.
+fn clock_against_legacy(case: &Case) -> i16 {
+    let (input, expected) = input_of(case);
+    let mut timed = ZoneAmbient::new(settings(case));
+    let mut now_us = 1_000_000_u64;
+    // the first call only sets the clock: prime it, so the first step counts like the others
+    timed.step_to(now_us, false, case.paused);
+    let mut biggest = 0;
+    for (i, (row, want)) in input.rows.iter().zip(&expected.rows).enumerate() {
+        now_us += (case.dts[i] * 1e6).round() as u64;
+        timed.step_to(now_us, case.active.as_bytes()[i] == b'1', case.paused);
+        let mut pixels = float_row(row);
+        timed.apply(&mut pixels, case.master);
+        for (&got, &want) in pixels.iter().zip(want) {
+            biggest = biggest.max((got as i16 - i16::from(want)).abs());
+        }
+    }
+    biggest
+}
+
 fn manifest() -> Manifest {
     serde_json::from_slice(
         &fs::read(golden().join("ambient/manifest.json"))
@@ -202,7 +235,7 @@ fn manifest() -> Manifest {
 #[test]
 fn the_zone_ambient_light_matches_the_legacy_frames_within_one() {
     let manifest = manifest();
-    assert_eq!(manifest.cases.len(), 5);
+    assert_eq!(manifest.cases.len(), 9);
     for (name, case) in &manifest.cases {
         let outcome = against_legacy(case);
         eprintln!(
@@ -213,6 +246,12 @@ fn the_zone_ambient_light_matches_the_legacy_frames_within_one() {
             outcome.biggest <= TOLERANCE,
             "{name}: off by {} (more than {TOLERANCE})",
             outcome.biggest
+        );
+        // the engine's frame was truncated before the light came on, so the result
+        // is never above the legacy one; rounding instead of truncating would be
+        assert_eq!(
+            outcome.brighter, 0,
+            "{name}: brighter than the legacy frame"
         );
         // the cases are only a test if the light does something
         assert!(
@@ -228,6 +267,18 @@ fn a_clock_steps_the_light_like_seconds_do() {
         assert!(
             clock_against_seconds(case) > 0,
             "{name}: the ambient light never showed"
+        );
+    }
+}
+
+#[test]
+fn a_clock_keeps_to_the_legacy_frames_give_or_take_a_step() {
+    for (name, case) in &manifest().cases {
+        let biggest = clock_against_legacy(case);
+        eprintln!("{name}: on a clock, off by at most {biggest}");
+        assert!(
+            biggest <= CLOCK_TOLERANCE,
+            "{name}: off by {biggest} (more than {CLOCK_TOLERANCE})"
         );
     }
 }

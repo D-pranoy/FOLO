@@ -525,8 +525,11 @@ def ambient_inputs(case: Case) -> AmbientInputs:
     return AmbientInputs(result.frames, dts, active)
 
 
-def ambient_entry(case: Case, inputs: AmbientInputs) -> dict[str, Any]:
-    """One case of tests/golden/ambient/manifest.json."""
+def ambient_entry(case: Case, inputs: AmbientInputs, expected: str) -> dict[str, Any]:
+    """
+    One case of tests/golden/ambient/manifest.json. `expected`: the PNG of the
+    legacy renderer's frames, relative to tests/golden/.
+    """
     config = case.config
     return {
         'reactive': config['reactive'],
@@ -535,7 +538,7 @@ def ambient_entry(case: Case, inputs: AmbientInputs) -> dict[str, Any]:
         'master': config['master'],
         'paused': case.paused,
         'input': f'{case.name}.png',
-        'expected': f'renderer/{case.name}.png',
+        'expected': expected,
         'frames': int(inputs.frames.shape[0]),
         'leds': int(inputs.frames.shape[1]),
         'frames_sha256': hashlib.sha256(inputs.frames.tobytes()).hexdigest(),
@@ -545,8 +548,66 @@ def ambient_entry(case: Case, inputs: AmbientInputs) -> dict[str, Any]:
 
 
 def ambient_cases() -> list[Case]:
+    """The ambient cases of renderer/ (master 1): their PNGs are the expected frames."""
     cases = by_name(look_cases())
     return [cases[name] for name in AMBIENT_NAMES]
+
+
+def ambient_expected_path(case: Case) -> str:
+    """Where a case's expected frames are, relative to tests/golden/."""
+    if case.name in AMBIENT_NAMES:
+        return f'renderer/{case.name}.png'
+    return f'ambient/{case.name}-expected.png'
+
+
+def master_ambient_cases() -> list[Case]:
+    """
+    Ambient cases with master below 1, which the renderer's own do not have: the
+    light has to be scaled by master, the frames stay within 1 of the legacy ones,
+    and a fade out from part way is checked ('gap' has silence in the middle).
+    Their expected frames are written beside their inputs, by the legacy renderer.
+    """
+    segs = [
+        segment(0, 39, 'lows', 'hits', mode='pulse'),
+        segment(40, 79, 'mids', 'level', mode='fill', direction='center'),
+        segment(80, 119, 'highs', 'level', mode='spectrum'),
+    ]
+
+    def cfg(reactive: str, master: float, color: str, style: str, level: float, idle: float):
+        ambient = {'color': color, 'style': style, 'level': level, 'idle_after': idle}
+        return make_config(120, segs, reactive=reactive, master=master, ambient=ambient)
+
+    return [
+        Case(
+            'ambient-master-auto-solid',
+            'gap',
+            cfg('auto', 0.4, '#4B00FF', 'solid', 0.5, 1.0),
+            idle=IDLE_SECONDS,
+        ),
+        Case(
+            'ambient-master-auto-breathe',
+            'gap',
+            cfg('auto', 0.7, '#FF3399', 'breathe', 0.8, 1.0),
+            idle=IDLE_SECONDS,
+        ),
+        Case(
+            'ambient-master-off-solid',
+            'gap',
+            cfg('off', 0.55, '#0033CC', 'solid', 1.0, 1.0),
+            idle=IDLE_SECONDS,
+        ),
+        Case(
+            'ambient-master-auto-paused',
+            'gap',
+            cfg('auto', 0.4, '#FF3399', 'solid', 0.4, 30.0),
+            paused=True,
+            idle=IDLE_SECONDS,
+        ),
+    ]
+
+
+def all_ambient_cases() -> list[Case]:
+    return ambient_cases() + master_ambient_cases()
 
 
 # ---------------------------------------------------------------- manifest
