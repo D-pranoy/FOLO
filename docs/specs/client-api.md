@@ -164,4 +164,5 @@ The node serves the UI's files outside `/api/`, with no key ([ADR-0035](../decis
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/ingest/surfaces` (WebSocket) | Third parties stream surface frames to the controller using a scoped ingest token. Framing as in the [source link](source-link.md#surface-frames). Appears as a source in the compositor. |
+| `GET /api/v1/capture-link` (WebSocket) | The node's own capture agent, on loopback only, with its launch token in the handshake ([source link](source-link.md#the-capture-link)). No key; the Host, Origin and client-address checks apply before the upgrade, and other machines get 403 `loopback_only`. Answers 501 until [RB-14](../runbooks/m6-screen.md). |
 | `GET /api/v1/source-link` (WebSocket) | Source nodes ([source link](source-link.md)). The `local` purpose is taken from loopback clients only; until RB-16 brings the other purposes, clients on other machines get 403 `loopback_only` before the upgrade. |

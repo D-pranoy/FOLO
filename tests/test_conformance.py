@@ -68,9 +68,11 @@ def test_bad_screen_frames_are_caught() -> None:
     assert conformance.check_frame(good, 'screen') == []
     assert any('magic' in p for p in conformance.check_frame(b'XXXX' + good[4:], 'screen'))
     assert any('payload' in p for p in conformance.check_frame(good[:-3], 'screen'))
-    assert any('flags' in p for p in conformance.check_frame(good[:6] + b'' + good[7:], 'screen'))
     assert any(
-        'reserved' in p for p in conformance.check_frame(good[:7] + b'' + good[8:], 'screen')
+        'flags' in p for p in conformance.check_frame(good[:6] + b'\x08' + good[7:], 'screen')
+    )
+    assert any(
+        'reserved' in p for p in conformance.check_frame(good[:7] + b'\x01' + good[8:], 'screen')
     )
     # Bars of 3 + 3 rows leave none of the 6 rows
     bars = struct.pack('<HHHH', 3, 3, 0, 0)
@@ -84,7 +86,12 @@ def test_bad_screen_frames_are_caught() -> None:
     # Larger than the 480 x 270 the agent sends
     wide = struct.pack('<4sBBBBHHHHIQ', b'FOLC', 1, 1, 0, 0, 0, 481, 270, 0, 0, 0)
     problems = conformance.check_frame(wide + bytes(8) + bytes(481 * 270 * 3), 'screen')
-    assert any('more than 480 x 270' in p for p in problems)
+    assert any('wider than 480' in p for p in problems)
+    tall = struct.pack('<4sBBBBHHHHIQ', b'FOLC', 1, 1, 0, 0, 0, 270, 480, 0, 0, 0)
+    assert any(
+        'higher than 270' in p
+        for p in conformance.check_frame(tall + bytes(8) + bytes(270 * 480 * 3), 'screen')
+    )
 
 
 class Stub(BaseHTTPRequestHandler):

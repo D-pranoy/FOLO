@@ -758,6 +758,15 @@ paths:
       responses:
         '101': {description: Switching to the WebSocket protocol.}
         default: {$ref: '#/components/responses/Error'}
+  /capture-link:
+    get:
+      tags: [websockets]
+      operationId: captureLink
+      summary: The node's own capture agent, loopback only (specs/asyncapi.yaml, channel captureLink); proven by its launch token
+      security: []
+      responses:
+        '101': {description: Switching to the WebSocket protocol.}
+        default: {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     bearer:

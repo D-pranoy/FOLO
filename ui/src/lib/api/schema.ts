@@ -880,6 +880,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/capture-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The node's own capture agent, loopback only (specs/asyncapi.yaml, channel captureLink); proven by its launch token */
+        get: operations["captureLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4566,6 +4583,25 @@ export interface operations {
         };
     };
     sourceLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the WebSocket protocol. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    captureLink: {
         parameters: {
             query?: never;
             header?: never;

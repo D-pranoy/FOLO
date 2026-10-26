@@ -2713,7 +2713,7 @@ pub struct CaptureStatusParams {
     pub restore_token: ::std::option::Option<CaptureStatusParamsRestoreToken>,
     ///The screen being captured; empty while off.
     pub screen: CaptureStatusParamsScreen,
-    ///Where the user can allow capture, when the operating system's privacy setting refuses it.
+    ///Where the user can allow capture, when the operating system's privacy setting refuses it: an ms-settings: link.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub settings_uri: ::std::option::Option<CaptureStatusParamsSettingsUri>,
     pub state: CaptureStatusParamsState,
@@ -2934,7 +2934,7 @@ impl<'de> ::serde::Deserialize<'de> for CaptureStatusParamsScreen {
             })
     }
 }
-///Where the user can allow capture, when the operating system's privacy setting refuses it.
+///Where the user can allow capture, when the operating system's privacy setting refuses it: an ms-settings: link.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct CaptureStatusParamsSettingsUri(::std::string::String);
@@ -2956,6 +2956,11 @@ impl ::std::str::FromStr for CaptureStatusParamsSettingsUri {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() > 2048usize {
             return Err("longer than 2048 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^ms-settings:").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^ms-settings:\"".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -14924,7 +14929,7 @@ impl ::std::default::Default for ScreenParamsMode {
         ScreenParamsMode::Area
     }
 }
-///The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9).
+///The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9). unavailable: capture is wanted but no agent can run (no user session, or the desktop app hasn't started it); message says why.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ScreenStatus {
@@ -14939,6 +14944,7 @@ pub struct ScreenStatus {
     pub protected: bool,
     ///The screen being captured; empty while off.
     pub screen: ScreenStatusScreen,
+    ///An ms-settings: link to the Windows privacy setting.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub settings_uri: ::std::option::Option<ScreenStatusSettingsUri>,
     pub state: ScreenStatusState,
@@ -15105,7 +15111,7 @@ impl<'de> ::serde::Deserialize<'de> for ScreenStatusScreen {
             })
     }
 }
-///`ScreenStatusSettingsUri`
+///An ms-settings: link to the Windows privacy setting.
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct ScreenStatusSettingsUri(::std::string::String);
@@ -15127,6 +15133,11 @@ impl ::std::str::FromStr for ScreenStatusSettingsUri {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() > 2048usize {
             return Err("longer than 2048 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^ms-settings:").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^ms-settings:\"".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -15185,6 +15196,8 @@ pub enum ScreenStatusState {
     Paused,
     #[serde(rename = "error")]
     Error,
+    #[serde(rename = "unavailable")]
+    Unavailable,
 }
 impl ::std::fmt::Display for ScreenStatusState {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -15195,6 +15208,7 @@ impl ::std::fmt::Display for ScreenStatusState {
             Self::Capturing => f.write_str("capturing"),
             Self::Paused => f.write_str("paused"),
             Self::Error => f.write_str("error"),
+            Self::Unavailable => f.write_str("unavailable"),
         }
     }
 }
@@ -15210,6 +15224,7 @@ impl ::std::str::FromStr for ScreenStatusState {
             "capturing" => Ok(Self::Capturing),
             "paused" => Ok(Self::Paused),
             "error" => Ok(Self::Error),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err("invalid value".into()),
         }
     }

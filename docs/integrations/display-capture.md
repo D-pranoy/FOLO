@@ -29,7 +29,7 @@ So capture is done by the **capture agent** `folo-capture` (Rust), which always 
 | Desktop-managed node (user mode) | The node, on demand |
 | Windows service | The desktop app at sign-in. Later, the service may launch it into the console session (`CreateProcessAsUser`). How it then gets its launch token is decided with the service (RB-19, RB-20). |
 | Linux system unit or Docker | Not available. Screen sync needs a user-session source. |
-| Linux user unit | The node, or a user unit `app-<app-id>-capture.service` (`PartOf=`/`After=graphical-session.target`) |
+| Linux user unit | The node. (A user unit `app-<app-id>-capture.service` that systemd starts is reserved with service mode: it can't get the node's launch token until RB-19 and RB-20 decide how.) |
 
 The agent sends small frames to its node over loopback, and the node hands them on to the effect engine, where the Screen effect runs.
 
@@ -44,9 +44,9 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md); the messa
 
 ## Frames from the agent
 
-- **Format:** `rgb8`, sRGB-encoded, in the `FOLC` frame of the [source link](../specs/source-link.md#screen-frames), never compressed. Frames are never larger than 480×270.
-- **Size:** the node asks for twice the largest canvas among the surfaces with a Screen layer (at least 64×36, at most 480×270). The agent delivers the largest frame of the screen's aspect ratio that fits.
-- **Rate:** the highest rate those surfaces publish at, at most 60 Hz. When nothing on the screen changes, the last picture is sent again after 0.25 s.
+- **Format:** `rgb8`, sRGB-encoded, in the `FOLC` frame of the [source link](../specs/source-link.md#screen-frames), never compressed. Frames are never wider than 480 or higher than 270.
+- **Size:** at most 480 wide and 270 high. The node asks for twice the largest canvas among the surfaces with a Screen layer (at least 64×36, at most 480×270). The agent delivers the largest frame of the screen's aspect ratio that fits.
+- **Rate:** the highest rate those surfaces publish at, at most 60 Hz. When nothing on the screen changes, the last picture is sent again after 0.25 s, as a new frame with the send time and the next sequence number.
 - **Clock:** timestamps are microseconds on the operating system's monotonic clock (`QueryPerformanceCounter`, `CLOCK_MONOTONIC`), the clock the engine stamps its own frames with.
 - **Flags:** `protected` (protected content is on screen), `hdr` (the desktop is HDR, and the frame was tone-mapped) and `held` (the agent can't capture right now, and sends its last picture again).
 - **Bars:** the black bars found, in cells, in every frame's header. The picture isn't cropped.
@@ -108,7 +108,7 @@ The `screen` effect runs in the engine. It is a **canvas effect**: it draws a 2D
 6. **Blend:** the layer's `blend` applies, inside its region, as for any layer. Its `axis` doesn't apply.
 
 **Activity and rendering:**
-- Each surface with an enabled Screen layer has its own activity ([pipeline](../architecture/pipeline.md#the-executor)): active while frames that aren't `held` or `protected` arrive, less than 0.5 s apart.
+- Each surface with an enabled Screen layer has its own activity ([pipeline](../architecture/pipeline.md#the-executor)): active while the newest frame that isn't `held` or `protected` arrived less than 0.5 s ago (age counts from its arrival at the engine). A surface with audio layers too is active when either input is.
 - While audio plays, Screen layers render with the audio steps. While it is idle, a screen frame starts a step, so they render at the capture rate.
 
 ## Latency and privacy
@@ -116,8 +116,9 @@ The `screen` effect runs in the engine. It is a **canvas effect**: it draws a 2D
 - **Latency targets:** about 50 ms or less glass-to-light for games, 100 ms or less for films. Capture costs about one frame; smoothing is usually the largest term.
 - **Privacy:**
   - Capture runs on demand only, with FOLO's own "screen sync active" indicator in the tray and the UI.
-  - Screen frames travel only from the agent to its node and on to its engine, on loopback. They never reach the live channel, the client API, ingest, a remote source link, a log, a file or a crash dump. The status clients see holds the state, rate, flags and bars, and nothing of the picture.
-  - Only the zone's low-resolution surface leaves the engine, and the machine.
+  - Raw screen frames travel only from the agent to its node and on to its engine, on loopback. They never reach the live channel, the client API, ingest, a remote source link, a log or a file FOLO writes. The status clients see holds the state, rate, flags and bars, and nothing of the picture.
+  - The zone's canvas, which the Screen effect renders from them (64×36 by default), is published like any surface and is a picture of the screen: clients holding a key can subscribe to it (`surface:<id>`, `target:<id>`) for their own preview, and on the LAN it travels over plain HTTP like the rest of the live channel. It is the only screen picture that leaves the engine.
+  - Operating-system crash dumps and swap are outside FOLO's control.
   - Test fixtures and replay files are synthetic; recordings of real screens are never committed.
 
 ## Testing
@@ -126,7 +127,7 @@ The `screen` effect runs in the engine. It is a **canvas effect**: it draws a 2D
 - **Golden tests** for black bars: letterbox, pillarbox, 21:9, subtitles in the bars, logos, fade to black, OSD, noise near the threshold.
 - **Downscale and tone-map shaders** run on Windows' WARP software device with fixtures.
 - **Linux:** on the CI runner, a real PipeWire daemon with a test producer and a fake ScreenCast portal (a service on a private `dbus-daemon`). These capture tests run in an Ubuntu 24.04 job; the workspace must still build on Ubuntu 22.04. The consent path is tested manually.
-- **Privacy:** a run with marker pixels in its frames collects every live message, log line and temporary file, and asserts the markers are in none of them.
+- **Privacy:** a run with marker pixels the effect can't copy (in `held` and `protected` frames, the bar rows and the margins) collects every status, levels and spectrum message, log line, the node's status, API answer and file in the temporary and data folders, and asserts neither the raw payload nor the markers are in them. The `surface:` and `target:` topics are expected to carry the canvas and nothing else.
 - **End to end:** the node, the agent in replay mode and the real engine, asserting the canvas frames the engine publishes; through projection once RB-08 lands.
 
 ## Libraries

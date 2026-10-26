@@ -31,9 +31,10 @@ A node's own effect engine uses the same endpoint on loopback, `ws://127.0.0.1:<
 
 ### The capture link
 
-The display capture agent `folo-capture` has a loopback endpoint of its own, `ws://127.0.0.1:<port>/api/v1/capture-link`, without Noise ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D1 to D3). Only a node's own agent uses it, and nothing on it ever goes to another machine.
+The display capture agent `folo-capture` has a loopback endpoint of its own, `ws://127.0.0.1:<port>/api/v1/capture-link`, without Noise ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D1 to D3). Only a node's own agent uses it, and nothing on it ever goes to another machine. Like `/source-link` it needs no key, and the node applies the Host, Origin and client-address checks before the upgrade ([security](../architecture/security.md#rules)), so a web page can't open it; a client on another machine gets `403 loopback_only`, even with remote access on, and a request that isn't a WebSocket upgrade gets `400 websocket_required`.
 - **Launch:** the node starts the agent with the link's URL and a random 256-bit launch token (base64url) in its environment, `FOLO_CAPTURE_LINK` and `FOLO_CAPTURE_TOKEN`, never on its command line.
-- **Handshake:** the subprotocol is `folo.capture.v1`. The first message each way is JSON in a WebSocket text message. The agent sends `{version: ["1"], agent: {version, platform}, token}`; the node compares the token in constant time, accepts one agent connection at a time, closes any other and answers `{version: "1", result: "ok" | "rejected"}`. A response other than `ok` ends the agent with status 1, and the node starts a new one with a new token.
+- **Handshake:** the subprotocol is `folo.capture.v1`. The first message each way is JSON in a WebSocket text message. The agent sends `{version: ["1"], agent: {version, platform}, token}`; the node checks the token (in constant time) before it tests whether an agent is already connected, accepts one agent connection at a time, closes any other and answers `{version: "1", result: "ok" | "rejected"}`. A response other than `ok` ends the agent with status 1, and the node starts a new one with a new token.
+- **Limits:** the first message must arrive within 5 s, and no message may exceed 400,000 bytes. The engine's decoder checks every screen frame it gets (magic, version, pixel format, flags, size, length `36 + 3 × width × height`, bars) and drops one that fails, logging the reason without any pixels.
 - **Messages:** each WebSocket binary message after that starts with a type byte, `0x01` for JSON-RPC 2.0 or `0x04` for a [screen frame](#screen-frames).
 - **Heartbeat:** the agent sends `capture.status` at least once a second; after 5 s without any message the node treats it as hung and restarts it.
 - **Losing the node:** the agent reconnects with the backoff above, and exits after 30 s without its node.
@@ -42,7 +43,7 @@ The display capture agent `folo-capture` has a loopback endpoint of its own, `ws
 | Node → agent | Purpose |
 |---|---|
 | `screens.list` | The screens the agent can capture: `{screens: [Screen]}`, as `inputs.list` lists them |
-| `capture.start {screen, width, height, rate_hz, black_bars, profile, restore_token?}` | Starts, or replaces, the capture of one screen. The frames fit `width × height` (at most 480 × 270) in the screen's aspect ratio, at most `rate_hz` (1–60) a second. Answers `{}` once accepted; the progress is in `capture.status`. |
+| `capture.start {screen, width, height, rate_hz, black_bars, profile, restore_token?}` | Starts a capture. Sent again while capturing, `black_bars`, `profile`, `rate_hz` and the size change in place; another `screen` ends the session and starts a new one. The frames fit `width × height` (`width` at most 480, `height` at most 270) in the screen's aspect ratio, at most `rate_hz` (1–60) a second. `restore_token` is sent only when starting from `off`. Answers `{}` once accepted; the progress is in `capture.status`. |
 | `capture.stop` | Stops the capture; the agent stays up and its state is `off` |
 | `restart {component: capture}` | Answers `{}`, then the agent exits for the node to start it again. Other components get `-32602`. |
 
@@ -188,8 +189,8 @@ The capture agent's frames, on the [capture link](#the-capture-link) and forward
 | 36 | n | Payload: `width × height × 3` bytes, the red, green and blue of each cell, row-major |
 
 - **Pixels:** sRGB-encoded SDR, averaged in linear light when the agent downscaled them. The picture isn't cropped: the bars are the rows and columns, counted from each side, that the agent found black, and are at most `height − 1` rows and `width − 1` columns together. All zero means none.
-- **Size:** `width` and `height` are at least 1 and `width × height` is at most 480 × 270 cells. A capture's frames can change size (a mode change). The payload is never compressed.
-- **Sequence:** it counts the frames the agent sent since it started, wrapping at 2³². The first frame after a new connection counts as newer than any before it.
+- **Size:** `width` is 1 to 480 and `height` 1 to 270. A capture's frames can change size (a mode change). The payload is never compressed.
+- **Sequence:** it counts the frames the agent sent since it started, wrapping at 2³². The first frame after a new connection counts as newer than any before it. A frame the agent repeats (nothing changed) or holds is a new message, with the send time as its timestamp and the next sequence number. How old a frame is counts from its arrival at the engine.
 - **Delivery:** newest wins on both hops. A frame replaced before it was sent is dropped.
 - **Privacy:** a screen frame is never sent to a client, to another machine, to a log or to disk ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D9).
 

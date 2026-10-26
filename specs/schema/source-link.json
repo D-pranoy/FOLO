@@ -376,7 +376,7 @@
         "bars": {"$ref": "#/$defs/ScreenBars"},
         "restore_token": {"description": "Linux: the portal's new restore token, to keep in secrets.json.", "type": "string", "maxLength": 256},
         "message": {"description": "Why it is paused or in error.", "type": "string", "maxLength": 500},
-        "settings_uri": {"description": "Where the user can allow capture, when the operating system's privacy setting refuses it.", "type": "string", "maxLength": 2048}
+        "settings_uri": {"description": "Where the user can allow capture, when the operating system's privacy setting refuses it: an ms-settings: link.", "type": "string", "maxLength": 2048, "pattern": "^ms-settings:"}
       },
       "required": ["state", "backend", "screen", "fps", "hdr", "protected", "bars"],
       "additionalProperties": false

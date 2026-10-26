@@ -60,7 +60,7 @@ FIXTURES = SPECS / 'fixtures'
 
 Json = Any
 PIXEL_BYTES = {1: 3, 2: 6, 3: 12}  # rgb8, rgb16, rgbf32: bytes per cell
-SCREEN_MAX_CELLS = 480 * 270  # the largest screen frame the capture agent sends
+SCREEN_MAX = (480, 270)  # the widest and highest screen frame the capture agent sends
 NODE_START_S = 30.0  # how long a node of its own has to answer /health
 NODE_STOP_S = 10.0
 
@@ -210,8 +210,8 @@ def _check_screen_frame(fields: dict[str, Json], payload: int) -> list[str]:
     width, height = fields['width'], fields['height']
     if width < 1 or height < 1:
         problems.append('width and height must be at least 1')
-    elif width * height > SCREEN_MAX_CELLS:
-        problems.append(f'{width} x {height} cells are more than 480 x 270')
+    elif width > SCREEN_MAX[0] or height > SCREEN_MAX[1]:
+        problems.append(f'{width} x {height} cells are wider than 480 or higher than 270')
     if payload != width * height * 3:
         problems.append(
             f'payload is {payload} bytes; {width} x {height} cells need {width * height * 3}'

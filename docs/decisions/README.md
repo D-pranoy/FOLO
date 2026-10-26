@@ -28,7 +28,7 @@ Architecture decision records (ADRs) are the highest authority in the [documenta
 | [0012](ADR-0012-wled-provider.md) | WLED provider | Accepted |
 | [0013](ADR-0013-hue-provider-and-zone-sync.md) | Hue provider, managed configurations and zone sync | Accepted |
 | [0014](ADR-0014-device-administration-scope.md) | Device administration scope | Accepted |
-| [0015](ADR-0015-display-capture.md) | Display capture | Accepted |
+| [0015](ADR-0015-display-capture.md) | Display capture | Accepted (D5, D6, D9 amended by 0037) |
 | [0016](ADR-0016-user-interface.md) | User interface | Accepted |
 | [0017](ADR-0017-desktop-app-tray-autostart-and-service.md) | Desktop app, tray, start at sign-in and Windows service | Accepted |
 | [0018](ADR-0018-packaging-and-supported-platforms.md) | Packaging and supported platforms | Accepted |

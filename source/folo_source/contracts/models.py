@@ -1458,13 +1458,13 @@ class ScreenParams(BaseModel):
 
 class ScreenStatus(BaseModel):
     """
-    The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9).
+    The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9). unavailable: capture is wanted but no agent can run (no user session, or the desktop app hasn't started it); message says why.
     """
 
     model_config = ConfigDict(
         extra='forbid',
     )
-    state: Literal['off', 'starting', 'waiting_consent', 'capturing', 'paused', 'error']
+    state: Literal['off', 'starting', 'waiting_consent', 'capturing', 'paused', 'error', 'unavailable']
     backend: Annotated[
         str,
         Field(
@@ -1485,7 +1485,14 @@ class ScreenStatus(BaseModel):
     ]
     bars: ScreenBars
     message: Annotated[str | None, Field(max_length=500)] = None
-    settings_uri: Annotated[str | None, Field(max_length=2048)] = None
+    settings_uri: Annotated[
+        str | None,
+        Field(
+            description='An ms-settings: link to the Windows privacy setting.',
+            max_length=2048,
+            pattern='^ms-settings:',
+        ),
+    ] = None
 
 
 class ScreensListResult(BaseModel):
@@ -2050,8 +2057,9 @@ class CaptureStatusParams(BaseModel):
     settings_uri: Annotated[
         str | None,
         Field(
-            description="Where the user can allow capture, when the operating system's privacy setting refuses it.",
+            description="Where the user can allow capture, when the operating system's privacy setting refuses it: an ms-settings: link.",
             max_length=2048,
+            pattern='^ms-settings:',
         ),
     ] = None
 

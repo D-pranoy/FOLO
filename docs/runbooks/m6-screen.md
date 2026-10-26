@@ -31,7 +31,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - dials the node's capture link with its launch token, sends `capture.status` at least once a second, and sends frames (`FOLC`) with bars, protected, HDR and held flags
    - the node's side: starting and stopping the agent, `capture.start` and `capture.stop`, forwarding frames to the engine, the screen listing in `inputs.list`, `SourceLive.screen`, the restore token in `secrets.json`
    - started by the node (user mode) or the desktop app (service mode, RB-19 and RB-20)
-   - Linux user unit `app-io.github.d-pranoy.folo-capture.service` with `PartOf=`/`After=graphical-session.target`
+   - a Linux user unit `app-io.github.d-pranoy.folo-capture.service` is reserved with service mode (RB-19, RB-20): the node's launch token can't reach it otherwise
 7. **Screen effect** (Python): a canvas effect that consumes frames, then crop (black bars and margins), edge or area sampling, colour and saturation, smoothing, producing a canvas at the zone's requested resolution. This brings the engine's screen input, `CanvasEffect`, the inputs handle for effect factories, the render trigger and the per-surface screen activity ([pipeline](../architecture/pipeline.md)).
 8. **UX in this milestone:**
    - the `SourceLive.screen` status and the API behind it (state, rate, protected, HDR, bars, the privacy-setting link)
