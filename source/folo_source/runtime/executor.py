@@ -3,7 +3,9 @@ The executor (RB-04 step 8, docs/architecture/pipeline.md#the-executor):
 renders the surfaces `config.apply` assigned from the analysed audio and
 publishes them. Each step works in dependency order: every analysed packet
 goes to the beat signal and the activity, then each surface's stack is
-rendered bottom first, then the frames and signals are published.
+rendered bottom first, then the frames and signals are published. A
+surface with Screen layers also has an activity of its own, from the
+screen input (ADR-0037 D12).
 """
 
 from __future__ import annotations
@@ -15,10 +17,12 @@ from typing import Any, Protocol, cast
 import numpy as np
 
 from folo_source.core import Frame, Signal
-from folo_source.effects.base import Levels, shown_levels
+from folo_source.effects.base import EffectInputs, Levels, shown_levels
+from folo_source.effects.screen import EFFECT_ID as SCREEN_EFFECT_ID
 from folo_source.effects.visualizers import EFFECT_ID
 from folo_source.inputs.audio.analyzer import QUIET_DB, SAMPLERATE, Analyzer, Spectrum
 from folo_source.inputs.audio.input import MAX_DT
+from folo_source.inputs.screen import ScreenInput
 from folo_source.publish.publisher import Publisher
 from folo_source.signals.beat import BeatSignal
 from folo_source.surfaces.renderer import SurfaceRenderer
@@ -93,6 +97,9 @@ class _Assigned:
     beat_offset_ms: int
     album_colors: bool
     renderer: SurfaceRenderer
+    screen: bool = False  # it has an enabled Screen layer
+    audio: bool = False  # it has an enabled audio-visualizer layer
+    counted_from_us: int | None = None  # where its Screen activity's silence counts from
 
 
 class Executor:
@@ -108,11 +115,14 @@ class Executor:
         rng: np.random.Generator,
         media: Media,
         send: Callable[[bytes], None],
+        screen: ScreenInput | None = None,
     ) -> None:
         self.analyzer = analyzer
         self.rng = rng
         self.media = media
         self.send = send
+        self.screen = ScreenInput('') if screen is None else screen
+        self.inputs = EffectInputs(screen=self.screen)
         self.publisher = Publisher()
         self.beat = BeatSignal(analyzer.freqs, SAMPLERATE)
         self.activity = Activity()
@@ -143,7 +153,7 @@ class Executor:
             str(scene['id']): scene
             for scene in cast(Sequence[Mapping[str, Any]], params.get('scenes', []))
         }
-        old = {assigned.index: assigned.renderer for assigned in self._surfaces}
+        old = {assigned.index: assigned for assigned in self._surfaces}
         surfaces: list[_Assigned] = []
         for entry in cast(Sequence[Mapping[str, Any]], params.get('surfaces', [])):
             index = int(entry['index'])
@@ -151,15 +161,24 @@ class Executor:
             by_role = cast(
                 Mapping[str, Sequence[Mapping[str, Any]]], scene.get('layers_by_role', {})
             )
-            renderer = old.get(index) or SurfaceRenderer(self.analyzer, self.rng)
+            before = old.get(index)
+            renderer = (
+                before.renderer
+                if before is not None
+                else SurfaceRenderer(self.analyzer, self.rng, self.inputs)
+            )
+            layers = list(by_role.get(str(entry['role']), []))
             surfaces.append(
                 _Assigned(
                     index,
                     cast(Mapping[str, Any], entry['surface']),
-                    list(by_role.get(str(entry['role']), [])),
+                    layers,
                     int(entry.get('beat_offset_ms', 0)),
                     bool(entry.get('album_colors', False)),
                     renderer,
+                    _uses(layers, SCREEN_EFFECT_ID),
+                    _uses(layers, EFFECT_ID),
+                    before.counted_from_us if before is not None else None,
                 )
             )
         self._surfaces = surfaces
@@ -168,6 +187,37 @@ class Executor:
         self.publisher.configure(cast(Mapping[str, Any], params.get('publish', {})))
         self.publisher.unknown_signals(SIGNALS)
         self.revision = int(params.get('revision', 0))
+
+    @property
+    def screen_wanted(self) -> bool:
+        """Whether a surface has an enabled Screen layer, so a new frame is worth a step."""
+        return any(assigned.screen for assigned in self._surfaces)
+
+    def screen_activity(self, now_us: int) -> list[dict[str, Any]]:
+        """
+        The activity of each surface with a Screen layer (ADR-0037 D12), as
+        notification params: active while the screen input is, or the audio
+        is when the surface has audio layers too. No `level_db`.
+        """
+        found: list[dict[str, Any]] = []
+        for assigned in self._surfaces:
+            if not assigned.screen:
+                continue
+            if assigned.counted_from_us is None:
+                assigned.counted_from_us = now_us
+            active = self.screen.active(now_us)
+            quiet = self.screen.inactive_since(now_us, assigned.counted_from_us)
+            if assigned.audio:
+                active = active or self.activity.active
+                quiet = min(quiet, self.activity.quiet_s)
+            found.append(
+                {
+                    'surface': assigned.index,
+                    'active': active,
+                    'quiet_s': 0.0 if active else round(quiet, 2),
+                }
+            )
+        return found
 
     @property
     def beat_wanted(self) -> bool:
@@ -256,6 +306,15 @@ class Executor:
             data = self.publisher.signal(signal)
             if data is not None:
                 self.send(data)
+
+
+def _uses(layers: Sequence[Mapping[str, Any]], effect_id: str) -> bool:
+    """Whether an enabled layer runs the effect `effect_id`."""
+    return any(
+        layer.get('enabled', True)
+        and cast(Mapping[str, Any], layer.get('effect', {})).get('id') == effect_id
+        for layer in layers
+    )
 
 
 def _uses_beat(layers: Sequence[Mapping[str, Any]]) -> bool:

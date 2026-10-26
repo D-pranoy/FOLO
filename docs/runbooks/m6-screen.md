@@ -1,6 +1,6 @@
 # M6 Screen
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (step 7 done: the engine's screen input, `CanvasEffect`, the Screen effect, the render trigger and the per-surface screen activity; the capture crates and the node's side are not started)
 
 ## RB-14: Display capture and Screen effect
 

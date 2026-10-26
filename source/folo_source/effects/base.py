@@ -4,7 +4,8 @@ The effect interface (RB-04 steps 4 and 6): what an effect declares
 layers. An effect instance handles all its layers of one surface, so it can
 work out what they share once (the audio visualizer reads every band in one
 go). Most effects draw a line per layer; post-processing effects change what
-is below them in the stack instead (PostEffect).
+is below them in the stack instead (PostEffect); canvas effects draw a 2D
+picture for their layer's rectangle of a canvas (CanvasEffect).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import numpy as np
 import numpy.typing as npt
 
 from folo_source.inputs.audio.analyzer import Analyzer, Spectrum
+from folo_source.inputs.screen import ScreenInput
 
 # A layer's colours along its line: cells x RGB, on the 0-255 scale
 Line = npt.NDArray[np.float64]
@@ -71,6 +73,8 @@ class LayerSpec:
     length: int  # cells in its line: its region on a strip, its axis on a canvas
     visible: bool  # enabled, not hidden by a solo layer, and its region isn't empty
     axis: str = 'linear_x'  # on a canvas: linear_x, linear_y, radial or angular
+    rows: int = 0  # cells of its rectangle on a canvas; 0 on a strip
+    cols: int = 0
 
 
 class Effect(Protocol):
@@ -120,7 +124,42 @@ class PostEffect(ABC):
         """
 
 
-EffectFactory = Callable[[Analyzer, np.random.Generator], Effect | PostEffect]
+class CanvasEffect(ABC):
+    """
+    A canvas effect instance: for each layer it draws a picture of the
+    layer's rectangle (rows x columns), where an effect draws a line. On a
+    strip surface its layers have no rectangle and draw nothing.
+    """
+
+    @property
+    @abstractmethod
+    def info(self) -> EffectInfo: ...
+
+    @abstractmethod
+    def prepare(self, layers: Sequence[LayerSpec], colors: tuple[str, ...] = ()) -> None:
+        """Takes its layers, in stack order, when the configuration changes."""
+
+    @abstractmethod
+    def draw(self, dt: float) -> list[Values | None]:
+        """
+        One frame: each layer's picture, rows x columns x RGB on the 0-255
+        scale (None when it isn't visible or has nothing to show), in the
+        order prepare() got them. `dt`: seconds since the last frame.
+        """
+
+
+@dataclass(frozen=True, slots=True)
+class EffectInputs:
+    """
+    The engine's inputs an effect may read besides the audio the analyzer
+    holds (ADR-0037 D10). Effects that need none ignore it.
+    """
+
+    screen: ScreenInput | None = None
+
+
+AnyEffect = Effect | PostEffect | CanvasEffect
+EffectFactory = Callable[[Analyzer, np.random.Generator, EffectInputs], AnyEffect]
 _registry: dict[str, EffectFactory] = {}
 
 
@@ -130,11 +169,16 @@ def register(effect_id: str, factory: EffectFactory) -> None:
 
 
 def create(
-    effect_id: str, analyzer: Analyzer, rng: np.random.Generator
-) -> Effect | PostEffect | None:
+    effect_id: str,
+    analyzer: Analyzer,
+    rng: np.random.Generator,
+    inputs: EffectInputs | None = None,
+) -> AnyEffect | None:
     """An instance of the effect `effect_id`, or None if there is no such effect."""
     factory = _registry.get(effect_id)
-    return factory(analyzer, rng) if factory is not None else None
+    if factory is None:
+        return None
+    return factory(analyzer, rng, EffectInputs() if inputs is None else inputs)
 
 
 def effect_ids() -> list[str]:
