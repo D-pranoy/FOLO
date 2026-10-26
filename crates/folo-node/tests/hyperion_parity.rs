@@ -265,13 +265,28 @@ async fn run_case(config: &str, lines: &[String], origin: &str) -> Vec<String> {
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    // the sender has described the instance and started the target by now
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    // The sender is running once the node's idle black arrives
+    while hyperion.color_frames().is_empty() {
+        assert!(Instant::now() < deadline, "{config}: the sender never sent");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let before_go = hyperion.color_frames().len();
     std::fs::write(Path::new(SCRATCH).join(GO), b"").unwrap();
-    let frames = u64::try_from(lines.len()).unwrap();
-    // Stopped soon after the last frame: a source that goes quiet is stale after a while, and the
-    // compositor then sends black, which is not what is compared here
-    tokio::time::sleep(Duration::from_millis(frames * INTERVAL_MS + 300)).await;
+    // Until the last frame arrives, then a moment more: a source that goes quiet is stale after
+    // a while, and the compositor then sends black, which is not what is compared here
+    let last = lines.last().unwrap().trim_end().to_owned();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !hyperion.color_frames()[before_go..]
+        .iter()
+        .any(|r| r.line == last)
+    {
+        assert!(
+            Instant::now() < deadline,
+            "{config}: the last frame never arrived"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
     let _ = stop.send(());
     assert_eq!(node.await.unwrap(), 0);
     let _ = std::fs::remove_file(Path::new(SCRATCH).join(GO));

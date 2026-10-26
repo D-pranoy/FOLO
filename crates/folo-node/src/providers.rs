@@ -62,6 +62,16 @@ impl SecretsFile {
         folo_store::read_secrets(&self.dir).unwrap_or_default()
     }
 
+    /// Removes an instance's credentials, when it is deleted.
+    pub fn forget_provider(&self, instance: &str) {
+        let forgotten = self.update(|secrets| {
+            object_at(secrets, "providers").remove(instance);
+        });
+        if let Err(error) = forgotten {
+            log::warn!("provider {instance}: its credentials can't be removed: {error}");
+        }
+    }
+
     /// Keeps the credentials a provider now holds with its instance: what it has is put over
     /// what was stored, and what it doesn't have is left as it was.
     pub fn keep_provider(&self, instance: &str, held: &ProviderSecrets) {

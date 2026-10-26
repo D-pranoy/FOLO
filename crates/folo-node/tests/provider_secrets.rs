@@ -105,6 +105,11 @@ async fn a_token_is_kept_in_secrets_and_a_wled_instance_runs_at_60_hz() {
     assert_eq!(status, 200);
     let secrets = folo_store::read_secrets(&home).unwrap();
     assert_eq!(secrets["providers"]["hy"]["token"], TOKEN);
+    // deleting the instance forgets its credentials
+    let (status, _) = node_call(port, "DELETE", "/api/v1/providers/hy", Value::Null).await;
+    assert_eq!(status, 204);
+    let secrets = folo_store::read_secrets(&home).unwrap();
+    assert!(secrets["providers"]["hy"].is_null());
     let _ = stop.send(());
     assert_eq!(node.await.unwrap(), 0);
     let _ = std::fs::remove_dir_all(&home);

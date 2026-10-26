@@ -405,7 +405,8 @@ async fn start(
 }
 
 /// The node's identity from `secrets.json`, made on the first run. Keys
-/// that don't fit together stop the node rather than changing its id.
+/// that don't fit together stop the node rather than changing its id. It runs before anything
+/// else writes `secrets.json` (`providers::SecretsFile` is made after it).
 fn ensure_identity(store: &Store) -> Result<Identity, Failure> {
     let failed = |message: String| Failure::new(EXIT_FAILED, message);
     let dir = store.dir();

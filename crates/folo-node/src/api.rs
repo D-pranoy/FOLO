@@ -746,7 +746,12 @@ pub async fn put_provider(
 }
 
 pub async fn delete_provider(State(node): Shared, Path(id): Path<String>) -> Response {
-    delete_item(&node, PROVIDERS, &id)
+    let answer = delete_item(&node, PROVIDERS, &id);
+    if answer.status() == StatusCode::NO_CONTENT {
+        // A later instance with the same id must not inherit the credentials
+        node.secrets.forget_provider(&id);
+    }
+    answer
 }
 
 /// `POST /providers/discover`: every registered kind among the request's `kinds` (all of them
