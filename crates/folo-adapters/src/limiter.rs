@@ -1,0 +1,577 @@
+//! Stage 5: the flash limiter (ADR-0036 D18, `docs/architecture/capabilities.md#algorithm`).
+//!
+//! WCAG 2.3.1's limit of three flashes in any second, per element, on what the lights will
+//! show. A limiter that fails to act while it is on counts as a security problem (ADR-0033 D6),
+//! so this file follows the text of the algorithm closely and says where it had to choose.
+//!
+//! # Where the text leaves a choice
+//!
+//! - **What a flash is.** The text says a flash is a counted transition that opposes the one
+//!   counted before it, "two opposing transitions". Read as *every* opposing transition, a
+//!   3 Hz blink (six transitions a second) would count six flashes, and WCAG's "three flashes"
+//!   would allow only a 1.5 Hz blink. Here a flash is a **pair**: a transition *opens* it, the
+//!   first transition that opposes that one *completes* it, and the next transition opens the
+//!   next. Further transitions in the direction the last one went (a slow rise counted in
+//!   several steps of 0.10) change nothing. A 3 Hz blink is then three flashes a second and is
+//!   untouched; a 4 Hz blink is held. See [`Element::count`].
+//! - **The window's edge.** A flash is in the window while it is younger than 1 s. One that is
+//!   exactly 1 s old has left it, so a steady 3 Hz blink, whose flashes are exactly 1/3 s apart,
+//!   isn't held by its own fourth flash.
+//! - **The first frame** has no luminance to change from; nothing is counted for it.
+
+use std::collections::VecDeque;
+
+use folo_provider::ElementColors;
+
+use crate::model::LUMA;
+
+/// A run's cumulative change that makes a transition.
+const MIN_CHANGE: f32 = 0.10;
+/// A transition counts only when its darker end is below this.
+const DARK_BELOW: f32 = 0.80;
+/// The window's length in microseconds.
+const WINDOW_US: u64 = 1_000_000;
+/// The most flashes the window holds; a transition that would complete one more is held.
+const MAX_FLASHES: usize = 3;
+
+/// A series of steps in which the luminance moves one way.
+#[derive(Clone, Copy, Debug, Default)]
+struct Run {
+    /// `1` rising, `-1` falling, `0` before it has moved.
+    dir: i8,
+    /// The luminance the run's change is measured from.
+    start: f32,
+}
+
+impl Run {
+    /// Moves the run on to luminance `to`, which follows `from` (the output's luminance), and
+    /// says in which direction it completes a transition, if it does.
+    fn advance(&mut self, from: f32, to: f32) -> Option<i8> {
+        let delta = to - from;
+        if delta != 0.0 {
+            let dir = if delta > 0.0 { 1 } else { -1 };
+            if dir != self.dir {
+                self.dir = dir;
+                self.start = from;
+            }
+        }
+        if self.dir == 0 {
+            return None;
+        }
+        let change = (to - self.start).abs();
+        let darker = self.start.min(to);
+        (change >= MIN_CHANGE && darker < DARK_BELOW).then_some(self.dir)
+    }
+}
+
+/// One element's state.
+#[derive(Clone, Debug, Default)]
+struct Element {
+    /// Whether a frame has come yet.
+    started: bool,
+    /// The luminance of what the element shows.
+    shown: f32,
+    run: Run,
+    /// The direction of the last counted transition, `0` before any.
+    last_dir: i8,
+    /// A flash is open: its first transition is counted, its second hasn't come.
+    open: bool,
+    /// The times of the flashes in the window, oldest first.
+    flashes: VecDeque<u64>,
+    /// Whether the last step held the element.
+    held: bool,
+}
+
+impl Element {
+    /// Whether `now_us` leaves room for one more flash in the window.
+    fn blocked(&mut self, now_us: u64) -> bool {
+        while self
+            .flashes
+            .front()
+            .is_some_and(|t| now_us.saturating_sub(*t) >= WINDOW_US)
+        {
+            self.flashes.pop_front();
+        }
+        self.flashes.len() >= MAX_FLASHES
+    }
+
+    /// Records a counted transition in direction `dir` at `now_us`.
+    fn count(&mut self, dir: i8, now_us: u64) {
+        if self.last_dir == 0 {
+            self.open = true;
+        } else if dir != self.last_dir {
+            if self.open {
+                self.flashes.push_back(now_us);
+                self.open = false;
+            } else {
+                self.open = true;
+            }
+        }
+        self.last_dir = dir;
+    }
+
+    /// Takes the luminance the input would show, and says whether the element is held at what
+    /// it shows now instead.
+    fn step(&mut self, now_us: u64, luminance: f32) -> bool {
+        if !self.started {
+            self.started = true;
+            self.shown = luminance;
+            return false;
+        }
+        let blocked = self.blocked(now_us);
+        // Judged from what the element shows, so a held element is judged the same way on
+        // every step until the window lets it go.
+        let mut run = self.run;
+        let transition = run.advance(self.shown, luminance);
+        if let Some(dir) = transition {
+            if blocked && self.last_dir == -dir && self.open {
+                self.held = true;
+                return true;
+            }
+            self.count(dir, now_us);
+            run.start = luminance;
+        }
+        self.run = run;
+        self.shown = luminance;
+        self.held = false;
+        false
+    }
+}
+
+/// The limiter of one target.
+pub(crate) struct FlashLimiter {
+    /// Wire channel `i` carries logical colour channel `order[i]`.
+    order: [usize; 3],
+    elements: Vec<Element>,
+    /// What the target showed after the last step, to hold elements at.
+    shown: Option<ElementColors>,
+}
+
+impl FlashLimiter {
+    pub(crate) fn new(order: [usize; 3]) -> Self {
+        Self {
+            order,
+            elements: Vec::new(),
+            shown: None,
+        }
+    }
+
+    /// The luminance of each element, 0–1 (see the table in the architecture document).
+    fn luminances(&self, colors: &ElementColors) -> Vec<f32> {
+        let rgb = |wire: [f32; 3]| {
+            let mut logical = [0.0_f32; 3];
+            for (value, at) in wire.iter().zip(self.order) {
+                logical[at] = *value;
+            }
+            (LUMA[0] * logical[0] + LUMA[1] * logical[1] + LUMA[2] * logical[2]) / 255.0
+        };
+        let l = match colors {
+            ElementColors::Rgb(v) => v.iter().map(|c| rgb(*c)).collect(),
+            ElementColors::Rgbw(v) => v
+                .iter()
+                .map(|c| rgb([c[0], c[1], c[2]]) + c[3] / 255.0)
+                .collect(),
+            ElementColors::RgbCct(v) => v.iter().map(|c| rgb(c.rgb) + c.white / 255.0).collect(),
+            ElementColors::Cct(v) => v.iter().map(|c| c.brightness / 255.0).collect(),
+            ElementColors::Dimmer(v) => v.iter().map(|c| c / 255.0).collect(),
+            ElementColors::Xy(v) => v.iter().map(|c| c.brightness / 255.0).collect(),
+            ElementColors::OnOff(v) => v.iter().map(|on| f32::from(u8::from(*on))).collect(),
+        };
+        let mut l: Vec<f32> = l;
+        for value in &mut l {
+            *value = if value.is_nan() {
+                0.0
+            } else {
+                value.clamp(0.0, 1.0)
+            };
+        }
+        l
+    }
+
+    /// Limits `colors` in place: an element that is held keeps what it showed, whole.
+    pub(crate) fn apply(&mut self, now_us: u64, colors: &mut ElementColors) {
+        let luminance = self.luminances(colors);
+        if self.elements.len() != luminance.len() {
+            self.elements = vec![Element::default(); luminance.len()];
+            self.shown = None;
+        }
+        for (i, (element, l)) in self.elements.iter_mut().zip(luminance).enumerate() {
+            if element.step(now_us, l)
+                && let Some(shown) = &self.shown
+            {
+                hold(colors, shown, i);
+            }
+        }
+        self.shown = Some(colors.clone());
+    }
+
+    #[cfg(test)]
+    fn held(&self) -> Vec<bool> {
+        self.elements.iter().map(|e| e.held).collect()
+    }
+}
+
+/// Puts element `i` of `from` into `colors`.
+fn hold(colors: &mut ElementColors, from: &ElementColors, i: usize) {
+    match (colors, from) {
+        (ElementColors::Rgb(a), ElementColors::Rgb(b)) => a[i] = b[i],
+        (ElementColors::Rgbw(a), ElementColors::Rgbw(b)) => a[i] = b[i],
+        (ElementColors::RgbCct(a), ElementColors::RgbCct(b)) => a[i] = b[i],
+        (ElementColors::Cct(a), ElementColors::Cct(b)) => a[i] = b[i],
+        (ElementColors::Dimmer(a), ElementColors::Dimmer(b)) => a[i] = b[i],
+        (ElementColors::OnOff(a), ElementColors::OnOff(b)) => a[i] = b[i],
+        (ElementColors::Xy(a), ElementColors::Xy(b)) => a[i] = b[i],
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::float_cmp,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+mod tests {
+    use super::*;
+    use folo_provider::RgbCct;
+
+    /// A frame step of 60 Hz, in microseconds.
+    const STEP: u64 = 16_667;
+
+    fn dimmer(level: f32) -> ElementColors {
+        ElementColors::Dimmer(vec![level * 255.0])
+    }
+
+    fn level(colors: &ElementColors) -> f32 {
+        match colors {
+            ElementColors::Dimmer(v) => v[0] / 255.0,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Runs a blink of `half` steps per half-cycle for `seconds`, starting dark, and gives the
+    /// (input, output) levels per step.
+    fn blink(limiter: &mut FlashLimiter, half: u64, seconds: u64) -> Vec<(f32, f32)> {
+        let steps = seconds * 60;
+        (0..steps)
+            .map(|i| {
+                let input = if (i / half) % 2 == 1 { 1.0 } else { 0.0 };
+                let mut colors = dimmer(input);
+                limiter.apply(i * STEP, &mut colors);
+                (input, level(&colors))
+            })
+            .collect()
+    }
+
+    /// The most edges (the output crossing 0.5) in any 1 s. Three flashes are six edges, and a
+    /// flash that is open when the window ends adds a seventh.
+    fn most_edges_in_a_second(run: &[(f32, f32)]) -> usize {
+        let edges: Vec<usize> = run
+            .windows(2)
+            .enumerate()
+            .filter(|(_, w)| (w[0].1 > 0.5) != (w[1].1 > 0.5))
+            .map(|(i, _)| i + 1)
+            .collect();
+        edges
+            .iter()
+            .map(|a| {
+                edges
+                    .iter()
+                    .filter(|b| **b >= *a && (**b - *a) as u64 * STEP < WINDOW_US)
+                    .count()
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn three_flashes_a_second_pass_untouched() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        // 10 steps of 16.667 ms per half cycle: 3.0 Hz.
+        let run = blink(&mut limiter, 10, 6);
+        assert!(run.iter().all(|(i, o)| i == o), "3 Hz was altered");
+        assert_eq!(most_edges_in_a_second(&run), 6, "the pattern isn't 3 Hz");
+    }
+
+    #[test]
+    fn four_flashes_a_second_and_more_are_held() {
+        for half in [7, 5, 3, 2, 1] {
+            let mut limiter = FlashLimiter::new([0, 1, 2]);
+            let run = blink(&mut limiter, half, 6);
+            assert!(
+                run.iter().any(|(i, o)| i != o),
+                "nothing was held at {half} steps per half cycle"
+            );
+            assert!(
+                most_edges_in_a_second(&run) <= 7,
+                "{} edges shown in a second at {half} steps per half cycle",
+                most_edges_in_a_second(&run)
+            );
+        }
+    }
+
+    /// 10 ms steps: `(ms, level)` points, each level held until the next.
+    fn timeline(limiter: &mut FlashLimiter, points: &[(u64, f32)], until_ms: u64) -> Vec<f32> {
+        (0..=until_ms / 10)
+            .map(|i| {
+                let ms = i * 10;
+                let input = points
+                    .iter()
+                    .rev()
+                    .find(|(t, _)| *t <= ms)
+                    .map_or(0.0, |(_, v)| *v);
+                let mut colors = dimmer(input);
+                limiter.apply(ms * 1000, &mut colors);
+                level(&colors)
+            })
+            .collect()
+    }
+
+    const BURST: [(u64, f32); 9] = [
+        (0, 0.0),
+        (100, 1.0),
+        (150, 0.0), // flash 1 completes
+        (200, 1.0),
+        (250, 0.0), // flash 2
+        (300, 1.0),
+        (350, 0.0), // flash 3
+        (400, 1.0), // opens flash 4
+        (450, 0.0), // would complete it
+    ];
+
+    #[test]
+    fn the_window_slides_and_the_held_element_jumps_to_the_input() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let out = timeline(&mut limiter, &BURST, 1300);
+        let at = |ms: usize| out[ms / 10];
+        assert_eq!(at(440), 1.0, "the opener passed");
+        assert_eq!(
+            at(450),
+            1.0,
+            "the fourth flash is held, the output stays bright"
+        );
+        assert_eq!(at(1000), 1.0);
+        assert_eq!(
+            at(1140),
+            1.0,
+            "the first flash (at 150 ms) is still in the window"
+        );
+        assert_eq!(
+            at(1150),
+            0.0,
+            "it left the window: the output jumps to the input"
+        );
+        assert_eq!(at(1300), 0.0);
+    }
+
+    #[test]
+    fn the_jump_counts_as_the_flash_it_completes() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        timeline(&mut limiter, &BURST, 1150);
+        let e = &limiter.elements[0];
+        // Flashes at 250, 350 and the jump at 1150; the one at 150 has gone.
+        assert_eq!(
+            e.flashes.iter().copied().collect::<Vec<_>>(),
+            [250_000, 350_000, 1_150_000]
+        );
+    }
+
+    #[test]
+    fn nothing_is_held_when_the_input_has_come_back_by_the_release() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut points = BURST.to_vec();
+        points.push((1000, 1.0)); // back where the output is, before the window opens
+        let out = timeline(&mut limiter, &points, 1300);
+        assert_eq!(out[115], 1.0);
+        assert_eq!(out[130], 1.0);
+        let e = &limiter.elements[0];
+        assert!(!e.held);
+        assert!(
+            e.flashes.iter().all(|t| *t < 400_000),
+            "no transition was counted for the release"
+        );
+    }
+
+    #[test]
+    fn on_off_targets_hold_their_state() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut shown = Vec::new();
+        for i in 0..100u64 {
+            let ms = i * 10;
+            let on = BURST
+                .iter()
+                .rev()
+                .find(|(t, _)| *t <= ms)
+                .is_some_and(|(_, v)| *v > 0.5);
+            let mut colors = ElementColors::OnOff(vec![on]);
+            limiter.apply(ms * 1000, &mut colors);
+            let ElementColors::OnOff(v) = colors else {
+                unreachable!()
+            };
+            shown.push(v[0]);
+        }
+        assert!(shown[44], "on at 440 ms");
+        assert!(shown[45], "held on at 450 ms, though the input is off");
+        assert!(shown[99], "still held at 990 ms");
+        assert_eq!(limiter.held(), [true]);
+    }
+
+    #[test]
+    fn a_held_element_keeps_its_whole_colour_and_the_white_channel_counts() {
+        // A white flash on an RGBW strip: accurate extraction leaves W alone.
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut last_passed = None;
+        let mut held_frames = 0;
+        for i in 0..120u64 {
+            let bright = (i / 4) % 2 == 1; // 7.5 Hz
+            // Another channel wiggles by a tiny amount that changes no luminance transition.
+            let wiggle = (i % 3) as f32;
+            let frame = if bright {
+                [wiggle, 0.0, 0.0, 255.0]
+            } else {
+                [wiggle, 0.0, 0.0, 0.0]
+            };
+            let mut colors = ElementColors::Rgbw(vec![frame]);
+            limiter.apply(i * STEP, &mut colors);
+            let ElementColors::Rgbw(v) = &colors else {
+                unreachable!()
+            };
+            if v[0] == frame {
+                last_passed = Some(frame);
+            } else {
+                held_frames += 1;
+                assert_eq!(
+                    Some(v[0]),
+                    last_passed,
+                    "held at the last colour that passed, whole"
+                );
+            }
+        }
+        assert!(held_frames > 0, "the white flashes weren't limited");
+    }
+
+    #[test]
+    fn rgbcct_counts_the_cct_channel() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut changed = false;
+        for i in 0..120u64 {
+            let white = if (i / 4) % 2 == 1 { 255.0 } else { 0.0 };
+            let frame = RgbCct {
+                rgb: [0.0; 3],
+                white,
+                kelvin: 4000.0,
+            };
+            let mut colors = ElementColors::RgbCct(vec![frame]);
+            limiter.apply(i * STEP, &mut colors);
+            let ElementColors::RgbCct(v) = &colors else {
+                unreachable!()
+            };
+            changed |= v[0] != frame;
+        }
+        assert!(changed);
+    }
+
+    #[test]
+    fn luminance_undoes_the_colour_order() {
+        // Wire order GRB: wire channel 0 carries green.
+        let limiter = FlashLimiter::new([1, 0, 2]);
+        let l = limiter.luminances(&ElementColors::Rgb(vec![[255.0, 0.0, 0.0]]));
+        assert!((l[0] - LUMA[1]).abs() < 1e-6, "{l:?}");
+        let l = limiter.luminances(&ElementColors::Rgb(vec![[0.0, 255.0, 0.0]]));
+        assert!((l[0] - LUMA[0]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn rgbw_luminance_adds_the_white_channel_up_to_one() {
+        let limiter = FlashLimiter::new([0, 1, 2]);
+        let l = limiter.luminances(&ElementColors::Rgbw(vec![
+            [0.0, 0.0, 0.0, 255.0],
+            [255.0; 4],
+        ]));
+        assert_eq!(l, [1.0, 1.0]);
+    }
+
+    #[test]
+    fn changes_below_a_tenth_are_not_transitions() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut seen = Vec::new();
+        for i in 0..240u64 {
+            let input = if i % 2 == 0 { 0.30 } else { 0.39 };
+            let mut colors = dimmer(input);
+            limiter.apply(i * STEP, &mut colors);
+            seen.push((input, level(&colors)));
+        }
+        assert!(seen.iter().all(|(i, o)| (i - o).abs() < 1e-6));
+    }
+
+    #[test]
+    fn transitions_between_bright_levels_are_not_counted() {
+        // Darker end 0.85 is at or above 0.80.
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        for i in 0..240u64 {
+            let input = if i % 2 == 0 { 0.85 } else { 1.0 };
+            let mut colors = dimmer(input);
+            limiter.apply(i * STEP, &mut colors);
+            assert!((level(&colors) - input).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn a_slow_ramp_and_a_slow_swing_pass() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        for i in 0..600u64 {
+            // 0.5 Hz sine between 0 and 1.
+            let t = (i * STEP) as f32 / 1e6;
+            let input = 0.5 + 0.5 * (std::f32::consts::TAU * 0.5 * t).sin();
+            let mut colors = dimmer(input);
+            limiter.apply(i * STEP, &mut colors);
+            assert!((level(&colors) - input).abs() < 1e-6, "step {i}");
+        }
+    }
+
+    #[test]
+    fn a_fast_swing_is_limited_even_when_it_is_smooth() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut run = Vec::new();
+        for i in 0..600u64 {
+            let t = (i * STEP) as f32 / 1e6;
+            let input = 0.5 + 0.5 * (std::f32::consts::TAU * 6.0 * t).sin();
+            let mut colors = dimmer(input);
+            limiter.apply(i * STEP, &mut colors);
+            run.push((input, level(&colors)));
+        }
+        assert!(run.iter().any(|(i, o)| (i - o).abs() > 0.1));
+    }
+
+    #[test]
+    fn elements_are_limited_independently() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut second_altered = false;
+        for i in 0..120u64 {
+            let fast = if (i / 2) % 2 == 1 { 255.0 } else { 0.0 };
+            let steady = if (i / 30) % 2 == 1 { 255.0 } else { 0.0 };
+            let mut colors = ElementColors::Dimmer(vec![fast, steady]);
+            limiter.apply(i * STEP, &mut colors);
+            let ElementColors::Dimmer(v) = colors else {
+                unreachable!()
+            };
+            second_altered |= v[1] != steady;
+        }
+        assert!(
+            !second_altered,
+            "a 1 Hz element was held by its neighbour's flashing"
+        );
+        assert_eq!(limiter.held().len(), 2);
+    }
+
+    #[test]
+    fn the_first_frame_counts_nothing() {
+        let mut limiter = FlashLimiter::new([0, 1, 2]);
+        let mut colors = dimmer(1.0);
+        limiter.apply(0, &mut colors);
+        assert_eq!(level(&colors), 1.0);
+        assert!(limiter.elements[0].flashes.is_empty());
+        assert_eq!(limiter.elements[0].last_dir, 0);
+    }
+}
