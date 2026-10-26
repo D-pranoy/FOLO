@@ -140,6 +140,17 @@ def test_calibration_table(config_model: str) -> None:
                 assert (part['minimum'], part['maximum']) == number_range(row['Range / values'])
                 assert part['default'] == 1
             continue
+        if name == 'onoff':
+            part = resolve(schema)['properties']
+            assert list(part) == ['threshold', 'hysteresis', 'min_interval_ms']
+            ranges = re.findall(
+                rf'({NUMBER})\s*[\u2013]\s*({NUMBER})', plain(row['Range / values'])
+            )
+            defaults = [float(v) for v in plain(row['Default']).split(',')]
+            for key, (low, high), default in zip(part, ranges, defaults, strict=True):
+                got = (part[key]['minimum'], part[key]['maximum'], part[key]['default'])
+                assert got == (float(low), float(high), default), key
+            continue
         check_field(schema, row['Range / values'], row['Default'])
 
 

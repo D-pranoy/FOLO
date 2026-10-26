@@ -39,8 +39,9 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 | `ambient.on_pause` | boolean: in `auto`, switch after 0.3 s of silence when the player is paused | true |
 | `beat_offset_ms` | −200…200 (beats fire earlier when positive) | 0 |
 | `album_colors` | boolean: layers take colours from the active source's album art | false |
+| `active` | boolean: the zone drives its targets; at most one active zone drives a given target ([activation](../architecture/spatial-model.md#zone-activation-rules)) | true |
 
-- `reference.kind`: `tv`, `listening`, `desk` or `none` (default); `position {x, y, z}` in metres (−1000…1000); `orientation {yaw, pitch, roll}` in degrees (−180…180).
+- `reference.kind`: `tv`, `listening`, `desk` or `none` (default); `position {x, y, z}` in metres (−1000…1000); `orientation {yaw, pitch, roll}` in degrees (−180…180); `size {width, height}` in metres (0.01–1000, default 1.2 × 0.68, a TV's screen).
 - `flash_limiter.enabled` defaults to false ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)). Older files' `exempt_reason` is dropped.
 - `hue_sync.mode`: `off` (default), `managed` or `linked`.
 
@@ -50,8 +51,8 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 - `provider {instance, address}`: the provider instance's id, and the address range on it: `start` (0–65535), `count` (1–65535) and, for Hue, `channels` (channel ids 0–255, up to 20)
 - `geometry`, by kind. It carries the same `kind`; geometry of another kind is replaced by the default for the target's kind.
   - point: `position`
-  - line: `path` (2–64 points) + `count` (1–2000), or explicit `positions` (up to 2000)
-  - grid: `origin`, `u`, `v`, `width` and `height` (1–256 each), `wiring {order: row | column, serpentine, start: top_left | top_right | bottom_left | bottom_right}`
+  - line: `path` (up to 64 points; one with fewer than 2 leaves the line unplaced, reachable by manual mappings only) + `count` (1–2000), or explicit `positions` (up to 2000)
+  - grid: `plane {origin, u, v}`, `width` and `height` (1–256 each), `wiring {order: row | column, serpentine, start: top_left | top_right | bottom_left | bottom_right}`
   - display: `rect {origin, u, v}`, `resolution {width, height}` (1–16384), `warp {kind: none | homography | mesh, matrix?, mesh?}`, `mask?`
 - `capabilities {discovered, overrides}`, each a descriptor ([capabilities](../architecture/capabilities.md)) whose fields are all optional in `overrides`:
   - `color_model`: `onoff`, `dimmer`, `cct`, `rgb` (default), `rgbw`, `rgbcct`, `xy`
@@ -68,6 +69,8 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 | `brightness_max` | 0–1 | 1 |
 | `color_order` | `rgb`, `rbg`, `grb`, `gbr`, `brg`, `bgr` | `rgb` |
 | `latency_ms` | 0–5000 | 0 |
+| `white` | `off`, `accurate`, `brighter`: the white channel of RGBW and RGB+CCT targets | `accurate` |
+| `onoff {threshold, hysteresis, min_interval_ms}` | 0–1, 0–1, 0–60000 | 0.5, 0.1, 1000 |
 
 **Surface:** `id`, `kind` (`strip | canvas`), `resolution {width, height}` (strip: 1–2000 × 1; canvas: up to 1024 × 1024, published at most 128 × 72), `placement` (`none`, a `path` of 2–64 points, or a `plane {origin, u, v}`), `role` (for example `strip.main`; up to 64 characters), `background` (`#RRGGBB`, default `#000000`), `master` (0–1, default 1), `sources` (source ids in priority order) and `blend_sources` (blend every active source instead of picking one; default false).
 
