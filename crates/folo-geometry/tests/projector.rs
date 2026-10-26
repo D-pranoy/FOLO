@@ -466,3 +466,160 @@ fn mappings_that_cant_work_are_skipped_and_reported() {
     );
     assert!(projector.plans("z", "t").unwrap().is_empty());
 }
+
+#[test]
+fn plans_are_made_over_the_published_size_of_a_canvas() {
+    // The engine publishes canvases at most 128 × 72 cells a side, so a 256 × 144 canvas arrives
+    // as 128 × 72 and a 1024 × 1024 one as 128 × 72 too.
+    for (configured, published) in [
+        ((256, 144), (128, 72)),
+        ((1024, 1024), (128, 72)),
+        ((64, 36), (64, 36)),
+    ] {
+        let surface = canvas("c", configured, &floor_of(configured));
+        let px = pixels(published, |x, y| [x as f32, y as f32, 0.0]);
+        let z = zone(
+            json!([surface]),
+            json!([line("t", 2, &[], &[[0.5, 0.5, 0.0], [0.99, 0.99, 0.0]])]),
+            mappings(&[Map::new("m", "c", "t", "plane").kernel("nearest")]),
+        );
+        let mut projector = CpuProjector::new();
+        projector.prepare(0, &z);
+        let mut out = vec![[0.0; 3]; 2];
+        projector
+            .project("z", "t", &[("c", view(published, &px))], &mut out)
+            .unwrap();
+        // The middle of the canvas and its far corner, in the published cells.
+        assert_eq!(
+            out[0],
+            [(published.0 / 2) as f32, (published.1 / 2) as f32, 0.0],
+            "{configured:?}"
+        );
+        let corner = |n: usize| ((n as f64 * 0.99) as usize) as f32;
+        assert_eq!(
+            out[1],
+            [corner(published.0), corner(published.1), 0.0],
+            "{configured:?}"
+        );
+    }
+    // Manual ranges count published cells: 128 × 72 = 9216, not the configured 256 × 144.
+    let z = zone(
+        json!([canvas("c", (256, 144), &floor_of((256, 144)))]),
+        json!([line("t", 4, &[], &[])]),
+        mappings(&[Map::new("m", "c", "t", "manual").ranges(&[((9212, 4), (0, 4), false)])]),
+    );
+    let mut projector = CpuProjector::new();
+    assert!(
+        projector
+            .prepare(0, &z)
+            .issues
+            .iter()
+            .all(|i| !i.is_error())
+    );
+    let too_far = zone(
+        json!([canvas("c", (256, 144), &floor_of((256, 144)))]),
+        json!([line("t", 4, &[], &[])]),
+        mappings(&[Map::new("m", "c", "t", "manual").ranges(&[((9214, 4), (0, 4), false)])]),
+    );
+    assert!(
+        projector
+            .prepare(1, &too_far)
+            .issues
+            .iter()
+            .any(folo_geometry::Issue::is_error)
+    );
+}
+
+/// A one-metre square, so positions are fractions of the canvas.
+fn floor_of(_size: (u32, u32)) -> serde_json::Value {
+    plane([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+}
+
+#[test]
+fn a_flat_surface_stays_exactly_flat_through_every_kernel() {
+    // Weights sum to 1 only up to f32 rounding; a flat surface must still read exactly.
+    for value in [255.0_f32, 200.0, 100.0, 37.0, 1.0] {
+        for (cells, elements) in [(97_u32, 31_u32), (170, 60), (31, 97), (64, 7), (1000, 13)] {
+            for kernel in ["nearest", "bilinear", "area"] {
+                for edge in ["clamp", "none"] {
+                    for radius in [0.5, 1.0] {
+                        let z = zone(
+                            json!([bare_strip("s", cells)]),
+                            json!([line("t", elements, &[], &[])]),
+                            mappings(&[Map::new("m", "s", "t", "manual")
+                                .kernel(kernel)
+                                .edge(edge)
+                                .radius(radius)
+                                .ranges(&[((0, cells), (0, elements), false)])]),
+                        );
+                        let mut projector = CpuProjector::new();
+                        projector.prepare(0, &z);
+                        let flat = solid(cells as usize, [value; 3]);
+                        let out = project_to(&projector, &[("s", &flat)], elements as usize);
+                        for (i, c) in out.iter().enumerate() {
+                            assert_eq!(
+                                *c, [value; 3],
+                                "{value} {cells}->{elements} {kernel} {edge} {radius} element {i}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_flat_canvas_stays_exactly_flat_through_every_kernel() {
+    let z_for = |kernel: &str, radius: f64| {
+        zone(
+            json!([canvas(
+                "c",
+                (128, 72),
+                &plane([0.0; 3], [4.0, 0.0, 0.0], [0.0, 2.25, 0.0])
+            )]),
+            json!([line("t", 37, &[[0.0, 0.0, 0.0], [4.0, 2.25, 0.0]], &[])]),
+            mappings(&[Map::new("m", "c", "t", "plane")
+                .kernel(kernel)
+                .radius(radius)]),
+        )
+    };
+    let flat = vec![[255.0_f32; 3]; 128 * 72];
+    for kernel in ["nearest", "bilinear", "area"] {
+        for radius in [0.5, 1.0, 4.0] {
+            let mut projector = CpuProjector::new();
+            projector.prepare(0, &z_for(kernel, radius));
+            let mut out = vec![[0.0; 3]; 37];
+            projector
+                .project("z", "t", &[("c", view((128, 72), &flat))], &mut out)
+                .unwrap();
+            assert!(out.iter().all(|c| *c == [255.0; 3]), "{kernel} {radius}");
+        }
+    }
+}
+
+#[test]
+fn a_tiny_plane_neither_panics_nor_hangs() {
+    // A plane of a nanometre: every area box is enormous in cells.
+    let z = zone(
+        json!([canvas(
+            "c",
+            (64, 36),
+            &plane([0.0; 3], [1e-9, 0.0, 0.0], [0.0, 1e-9, 0.0])
+        )]),
+        json!([line(
+            "t",
+            3,
+            &[],
+            &[[0.0; 3], [1e-9, 1e-9, 0.0], [5.0, 5.0, 0.0]]
+        )]),
+        mappings(&[Map::new("m", "c", "t", "plane")]),
+    );
+    let mut projector = CpuProjector::new();
+    projector.prepare(0, &z);
+    let px = vec![[9.0_f32; 3]; 64 * 36];
+    let mut out = vec![[0.0; 3]; 3];
+    projector
+        .project("z", "t", &[("c", view((64, 36), &px))], &mut out)
+        .unwrap();
+}

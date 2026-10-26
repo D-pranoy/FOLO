@@ -5,7 +5,7 @@ use folo_protocol::generated::{Mapping, MappingMethod, Placement, Surface};
 use crate::kernel::{self, ElementTaps};
 use crate::layout::Layout;
 use crate::math;
-use crate::plan::GatherPlan;
+use crate::plan::{GatherPlan, published_size};
 use crate::validate::usable_path;
 
 /// The plan of `mapping` over `surface` for a target with this `layout`, or `None` when the mapping
@@ -22,8 +22,7 @@ use crate::validate::usable_path;
 /// An area kernel's box is `radius` × the element's spacing on each side of the sample. Where the
 /// spacing is unknown (a point, or coincident elements) it is one cell.
 pub(crate) fn build(mapping: &Mapping, surface: &Surface, layout: &Layout) -> Option<GatherPlan> {
-    let width = usize::try_from(surface.resolution.width.get()).ok()?;
-    let height = usize::try_from(surface.resolution.height.get()).ok()?;
+    let (width, height) = published_size(surface);
     let elements = match mapping.method {
         MappingMethod::Manual => manual(mapping, width * height, layout.len()),
         MappingMethod::Path => path(mapping, surface, layout, (width, height))?,

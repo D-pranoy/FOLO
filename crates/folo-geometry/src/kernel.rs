@@ -135,7 +135,7 @@ pub(crate) fn sample(
     (hx, hy): (f64, f64),
     (width, height): (usize, usize),
 ) -> Option<ElementTaps> {
-    if !(cx.is_finite() && cy.is_finite()) {
+    if !(cx.is_finite() && cy.is_finite() && hx.is_finite() && hy.is_finite()) {
         return None;
     }
     let (ax, ay) = match kernel {
@@ -149,7 +149,7 @@ pub(crate) fn sample(
             let (hx, hy) = (hx.max(MIN_BOX), hy.max(MIN_BOX));
             let (xl, xh, yl, yh) = (cx - hx, cx + hx, cy - hy, cy + hy);
             let (nx, ny) = (cells_touched(xl, xh), cells_touched(yl, yh));
-            if nx * ny <= MAX_TAPS {
+            if nx.saturating_mul(ny) <= MAX_TAPS {
                 (
                     area_exact(xl, xh, width, edge),
                     area_exact(yl, yh, height, edge),

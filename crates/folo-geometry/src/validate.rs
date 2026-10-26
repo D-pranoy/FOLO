@@ -9,6 +9,7 @@ use folo_protocol::generated::{
 
 use crate::layout::{Layout, Shape, element_layout, geometry_kind, resolved_geometry};
 use crate::math::{self, Polyline};
+use crate::plan::published_size;
 
 /// How serious an [`Issue`] is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -219,7 +220,8 @@ pub(crate) fn mapping_issues(mapping: &Mapping, surface: &Surface, layout: &Layo
     }
     match mapping.method {
         MappingMethod::Manual => {
-            let cells = surface.resolution.width.get() * surface.resolution.height.get();
+            let (width, height) = published_size(surface);
+            let cells = (width * height) as u64;
             if mapping.ranges.is_empty() {
                 issues.push(Issue::warning(
                     path.clone(),

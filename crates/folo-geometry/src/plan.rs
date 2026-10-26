@@ -1,6 +1,28 @@
 //! Gather plans: for each element of a target, which cells of a surface it reads and how much.
 
+use folo_protocol::generated::{Surface, SurfaceKind};
+
 use crate::kernel::ElementTaps;
+
+/// The most a canvas is published at, per axis ([config model](../../../docs/specs/config-model.md)).
+pub const CANVAS_PUBLISHED_MAX: (usize, usize) = (128, 72);
+
+/// The size of the frames a surface is delivered at: a strip's width by 1, and a canvas's size cut
+/// to [`CANVAS_PUBLISHED_MAX`] on each axis (so a bigger canvas changes aspect ratio). It is the
+/// same rule as the supervisor's, and plans are built over it: a surface's cells, for manual ranges
+/// too, are the cells of the frames the engine sends.
+#[must_use]
+pub fn published_size(surface: &Surface) -> (usize, usize) {
+    let width = usize::try_from(surface.resolution.width.get()).unwrap_or(usize::MAX);
+    let height = usize::try_from(surface.resolution.height.get()).unwrap_or(usize::MAX);
+    match surface.kind {
+        SurfaceKind::Canvas => (
+            width.min(CANVAS_PUBLISHED_MAX.0),
+            height.min(CANVAS_PUBLISHED_MAX.1),
+        ),
+        SurfaceKind::Strip => (width, 1),
+    }
+}
 
 /// The reads of one mapping: for each of a target's elements, a few cells of a surface and a weight
 /// for each. Built when the configuration changes, so a frame is one gather and weighted sum.
@@ -96,11 +118,20 @@ impl GatherPlan {
             return None;
         }
         let mut sum = [0.0_f32; 3];
+        let first = pixels[cells[0] as usize];
+        let (mut lo, mut hi) = (first, first);
         for (&cell, &w) in cells.iter().zip(weights) {
             let px = pixels[cell as usize];
-            sum[0] += w * px[0];
-            sum[1] += w * px[1];
-            sum[2] += w * px[2];
+            for ch in 0..3 {
+                sum[ch] += w * px[ch];
+                lo[ch] = lo[ch].min(px[ch]);
+                hi[ch] = hi[ch].max(px[ch]);
+            }
+        }
+        // The weights sum to 1 only up to f32 rounding, so a flat surface could come out an ulp
+        // off. A weighted mean can't leave the range of what it averages: clamp to it.
+        for ch in 0..3 {
+            sum[ch] = sum[ch].clamp(lo[ch], hi[ch]);
         }
         Some(sum)
     }

@@ -291,12 +291,15 @@ impl Projector for CpuProjector {
                 got: out.len(),
             });
         }
-        // Resolve every view before writing anything, so an error leaves `out` as it was.
-        let mut views = Vec::with_capacity(plan.mappings.len());
+        // Check every frame before writing anything, so an error leaves `out` as it was.
+        let view_of = |m: &MappingPlan| {
+            surfaces
+                .iter()
+                .find(|(id, _)| *id == m.surface)
+                .map(|s| s.1)
+        };
         for m in &plan.mappings {
-            let Some((_, view)) = surfaces.iter().find(|(id, _)| *id == m.surface) else {
-                continue;
-            };
+            let Some(view) = view_of(m) else { continue };
             let expected = m.plan.surface_size();
             if (view.width, view.height) != expected {
                 return Err(ProjectError::SurfaceSize {
@@ -305,11 +308,12 @@ impl Projector for CpuProjector {
                     got: (view.width, view.height),
                 });
             }
-            views.push((m, view.pixels));
         }
         out.fill([0.0; 3]);
-        for (m, pixels) in views {
-            blend(&m.plan, m.blend, pixels, out);
+        for m in &plan.mappings {
+            if let Some(view) = view_of(m) {
+                blend(&m.plan, m.blend, view.pixels, out);
+            }
         }
         Ok(())
     }

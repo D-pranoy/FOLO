@@ -12,8 +12,9 @@
 //!
 //! [`docs/architecture/spatial-model.md`]: ../../../docs/architecture/spatial-model.md
 
-// Sizes are bounded (at most 2000 elements and 1024 × 1024 cells), so casts between usize, u32 and
-// f64 are exact, and a float coordinate is floored on purpose.
+// A clamped zone has bounded sizes (a grid up to 256 × 256 elements, a strip up to 2000, a canvas
+// published at up to 128 × 72 cells), so casts between usize, u32 and f64 are exact, and a float
+// coordinate is floored on purpose. `element_layout` and the projector expect a clamped zone.
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
@@ -32,6 +33,6 @@ mod validate;
 pub use kernel::MAX_TAPS;
 pub use layout::{Layout, Shape, element_layout, wiring_cell};
 pub use math::Vec3;
-pub use plan::GatherPlan;
+pub use plan::{CANVAS_PUBLISHED_MAX, GatherPlan, published_size};
 pub use project::{CpuProjector, MappingPlan, Prepared, ProjectError, Projector, SurfaceView};
 pub use validate::{Issue, Severity, validate};
