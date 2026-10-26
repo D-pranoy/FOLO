@@ -1,6 +1,6 @@
 # Philips Hue
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (RB-13 steps 1–6, 9 and 10: discovery, trust, pairing, streaming, ownership and administration; managed configurations and zone sync are still to come)
 
 Decided in [ADR-0013](../decisions/ADR-0013-hue-provider-and-zone-sync.md). Administration scope is in [ADR-0014](../decisions/ADR-0014-device-administration-scope.md).
 
@@ -91,6 +91,44 @@ Each FOLO zone with Hue lights has a sync mode:
 - the "in use by another app" view
 
 Scenes, automations and accessories stay in the Hue app.
+
+## Implementation notes
+
+What `crates/folo-provider-hue` does, where this page leaves a choice.
+
+- **Pieces.** `HueKind` is the kind a node registers; `HueProvider` is an instance. Outside the provider traits the crate offers `bridge::probe` (ask an address who it is, and whether its certificate is believed) and `pairing::pair` (the link-button flow). Their results belong to the node: the credentials go to the secrets store (`app_key` and `client_key`; the application id is read from `/auth/v1` at every connection and isn't stored), and a confirmed certificate goes back in through `HueOptions::pins`. Wiring both into the node arrives with the controller output.
+- **Trust.**
+  - The REST client is `reqwest` over rustls (ring) with a verifier of our own ([ADR-0013](../decisions/ADR-0013-hue-provider-and-zone-sync.md) D3): the chain is checked with OpenSSL against the bundled Signify roots and the common name against the bridge id, the handshake signatures by rustls.
+  - The roots are `root-bridge` (fingerprint `F0:BD:8E:65:…:8A:CF`) and `Hue Root CA 01` (`D8:B8:94:48:…:28:B8`), in `src/signify_roots.pem`, and a test pins their SHA-256 fingerprints.
+  - A bridge whose certificate is named for it but doesn't chain to a Signify root (older firmware) is offered for confirmation with its fingerprint. After the person confirms, the fingerprint is pinned and the name check still applies. A certificate for another name is never offered.
+- **Checks.** A bridge is used when its `modelid` is `BSB002` or `BSB003` and its `apiversion` is 1.22 or later.
+- **Discovery.** mDNS first; Signify's service only when mDNS finds nothing; the manual address goes through `probe`. Tests inject the discovery URL and its root, so none reaches the internet.
+- **Targets.** A target's id is `<configuration id>/<entertainment service id>`: the same light is a different target in each configuration it is part of, because each has its own channel for it. Targets declare RGB, streaming and `max_rate_hz` 50. `latency_ms` is left at 0 until live verification measures it. Layouts are not offered: converting the bridge's positions needs the zone's bounds, which belong to zone sync.
+- **Streaming.**
+  - Until managed configurations arrive, `managed` and `linked` behave the same: the stream goes to the configuration the started targets belong to, and a target of another configuration is refused (`Refused`, "one stream") while one runs.
+  - The stream begins with the first target started and ends with the last released: `close_notify`, then the configuration's `stop`.
+  - A packet holds every channel of the configuration. A channel no started target drives is black. More than 20 channels are refused.
+  - A stream that fails (`Unreachable`) is closed, and the configuration is stopped when the connection is back.
+- **DTLS retransmits.** The `openssl` crate has no datagram socket BIO, so OpenSSL's own retransmit timers don't run. A handshake that gets no answer within a random 600–1000 ms starts over on the same socket, up to five times.
+- **Ownership.** `start` reads the configurations first. A stream of another application anywhere on the bridge (`active_streamer` is not our application id) is reported as "in use by another app" and nothing is touched. A stream of ours left behind is stopped and started again. Taking over is the administration action `entertainment_take_over`, and only when asked.
+- **Administration.** The actions of the provider's `admin` entry point. A read says what a change would change ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md) D3); the names are flat, without slashes.
+
+  | Action | Read | Change |
+  |---|---|---|
+  | `bridge` | model, versions, address | |
+  | `lights` | the lights, whether gradient and whether they can stream | |
+  | `light_rename` `{id, name}` | the rename | renames the light's device |
+  | `light_identify` `{id}` | what would blink | makes it blink |
+  | `rooms` | rooms and zones with their lights | |
+  | `entertainment` | the configurations and `in_use_by_another_app` | |
+  | `entertainment_create` `{name, configuration_type?, lights[{light or service, positions?, equalization_factor?}]}` | the new configuration | creates it |
+  | `entertainment_update` `{id, name?, configuration_type?, lights?}` | the change | applies it |
+  | `entertainment_delete` `{id}` | what goes | deletes it |
+  | `entertainment_take_over` | whose stream would stop | stops it |
+  | `update_status` | the bridge's software update state | |
+
+  A configuration FOLO streams to isn't edited or deleted. A request that is wrong answers `provider_error` with "invalid request", because the admin errors have no bad-request kind.
+- **Tests.** The fake bridge (`tests/support/`) serves the old `/api`, `/auth/v1`, the CLIP v2 resources, configuration CRUD and the event stream over HTTPS with a test authority, and a DTLS-PSK endpoint that decrypts what it is sent. `tests/openssl_server.rs` also runs the run book's `openssl s_server`; it is skipped without the command unless `FOLO_OPENSSL_TESTS=1`, which CI's Ubuntu job sets.
 
 ## Licences of the references
 
