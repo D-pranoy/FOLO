@@ -9,6 +9,7 @@ use std::path::Path;
 use folo_identity::{Identity, fingerprint};
 use folo_settings::{Launch, Override};
 use folo_store::Doc;
+use folo_supervisor::capture::WORKER as CAPTURE_WORKER;
 use folo_supervisor::{WORKER, WorkerStatus};
 use serde_json::{Map, Value, json};
 
@@ -27,6 +28,7 @@ struct Parts<'a> {
     providers: &'a Value,
     sources: &'a Value,
     worker: Option<WorkerStatus>,
+    capture: Option<WorkerStatus>,
 }
 
 fn build(parts: &Parts<'_>) -> Value {
@@ -48,11 +50,13 @@ fn build(parts: &Parts<'_>) -> Value {
         .as_array()
         .map_or(0, |s| s.iter().filter(|s| s["id"] != "local").count());
     let mut workers = Map::new();
-    if let Some(worker) = parts.worker {
-        workers.insert(
-            WORKER.into(),
-            json!({"state": worker.state.name(), "pid": worker.pid, "restarts": worker.restarts}),
-        );
+    for (name, worker) in [(WORKER, parts.worker), (CAPTURE_WORKER, parts.capture)] {
+        if let Some(worker) = worker {
+            workers.insert(
+                name.into(),
+                json!({"state": worker.state.name(), "pid": worker.pid, "restarts": worker.restarts}),
+            );
+        }
     }
     json!({
         "running": parts.running,
@@ -88,6 +92,7 @@ pub fn of_running(node: &Node) -> Value {
         providers: &providers,
         sources: &sources,
         worker: Some(node.supervisor.status()),
+        capture: Some(node.capture.status()),
     })
 }
 
@@ -118,6 +123,7 @@ fn of_files(place: &Place) -> Value {
         providers: &read(Doc::Providers),
         sources: &read(Doc::Sources),
         worker: None,
+        capture: None,
     })
 }
 
@@ -244,17 +250,19 @@ fn human(status: &Value) -> String {
         "launch",
         format!("{}, {} folders", text("launch"), text("mode")),
     );
-    if let Some(worker) = status["workers"].get(WORKER) {
-        line(
-            &mut out,
-            "engine",
-            format!(
-                "{} (process {}, {} restarts)",
-                worker["state"].as_str().unwrap_or_default(),
-                worker["pid"],
-                worker["restarts"]
-            ),
-        );
+    for (name, label) in [(WORKER, "engine"), (CAPTURE_WORKER, "capture")] {
+        if let Some(worker) = status["workers"].get(name) {
+            line(
+                &mut out,
+                label,
+                format!(
+                    "{} (process {}, {} restarts)",
+                    worker["state"].as_str().unwrap_or_default(),
+                    worker["pid"],
+                    worker["restarts"]
+                ),
+            );
+        }
     }
     for o in status["overrides"].as_array().into_iter().flatten() {
         line(

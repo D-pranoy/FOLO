@@ -4,6 +4,7 @@
 //! environment, serves its end of the link, restarts it with backoff when
 //! it exits or hangs, and stops it with a `restart` request.
 
+pub mod capture;
 pub mod config;
 pub mod link;
 
@@ -37,15 +38,15 @@ const BACKOFF_FIRST: Duration = Duration::from_secs(1);
 const BACKOFF_MAX: Duration = Duration::from_secs(60);
 const JITTER: f64 = 0.25;
 /// Linked this long, the engine's next restart starts the backoff over.
-const HEALTHY_AFTER: Duration = Duration::from_secs(60);
+pub(crate) const HEALTHY_AFTER: Duration = Duration::from_secs(60);
 /// How long a stopping engine has before it is killed.
-const STOP_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a request to the engine may take before it counts as unanswered
 /// (docs/specs/client-api.md#requests-to-sources).
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a started or unlinked engine has to link before it counts as
 /// hung: the engine itself gives up after 30 s without a link (ADR-0032).
-const LINK_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const LINK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Starts a process with a console of its own that has no window.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -168,6 +169,33 @@ pub enum RequestError {
     Rpc(RpcError),
 }
 
+/// The newest screen frame message (type byte `0x04` and the frame) the
+/// capture agent sent, on its way to the engine (ADR-0037 D1). Newest wins:
+/// a frame replaced before the engine's link sent it is dropped. The bytes
+/// are never read here, only passed on.
+#[derive(Clone)]
+pub struct ScreenFrames(Arc<watch::Sender<Option<Arc<Vec<u8>>>>>);
+
+impl ScreenFrames {
+    fn new() -> Self {
+        Self(Arc::new(watch::channel(None).0))
+    }
+
+    /// Replaces the frame waiting for the engine's link.
+    pub(crate) fn publish(&self, message: Vec<u8>) {
+        self.0.send_replace(Some(Arc::new(message)));
+    }
+
+    /// Drops the frame waiting, when the agent's link ends.
+    pub(crate) fn clear(&self) {
+        self.0.send_replace(None);
+    }
+
+    pub(crate) fn subscribe(&self) -> watch::Receiver<Option<Arc<Vec<u8>>>> {
+        self.0.subscribe()
+    }
+}
+
 /// What the link session tells the supervisor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Event {
@@ -199,6 +227,8 @@ pub(crate) struct Shared {
     /// Events from link sessions, with the generation of the engine they're about.
     pub events: mpsc::UnboundedSender<(u64, Event)>,
     events_in: Mutex<Option<mpsc::UnboundedReceiver<(u64, Event)>>>,
+    /// The capture agent's screen frames, which the engine's link forwards.
+    pub screen: ScreenFrames,
 }
 
 impl Shared {
@@ -221,6 +251,7 @@ impl Shared {
             generation: watch::channel(0).0,
             events,
             events_in: Mutex::new(Some(events_in)),
+            screen: ScreenFrames::new(),
         }
     }
 
@@ -317,6 +348,13 @@ impl Supervisor {
         LinkEndpoint {
             shared: Arc::clone(&self.shared),
         }
+    }
+
+    /// Where the capture agent's supervisor puts the screen frames this
+    /// engine's link forwards (ADR-0037 D1).
+    #[must_use]
+    pub fn screen_frames(&self) -> ScreenFrames {
+        self.shared.screen.clone()
     }
 
     /// Starts or stops the engine (`local_source.enabled`, the role).
@@ -433,7 +471,7 @@ pub fn is_folo_variable(name: &std::ffi::OsStr) -> bool {
 }
 
 /// A new launch token: 256 random bits, base64url (ADR-0032 D2).
-fn launch_token() -> String {
+pub(crate) fn launch_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).expect("the operating system has a random source");
     URL_SAFE_NO_PAD.encode(bytes)
@@ -441,7 +479,7 @@ fn launch_token() -> String {
 
 /// The delay before restart number `attempt` (0 first): 1 s doubling up to
 /// 60 s, cut by up to 25% at random.
-fn backoff(attempt: u32) -> Duration {
+pub(crate) fn backoff(attempt: u32) -> Duration {
     let full = BACKOFF_FIRST
         .saturating_mul(1u32 << attempt.min(16))
         .min(BACKOFF_MAX);

@@ -164,6 +164,9 @@ async fn session<S: LinkSocket>(
     engine: u64,
 ) -> Event {
     let mut config = shared.config.subscribe();
+    // Frames come as they arrive: one the capture agent sent before this
+    // link is stale
+    let mut screen = shared.screen.subscribe();
     let mut requests = {
         let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
         shared.lock().requests = Some(sender);
@@ -198,6 +201,18 @@ async fn session<S: LinkSocket>(
                         return ended;
                     }
                     log::debug!("sent configuration {revision} to the effect engine");
+                }
+            }
+            changed = screen.changed() => {
+                if changed.is_err() {
+                    return Event::Unlinked;
+                }
+                // Forwarded as it came (ADR-0037 D1); the engine checks it
+                let frame = screen.borrow_and_update().clone();
+                if let Some(frame) = frame
+                    && let Some(ended) = send(socket, Message::Binary(frame.to_vec())).await
+                {
+                    return ended;
                 }
             }
             request = requests.recv() => {
@@ -251,7 +266,7 @@ async fn send<S: LinkSocket>(socket: &mut S, message: Message) -> Option<Event> 
     }
 }
 
-fn rpc(id: u64, method: &str, params: &Value) -> Vec<u8> {
+pub(crate) fn rpc(id: u64, method: &str, params: &Value) -> Vec<u8> {
     let body = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
     let mut out = vec![TYPE_RPC];
     out.extend_from_slice(body.to_string().as_bytes());
@@ -552,6 +567,40 @@ mod tests {
         drop(engine);
         server.await.unwrap();
         assert!(answer.await.is_err());
+    }
+
+    #[tokio::test]
+    async fn screen_frames_go_to_the_engine_as_they_came_and_only_new_ones() {
+        let shared = expecting("secret", None);
+        // A frame from before the engine linked is stale
+        shared.screen.publish(vec![0x04, 9, 9, 9]);
+        let (node, mut engine) = pipe();
+        let server = {
+            let shared = Arc::clone(&shared);
+            tokio::spawn(async move { serve(&shared, node, true).await })
+        };
+        engine.outgoing.send(hello("secret")).unwrap();
+        welcome_of(engine.incoming.recv().await);
+        tokio::task::yield_now().await;
+        // Frames sent faster than the link takes them: the newest is the one that goes
+        let frame = |marker: u8| {
+            let mut bytes = vec![0x04];
+            bytes.extend((0..=199u8).map(|i| marker ^ i));
+            bytes
+        };
+        shared.screen.publish(frame(1));
+        shared.screen.publish(frame(2));
+        match engine.incoming.recv().await {
+            Some(Message::Binary(bytes)) => assert_eq!(bytes, frame(2)),
+            other => panic!("no frame: {other:?}"),
+        }
+        assert!(engine.incoming.try_recv().is_err(), "nothing else was sent");
+        // An ended capture link drops what was waiting
+        shared.screen.publish(frame(3));
+        shared.screen.clear();
+        tokio::task::yield_now().await;
+        drop(engine);
+        server.await.unwrap();
     }
 
     #[tokio::test]

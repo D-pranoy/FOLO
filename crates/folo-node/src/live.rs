@@ -403,6 +403,11 @@ impl Client {
                         };
                         entry[name] = part;
                     }
+                    // The screen capture's state rides with the input (ADR-0037 D21):
+                    // never frames, nor anything drawn from them
+                    if matches!(topic, Topic::Input(_)) && id == LOCAL_SOURCE {
+                        entry["screen"] = node.capture.screen_live();
+                    }
                 }
                 _ => {}
             }

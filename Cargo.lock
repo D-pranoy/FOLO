@@ -301,7 +301,11 @@ version = "0.0.0"
 dependencies = [
  "clap",
  "folo-capture-core",
+ "futures-util",
+ "getrandom",
  "serde_json",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -330,6 +334,7 @@ dependencies = [
  "axum",
  "base64",
  "clap",
+ "folo-capture-core",
  "folo-identity",
  "folo-protocol",
  "folo-settings",

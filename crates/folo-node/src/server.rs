@@ -13,6 +13,7 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{MethodRouter, get, post};
+use folo_supervisor::capture::{self, MAX_MESSAGE_BYTES};
 use folo_supervisor::link::SUBPROTOCOL;
 use folo_supervisor::{LinkSocket, Message};
 use serde_json::json;
@@ -162,7 +163,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/live"), get(live::live))
         .route(&v1("/ingest/surfaces"), later_get("RB-16"))
         .route(&v1("/source-link"), get(source_link))
-        .route(&v1("/capture-link"), later_get("RB-14"))
+        .route(&v1("/capture-link"), get(capture_link))
         // Only requests a route takes; the rest get their 404 or 405
         .route_layer(middleware::from_fn(json_only))
         .fallback(fallback)
@@ -369,6 +370,35 @@ async fn source_link(
         .on_upgrade(move |socket| async move { endpoint.serve(Socket(socket), loopback).await })
 }
 
+/// The capture link's endpoint: the node's own capture agent, from loopback
+/// clients only, even with remote access on (docs/specs/source-link.md#the-capture-link,
+/// ADR-0037 D1). The Host, Origin and client-address checks have run
+/// already (`guard`); a connection from another machine is refused before
+/// the upgrade, and the upgrade itself limits a message to what the link allows.
+async fn capture_link(
+    State(node): State<Arc<Node>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    upgrade: Result<WebSocketUpgrade, ws::rejection::WebSocketUpgradeRejection>,
+) -> Response {
+    let loopback = peer.ip().to_canonical().is_loopback();
+    if !loopback {
+        return error(
+            StatusCode::FORBIDDEN,
+            "loopback_only",
+            "the capture agent links from this machine only",
+        );
+    }
+    let Ok(upgrade) = upgrade else {
+        return not_a_websocket();
+    };
+    let endpoint = node.capture.endpoint();
+    upgrade
+        .protocols([capture::SUBPROTOCOL])
+        .max_message_size(MAX_MESSAGE_BYTES)
+        .max_frame_size(MAX_MESSAGE_BYTES)
+        .on_upgrade(move |socket| async move { endpoint.serve(Socket(socket), loopback).await })
+}
+
 /// A plain request to a WebSocket endpoint.
 #[must_use]
 pub fn not_a_websocket() -> Response {
@@ -473,6 +503,7 @@ mod tests {
             .await
             .unwrap();
         let body = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        node.capture.shutdown().await;
         node.supervisor.shutdown().await;
         (status, headers, body)
     }
@@ -493,6 +524,37 @@ mod tests {
         let (status, _, body) = ask("", LAN_PEER, get("/api/v1/health", "localhost")).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert_eq!(body["error"]["code"], "client_not_allowed");
+    }
+
+    #[tokio::test]
+    async fn the_capture_link_is_for_loopback_clients_with_the_checks_before_the_upgrade() {
+        const LINK: &str = "/api/v1/capture-link";
+        // Other machines are refused, with remote access on and their host allowed
+        let (status, _, body) = ask(REMOTE, LAN_PEER, get(LINK, "tv.local")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "loopback_only");
+        let (status, _, body) = ask("", LAN_PEER, get(LINK, "localhost")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "client_not_allowed");
+        // A name outside the allowlist, or a page on another site, never reaches the route
+        let (status, _, body) = ask("", "127.0.0.1:50000", get(LINK, "evil.example")).await;
+        assert_eq!(
+            (status, &body["error"]["code"]),
+            (StatusCode::FORBIDDEN, &"host_not_allowed".into())
+        );
+        let from_page = Request::builder()
+            .uri(LINK)
+            .header(header::HOST, "localhost:8777")
+            .header(header::ORIGIN, "https://evil.example")
+            .body(Body::empty())
+            .unwrap();
+        let (status, _, body) = ask("", "127.0.0.1:50000", from_page).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "origin_not_allowed");
+        // A loopback client that is no WebSocket gets told so
+        let (status, _, body) = ask("", "127.0.0.1:50000", get(LINK, "localhost:8777")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"]["code"], "websocket_required");
     }
 
     #[tokio::test]

@@ -7,3 +7,6 @@
 pub mod backends;
 pub mod cli;
 pub mod environment;
+pub mod link;
+pub mod logs;
+pub mod worker;

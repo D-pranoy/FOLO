@@ -150,11 +150,18 @@ fn a_backend_that_is_not_built_yet_exits_with_1_and_says_so() {
 }
 
 #[test]
-fn run_with_a_working_backend_stops_at_the_missing_link_client_with_1() {
-    let output = agent(&["--backend", "synthetic", "run"], &linked());
+fn run_with_a_working_backend_and_a_link_that_is_not_a_url_exits_with_1() {
+    // The link itself is tested against a fake node in tests/link.rs and tests/binary.rs
+    let output = agent(
+        &["--backend", "synthetic", "run"],
+        &[
+            ("FOLO_CAPTURE_LINK", "this is not a url"),
+            ("FOLO_CAPTURE_TOKEN", SECRET_TOKEN),
+        ],
+    );
     assert_eq!(code(&output), 1);
     let text = stderr(&output);
-    assert!(text.contains("capture link isn't built yet"), "{text}");
+    assert!(text.contains("FOLO_CAPTURE_LINK"), "{text}");
     assert!(!text.contains(SECRET_TOKEN));
 }
 

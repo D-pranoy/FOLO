@@ -1,6 +1,6 @@
 # Display capture (screen sync)
 
-Status: Accepted · Implementation: Partial (the core crate and the agent scaffold; see [RB-14](../runbooks/m6-screen.md))
+Status: Accepted · Implementation: Partial (the core crate, the capture link and the agent's link client; no backend for a real screen yet; see [RB-14](../runbooks/m6-screen.md))
 
 Decided in [ADR-0015](../decisions/ADR-0015-display-capture.md) and [ADR-0037](../decisions/ADR-0037-display-capture-agent.md).
 
@@ -39,13 +39,18 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md); the messa
 
 - **Link:** the agent dials its node at `ws://127.0.0.1:<port>/api/v1/capture-link`. Its launch token and the link's URL are in its environment (`FOLO_CAPTURE_TOKEN`, `FOLO_CAPTURE_LINK`), never on its command line. The node forwards the frames unchanged to the engine over the local source link.
 - **Lifecycle:** the node starts the agent while capture is **wanted**: a screen input is enabled and an enabled Screen layer is in the active scene of one of the source's surfaces. It then asks for a capture (`capture.start`) and, when capture isn't wanted any more, stops it and the agent.
+  - **Several screens:** one capture runs at a time. Of several enabled `inputs.screens[]` entries the first is captured.
+  - **Who asks:** the node asks only in the controller role while its own engine runs: the engine draws the Screen effect, and a source node gets its configuration from its controller (RB-16).
+  - **No session:** a node launched with `--service` starts no agent. While capture is wanted its `SourceLive.screen` is `unavailable` and says why, and the screen list is empty.
+  - **What clients see:** `off` while capture isn't wanted. While it is: `starting` until the agent has linked and reported; the agent's own status after that (without the restore token); `error`, with the agent's reason, when the agent refused `capture.start` (an unknown screen, say); `unavailable` while the agent can't run (it can't be started, or it exits again and again) until the node has started it again.
+  - **Losing the link:** an agent that loses its node stops capturing, and captures again only when its node asks (the node asks again after the handshake). An agent in `error` stays so until the wish changes or the agent is started again.
 - **Health:** the agent reports its state (`off`, `starting`, `waiting_consent`, `capturing`, `paused` or `error`) at least once a second. The node restarts a silent agent, and the agent exits when its node has been gone for 30 s.
 - **Screens:** on Windows a screen is identified by its monitor's device path. On Linux there is one entry, `portal`: the portal names no screens before the user chooses one. `folo-capture screens --json` lists them without capturing, for the node to use when no agent is linked.
 
 ## Frames from the agent
 
 - **Format:** `rgb8`, sRGB-encoded, in the `FOLC` frame of the [source link](../specs/source-link.md#screen-frames), never compressed. Frames are never wider than 480 or higher than 270.
-- **Size:** at most 480 wide and 270 high. The node asks for twice the largest canvas among the surfaces with a Screen layer (at least 64×36, at most 480×270). The agent delivers the largest frame of the screen's aspect ratio that fits.
+- **Size:** at most 480 wide and 270 high. The node asks for twice the largest canvas among the surfaces with a Screen layer (at least 64×36, at most 480×270): the widest and the highest of their published sizes (canvases at most 128×72, a strip its length by 1). The agent delivers the largest frame of the screen's aspect ratio that fits.
 - **Rate:** the highest rate those surfaces publish at, at most 60 Hz. When nothing on the screen changes, the last picture is sent again after 0.25 s, as a new frame with the send time and the next sequence number. Every frame, new or repeated, carries the time it is sent. Repeats are not held to `rate_hz`, and a new picture waiting for the rate holds them back, so rates under about 4 Hz can't keep frames inside the engine's 0.5 s limit.
 - **Clock:** timestamps are microseconds on the operating system's monotonic clock (`QueryPerformanceCounter`, `CLOCK_MONOTONIC`), the clock the engine stamps its own frames with.
 - **Flags:** `protected` (protected content is on screen), `hdr` (the desktop is HDR, and the frame was tone-mapped) and `held` (the agent can't capture right now, and sends its last picture again; a picture just captured never carries it).

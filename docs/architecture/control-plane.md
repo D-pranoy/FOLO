@@ -161,6 +161,7 @@ A usage error exits with status 2. Until their run books land, `token`, `pair` a
   - **Supervision:** the agent sends its status at least once a second. A hung agent (5 s without a message) is killed and started again with the engine's restart policy; it exits after 30 s without its node.
   - **Stopping:** when capture isn't wanted any more, the node sends `capture.stop` and `restart {component: capture}`, and kills the agent if it hasn't exited after 5 s.
   - **Listing:** the node asks a linked agent for `screens.list`, or runs `folo-capture screens --json` when none is linked, and merges the screens into the source's input listing.
+  - **Service launches:** a node started with `--service` runs outside the user's session and starts no agent: `SourceLive.screen` is `unavailable` while capture is wanted, and the screen list is empty. `folo status` lists the worker `folo-capture` (`stopped` while capture isn't wanted).
   - **The restore token** (Linux) is kept in `secrets.json`: the node passes it in `capture.start` and stores the new one the agent returns.
 - **Media sessions** (now playing) also belong to the user's session. In Windows service mode, the effect engine runs outside it, so now playing reports `unavailable` in v1 ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
 

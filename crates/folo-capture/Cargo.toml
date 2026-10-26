@@ -19,4 +19,11 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 folo-capture-core = { path = "../folo-capture-core" }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+getrandom = { version = "0.3", features = ["std"] }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+tokio = { version = "1", features = ["macros", "net", "rt", "sync", "time"] }
+tokio-tungstenite = "0.29"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
