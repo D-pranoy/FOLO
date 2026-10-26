@@ -5,7 +5,7 @@ Status: Accepted · Implementation: Not started
 ## RB-12: WLED provider
 
 **Goal:** WLED driven directly, with capabilities, segments and basic administration.
-**Depends on:** RB-08.
+**Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)).
 
 1. **Fake first:** a UDP receiver that parses DDP (push semantics, offsets, data types) and DNRGB(W) (timeout byte, start index), plus fixture JSON for `/json/info`, `/json/state` and `/json/cfg` covering RGB, RGBW, CCT, analog, on/off and 2D.
 2. **Discovery:** mDNS `_wled._tcp`; manual entry.
@@ -28,7 +28,7 @@ Status: Accepted · Implementation: Not started
 ## RB-13: Hue provider and zone sync
 
 **Goal:** Hue entertainment streaming, managed configurations, zone sync and basic administration.
-**Depends on:** RB-08.
+**Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)).
 
 1. **Fake bridge first:**
    - a REST double: `/api/config`, `/api` pairing (link-button states), `/auth/v1`, CLIP v2 resources and entertainment configuration CRUD, the event stream

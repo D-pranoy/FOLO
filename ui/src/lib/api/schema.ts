@@ -963,6 +963,13 @@ export interface components {
             /** @default 0 */
             roll: number;
         };
+        /** @description The reference object's width and height, metres (a TV's screen). */
+        ReferenceSize: {
+            /** @default 1.2 */
+            width: number;
+            /** @default 0.68 */
+            height: number;
+        };
         Reference: {
             /**
              * @default none
@@ -973,6 +980,8 @@ export interface components {
             position: components["schemas"]["Vec3"];
             /** @default {} */
             orientation: components["schemas"]["Orientation"];
+            /** @default {} */
+            size: components["schemas"]["ReferenceSize"];
         };
         /** @description The id of another entity; empty for none. */
         Ref: string;
@@ -1191,6 +1200,15 @@ export interface components {
             /** @default 1 */
             b: number;
         };
+        /** @description How on/off targets switch: a threshold with hysteresis and a minimum interval between changes. */
+        OnOff: {
+            /** @default 0.5 */
+            threshold: number;
+            /** @default 0.1 */
+            hysteresis: number;
+            /** @default 1000 */
+            min_interval_ms: number;
+        };
         Calibration: {
             /** @default 1 */
             gamma: number;
@@ -1207,6 +1225,14 @@ export interface components {
             color_order: "rgb" | "rbg" | "grb" | "gbr" | "brg" | "bgr";
             /** @default 0 */
             latency_ms: number;
+            /**
+             * @description How RGBW and RGB+CCT targets get their white channel.
+             * @default accurate
+             * @enum {unknown}
+             */
+            white: "off" | "accurate" | "brighter";
+            /** @default {} */
+            onoff: components["schemas"]["OnOff"];
         };
         Target: {
             /** @default  */
@@ -1423,6 +1449,11 @@ export interface components {
             beat_offset_ms: number;
             /** @default false */
             album_colors: boolean;
+            /**
+             * @description Whether the zone drives its targets. At most one active zone drives a target (docs/architecture/spatial-model.md#zone-activation-rules).
+             * @default true
+             */
+            active: boolean;
         };
         /**
          * ZonesDocument
@@ -1473,6 +1504,11 @@ export interface components {
                     beat_offset_ms: number;
                     /** @default false */
                     album_colors: boolean;
+                    /**
+                     * @description Whether the zone drives its targets. At most one active zone drives a target (docs/architecture/spatial-model.md#zone-activation-rules).
+                     * @default true
+                     */
+                    active: boolean;
                 };
                 /** @description Room dimensions, metres. */
                 Bounds: {
@@ -1493,6 +1529,15 @@ export interface components {
                     position: components["schemas"]["Vec3"];
                     /** @default {} */
                     orientation: components["schemas"]["Orientation"];
+                    /** @default {} */
+                    size: components["schemas"]["ReferenceSize"];
+                };
+                /** @description The reference object's width and height, metres (a TV's screen). */
+                ReferenceSize: {
+                    /** @default 1.2 */
+                    width: number;
+                    /** @default 0.68 */
+                    height: number;
                 };
                 FlashLimiter: {
                     /** @default false */
@@ -1752,6 +1797,23 @@ export interface components {
                     color_order: "rgb" | "rbg" | "grb" | "gbr" | "brg" | "bgr";
                     /** @default 0 */
                     latency_ms: number;
+                    /**
+                     * @description How RGBW and RGB+CCT targets get their white channel.
+                     * @default accurate
+                     * @enum {unknown}
+                     */
+                    white: "off" | "accurate" | "brighter";
+                    /** @default {} */
+                    onoff: components["schemas"]["OnOff"];
+                };
+                /** @description How on/off targets switch: a threshold with hysteresis and a minimum interval between changes. */
+                OnOff: {
+                    /** @default 0.5 */
+                    threshold: number;
+                    /** @default 0.1 */
+                    hysteresis: number;
+                    /** @default 1000 */
+                    min_interval_ms: number;
                 };
                 WhiteBalance: {
                     /** @default 1 */
