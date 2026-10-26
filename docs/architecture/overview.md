@@ -41,7 +41,7 @@ On a desktop all-in-one install, the controller runs a **local source** (its own
 6. **Adapters.** Colour model, resolution, rate, calibration, latency offset, flash limiter.
 7. **Providers.** Each sends at its own rate (Hyperion 40 Hz, WLED 60 Hz, Hue 50 Hz).
 
-Details: [pipeline](pipeline.md), [spatial model](spatial-model.md), [capabilities](capabilities.md).
+Details: [pipeline](pipeline.md), [spatial model](spatial-model.md), [capabilities](capabilities.md), [providers](providers.md).
 
 ## Control plane
 
