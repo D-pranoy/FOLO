@@ -22,6 +22,7 @@ from folo_source.surfaces.renderer import (
     axis_line,
     blend,
     canvas_cells,
+    round_half_up,
     strip_cells,
 )
 from tests import golden_cases, synth
@@ -43,21 +44,31 @@ def js_round(value: float) -> int:
     return math.floor(value + 0.5)
 
 
-@pytest.mark.parametrize('size', [1, 2, 3, 7, 30, 31, 32, 60, 61, 100, 144, 150, 300])
+@pytest.mark.parametrize('size', [1, 2, 3, 7, 30, 31, 32, 45, 60, 61, 85, 100, 144, 150, 300])
 def test_snap_nearest_matches_the_builders(size: int) -> None:
-    # The builders place `n` equal segments from Math.round(i * N / n)
-    # to Math.round((i + 1) * N / n) - 1.
-    for parts in (1, 2, 3, 4, 5, 6, 7, 8, 16):
+    # The studio's `part(n, name, from, to, ...)` places a segment at Math.round(from * n)
+    # to Math.round(to * n) - 1, with the fractions as floats (i / 10 and the like): the
+    # float product is what the stored fractions must reproduce, so it is used here too.
+    for parts in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16):
         for index in range(parts):
-            region = {
-                'kind': 'relative',
-                'start': index / parts,
-                'end': (index + 1) / parts,
-                'snap': 'nearest',
-            }
-            first = min(js_round(index * size / parts), size - 1)
-            last = min(max(first, js_round((index + 1) * size / parts) - 1), size - 1)
+            lo, hi = index / parts, (index + 1) / parts
+            region = {'kind': 'relative', 'start': lo, 'end': hi, 'snap': 'nearest'}
+            first = min(js_round(lo * size), size - 1)
+            last = min(max(first, js_round(hi * size) - 1), size - 1)
             assert strip_cells(region, size) == (first, last + 1), (size, parts, index)
+
+
+def test_round_half_up() -> None:
+    assert [round_half_up(x) for x in (0.0, 0.49, 0.5, 1.5, 2.5, 3.2, 3.5)] == [0, 0, 1, 2, 3, 3, 4]
+
+
+def test_snap_nearest_edges() -> None:
+    nearest = {'kind': 'relative', 'start': 0.3, 'end': 0.9, 'snap': 'nearest'}
+    assert strip_cells(nearest, 1) == (0, 1)
+    assert strip_cells(nearest, 0) == (0, 0)
+    assert canvas_cells(nearest, 10, 4) == (0, 4, 3, 9)  # columns only, over every row
+    rect = {'kind': 'rect', 'x': 0.25, 'width': 0.5, 'y': 0, 'height': 1, 'snap': 'nearest'}
+    assert strip_cells(rect, 10) == (2, 8)  # snap is for relative regions
 
 
 def test_snap_nearest_rounding_and_default() -> None:
