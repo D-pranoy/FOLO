@@ -12,6 +12,7 @@ Status: Accepted · Implementation: Not started
 3. **Tray:**
    - status icon (ok, warning, off, updating)
    - menu: Open, Output on/off, Start at sign-in, Join a controller (source role), Updates, Quit
+   - a "screen sync active" indicator while the source's screen status says `capturing` or `paused` ([RB-14](m6-screen.md), [ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D21)
    - on Linux, menu only; document the GNOME AppIndicator extension
 4. **Window:** a taskbar button while shown; close hides to the tray (setting); `--minimized`; single instance.
 5. **Start at sign-in:** an explicit per-user implementation (HKCU Run / XDG autostart), off by default, exposed to the UI through the loopback bridge.

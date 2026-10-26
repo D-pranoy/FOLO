@@ -82,7 +82,7 @@ Until then:
 | `/providers/{id}/admin/...` | GET, POST | Basic device administration ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)) |
 | `/providers/{id}/hue/pair` | POST | The link-button pairing flow, with progress |
 | `/sources`, `/sources/{id}` | GET, PUT, DELETE | Sources, inputs, assignments, priorities |
-| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens. The UI refreshes it every 5 s while the input editor is open. |
+| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens (listed by the source's capture agent; on Linux the one entry `portal`, of unknown size). The UI refreshes it every 5 s while the input editor is open. |
 | `/sources/{id}/media` | GET | Now-playing state: off, unavailable, error, none, playing, paused or stopped; app, title, artist, album, art id, colours |
 | `/sources/{id}/media/art` | GET | The current album art image. Clients add the art id to bust caches. |
 | `/sources/{id}/media/control` | POST | `{"action": "play_pause" \| "next" \| "previous"}` on the source's shown media session |
@@ -124,7 +124,7 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
   |---|---|
   | `status` | `status` messages: every source's state, every zone and every provider |
   | `zone:<id>` | `status` messages: that zone (reactive state: ambient fade 0–1, seconds of silence) |
-  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) |
+  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) and its screen capture (state, rate, protected and HDR flags, black bars: never any pixels) |
   | `beat:<source>` | `status` messages: the source's beat (BPM, confidence, locked, phase, bar beat) |
   | `media:<source>` | `status` messages: the source's now playing |
   | `levels:<source>` | `levels` messages, one per surface of the source |

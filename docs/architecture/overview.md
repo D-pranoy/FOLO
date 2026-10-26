@@ -8,7 +8,7 @@ Status: Accepted · Implementation: Not started
 |---|---|---|---|
 | **Node** (`folo`) | Rust | Desktop (managed by the desktop app), Windows service, systemd unit, Docker | One binary with two roles. **Controller role:** zones, targets, providers, scenes, library, sources, projection, API, UI, updates. **Source role:** outbound link to a controller; supervises source workers. Both roles: identity, settings, status, supervision. |
 | **Effect engine** (`folo-source`) | Python | Child of a node | Audio inputs (including app capture), gain and auto level, analysis, beat tracking, now playing, effects, surface rendering, publishing surfaces and signals to the node over loopback |
-| **Capture agent** (`folo-capture`) | Rust | The signed-in user's session | On-demand display capture, GPU downscaling, HDR tone mapping, black-bar detection; small frames to the effect engine |
+| **Capture agent** (`folo-capture`) | Rust | The signed-in user's session | On-demand display capture, GPU downscaling, HDR tone mapping, black-bar detection; small frames to its node, which hands them to the effect engine ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md)) |
 | **UI** | TypeScript (Svelte) | Served by the controller | Every management screen, version-locked to its controller |
 | **Desktop app** | Rust (Tauri v2) | The signed-in user's session | Hosts the UI, keeps the list of controllers, tray icon, start at sign-in, manages the local node when it isn't a service |
 | **Clients** | | Anywhere on the LAN | Desktop app, browsers, the future Android app, the Home Assistant integration |
@@ -33,7 +33,7 @@ On a desktop all-in-one install, the controller runs a **local source** (its own
 
 ## Data flow per frame
 
-1. **Inputs.** The effect engine reads audio packets (about every 10 ms). The capture agent delivers small screen frames on demand.
+1. **Inputs.** The effect engine reads audio packets (about every 10 ms). The capture agent delivers small screen frames on demand, through its node, to the engine.
 2. **Effects.** Layers render into surfaces at the input rate.
 3. **Publishing.** Surfaces are published at the resolution and rate each zone requests (default 60 Hz).
 4. **Compositing.** The controller picks or blends sources per surface (priority, activity, crossfade), then applies each zone's reactive mode and ambient light.
@@ -57,6 +57,7 @@ Details: [control plane](control-plane.md), [security](security.md).
 desktop app ──manages──► node (unless installed as a service; then the service manager supervises it)
 node ──supervises──► folo-source (heartbeat, restart with backoff)
 node or desktop app ──starts on demand──► folo-capture (always in the user session)
+folo-capture ──frames, loopback──► node ──forwards──► folo-source (the Screen effect)
 ```
 
 ## Related documents

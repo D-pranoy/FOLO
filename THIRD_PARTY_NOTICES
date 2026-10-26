@@ -1,0 +1,33 @@
+# Third-party notices
+
+FOLO is MIT-licensed ([LICENSE](LICENSE)). Code copied or ported into FOLO from other projects is limited to compatible licences and recorded here ([ADR-0023](docs/decisions/ADR-0023-legacy-code-and-licensing.md) D4).
+
+## Hyperion.NG
+
+- **Used in:** the black-bar detector of the display capture agent (`folo-capture`, [ADR-0037](docs/decisions/ADR-0037-display-capture-agent.md) D7), a port of Hyperion.NG's black-border detector (`libsrc/blackborder`), adapted to time-based hysteresis. The port is added with RB-14's black-bar change; it will live in `crates/folo-capture-core/src/bars.rs`.
+- **Source:** https://github.com/hyperion-project/hyperion.ng
+- **Licence:** MIT
+
+```
+MIT License
+
+Copyright (c) 2014-2026 Hyperion Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

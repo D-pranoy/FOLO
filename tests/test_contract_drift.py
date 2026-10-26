@@ -187,9 +187,40 @@ def test_post_processing_table(config_model: str) -> None:
         fields.setdefault(effect, set()).add(name)
         definition = by_effect[effect].removeprefix('#/$defs/')
         check_field(field(definition, name), row['Range / values'], row['Default'])
-    assert set(fields) == set(by_effect) - {'audio-visualizer'}
+    assert set(fields) == set(by_effect) - {'audio-visualizer', 'screen'}
     for effect, names in fields.items():
         assert set(resolve(DEFS[by_effect[effect].removeprefix('#/$defs/')])['properties']) == names
+
+
+def test_screen_table(config_model: str) -> None:
+    names: set[str] = set()
+    for row in table(config_model, '**Screen parameters**'):
+        name = row['Field'].strip('`')
+        names.add(name)
+        if name == 'margins':
+            margins = resolve(field('ScreenParams', 'margins'))['properties']
+            assert set(margins) == set(ticked(row['Range / values'].split(':')[0]))
+            for side in margins.values():
+                check_field(resolve(side), row['Range / values'], row['Default'])
+            continue
+        check_field(field('ScreenParams', name), row['Range / values'], row['Default'])
+    assert names == set(resolve(DEFS['ScreenParams'])['properties'])
+
+
+def test_screen_input_table(config_model: str) -> None:
+    names: set[str] = set()
+    for row in table(config_model, '**Screen input settings**'):
+        name = row['Field'].strip('`')
+        names.add(name)
+        schema = field('ScreenInput', name)
+        if schema.get('type') == 'string' and 'enum' not in schema:
+            assert schema['default'] == (ticked(row['Default']) or [''])[0]
+            continue
+        check_field(schema, row['Range / values'], row['Default'])
+    expected = {'id', 'enabled', 'profile'} | {
+        f'black_bars.{n}' for n in resolve(DEFS['BlackBars'])['properties']
+    }
+    assert names == expected
 
 
 def test_effect_catalog_matches_the_registry() -> None:
@@ -406,6 +437,7 @@ def test_handshake_values(source_link: str) -> None:
     [
         ('## Surface frames', 'SurfaceFrameHeader'),
         ('## Signal frames', 'SignalFrameHeader'),
+        ('## Screen frames', 'ScreenFrameHeader'),
     ],
 )
 def test_frame_layouts(source_link: str, marker: str, definition: str) -> None:

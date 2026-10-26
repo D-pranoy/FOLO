@@ -150,6 +150,36 @@ class BeatStatus(BaseModel):
     ]
 
 
+class BlackBars(BaseModel):
+    """
+    How the capture agent finds the black bars (letterbox and pillarbox) around the picture.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    preset: Annotated[
+        Literal['auto', 'off', '21:9', '4:3'],
+        Field(
+            description='auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.'
+        ),
+    ] = 'auto'
+    mode: Annotated[
+        Literal['default', 'letterbox', 'osd'],
+        Field(
+            description='default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.'
+        ),
+    ] = 'default'
+    threshold: Annotated[
+        float,
+        Field(
+            description='How dark a pixel counts as black, as a share of full scale.',
+            ge=0.01,
+            le=0.5,
+        ),
+    ] = 0.05
+
+
 class BlurParams(BaseModel):
     """
     The blur post-processing effect: a box blur, in cells on each side.
@@ -184,6 +214,117 @@ class BrightnessParams(BaseModel):
     )
     brightness: Annotated[float, Field(ge=0.0, le=4.0)] = 1
     saturation: Annotated[float, Field(ge=0.0, le=4.0)] = 1
+
+
+class VersionItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=16)]
+
+
+class Agent(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    version: Annotated[
+        str, Field(description="The agent's software version.", max_length=32)
+    ]
+    platform: Annotated[str, Field(description='windows or linux.', max_length=32)]
+
+
+class CaptureHello(BaseModel):
+    """
+    The capture agent's handshake payload on the capture link (ADR-0037 D2). It is JSON in the first WebSocket text message, on the loopback link only.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    version: Annotated[
+        list[VersionItem],
+        Field(description='Capture-link versions it supports.', min_length=1),
+    ]
+    agent: Agent
+    token: Annotated[
+        str,
+        Field(
+            description="The node's launch token for its capture agent.", max_length=64
+        ),
+    ]
+
+
+class CaptureRpcNotification(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    jsonrpc: Literal['2.0']
+    method: Annotated[
+        Literal['capture.status'],
+        Field(description='Capture agent -> node, on the capture link.'),
+    ]
+    params: dict[str, Any] | None = None
+
+
+class CaptureRpcRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    jsonrpc: Literal['2.0']
+    id: int | str
+    method: Annotated[
+        Literal['screens.list', 'capture.start', 'capture.stop', 'restart'],
+        Field(description='Node -> capture agent, on the capture link.'),
+    ]
+    params: dict[str, Any] | None = None
+
+
+class CaptureSecrets(BaseModel):
+    """
+    What the capture agent's portal session needs to be restored without asking again (docs/decisions/ADR-0037-display-capture-agent.md D14). Single use: the node replaces it after every start. Absent (not defaulted) so existing documents clamp to the same bytes.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    restore_token: Annotated[
+        str | None,
+        Field(description='Absent until the portal has given one.', max_length=256),
+    ] = None
+
+
+class CaptureStartParams(BaseModel):
+    """
+    Starts capturing one screen (ADR-0037 D3, D5). The agent delivers frames that fit width x height in the screen's aspect ratio, at most rate_hz a second.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    screen: Annotated[
+        str, Field(description='A screen id from screens.list.', max_length=128)
+    ]
+    width: Annotated[int, Field(ge=1, le=480)]
+    height: Annotated[int, Field(ge=1, le=270)]
+    rate_hz: Annotated[float, Field(ge=1.0, le=60.0)]
+    black_bars: BlackBars
+    profile: Literal['video', 'game']
+    restore_token: Annotated[
+        str | None,
+        Field(
+            description="Linux: the portal's restore token from secrets.json, when there is one.",
+            max_length=256,
+        ),
+    ] = None
+
+
+class CaptureWelcome(BaseModel):
+    """
+    The node's handshake payload on the capture link.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    version: Annotated[str, Field(description='The version chosen.', max_length=16)]
+    result: Literal['ok', 'rejected']
 
 
 class CellsRegion(BaseModel):
@@ -352,10 +493,6 @@ class Health(BaseModel):
         extra='forbid',
     )
     status: Literal['ok']
-
-
-class VersionItem(RootModel[str]):
-    root: Annotated[str, Field(max_length=16)]
 
 
 class HuePairing(BaseModel):
@@ -1211,9 +1348,37 @@ class Screen(BaseModel):
     )
     id: Annotated[str, Field(max_length=128)]
     name: Annotated[str, Field(max_length=128)]
-    width: Annotated[int, Field(ge=1)]
-    height: Annotated[int, Field(ge=1)]
+    width: Annotated[
+        int,
+        Field(
+            description="In pixels; 0 while it isn't known (the Linux portal entry, before the user has chosen a screen).",
+            ge=0,
+        ),
+    ]
+    height: Annotated[
+        int, Field(description="In pixels; 0 while it isn't known.", ge=0)
+    ]
     primary: bool
+
+
+class ScreenBars(BaseModel):
+    """
+    The black bars found around the picture, each as a share (0-1) of the frame's height (top, bottom) or width (left, right).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    top: Annotated[float, Field(ge=0.0, le=1.0)]
+    bottom: Annotated[float, Field(ge=0.0, le=1.0)]
+    left: Annotated[float, Field(ge=0.0, le=1.0)]
+    right: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class ScreenFrameHeader(BaseModel):
+    """
+    Header of a screen frame (FOLC), little-endian, on the loopback links only; the payload follows: width x height x 3 bytes of rgb8, row-major (ADR-0037 D4).
+    """
 
 
 class ScreenInput(BaseModel):
@@ -1222,6 +1387,116 @@ class ScreenInput(BaseModel):
     )
     id: Annotated[str, Field(description='The selected screen.', max_length=128)] = ''
     enabled: bool = False
+    black_bars: Annotated[BlackBars, Field(validate_default=True)] = {
+        'preset': 'auto',
+        'mode': 'default',
+        'threshold': 0.05,
+    }
+    profile: Annotated[
+        Literal['video', 'game'],
+        Field(
+            description="video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars."
+        ),
+    ] = 'video'
+
+
+class ScreenMargins(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    top: Annotated[float, Field(ge=0.0, le=0.45)] = 0
+    bottom: Annotated[float, Field(ge=0.0, le=0.45)] = 0
+    left: Annotated[float, Field(ge=0.0, le=0.45)] = 0
+    right: Annotated[float, Field(ge=0.0, le=0.45)] = 0
+
+
+class ScreenParams(BaseModel):
+    """
+    The screen effect: what the capture agent's frames show, cropped, sampled onto the layer's region of a canvas, coloured and smoothed. On a strip it draws nothing.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    mode: Annotated[
+        Literal['area', 'edge'],
+        Field(
+            description="area: the whole picture. edge: the picture's border, spread inward."
+        ),
+    ] = 'area'
+    edge_depth: Annotated[
+        float,
+        Field(
+            description='How deep the border reaches into the picture in edge mode, as a share of its width and height.',
+            ge=0.02,
+            le=0.5,
+        ),
+    ] = 0.15
+    margins: Annotated[ScreenMargins, Field(description='The shares of the picture to leave out at each side, after the black bars.', validate_default=True)] = {
+        'top': 0,
+        'bottom': 0,
+        'left': 0,
+        'right': 0,
+    }
+    brightness: Annotated[float, Field(ge=0.0, le=4.0)] = 1
+    saturation: Annotated[float, Field(ge=0.0, le=4.0)] = 1
+    smoothing: Annotated[
+        float,
+        Field(
+            description='The time constant of the smoothing, ms; 0 shows each frame as it is.',
+            ge=0.0,
+            le=2000.0,
+        ),
+    ] = 150
+    bars: Annotated[
+        Literal['follow', 'ignore'],
+        Field(
+            description='follow: leave out the black bars the capture agent found. ignore: use the whole picture.'
+        ),
+    ] = 'follow'
+
+
+class ScreenStatus(BaseModel):
+    """
+    The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    state: Literal['off', 'starting', 'waiting_consent', 'capturing', 'paused', 'error']
+    backend: Annotated[
+        str,
+        Field(
+            description='dda, wgc, gdi, portal, synthetic or replay; empty while off.',
+            max_length=32,
+        ),
+    ]
+    screen: Annotated[
+        str,
+        Field(
+            description='The screen being captured; empty while off.', max_length=128
+        ),
+    ]
+    fps: Annotated[float, Field(ge=0.0)]
+    hdr: bool
+    protected: Annotated[
+        bool, Field(description="Protected content is on screen and can't be captured.")
+    ]
+    bars: ScreenBars
+    message: Annotated[str | None, Field(max_length=500)] = None
+    settings_uri: Annotated[str | None, Field(max_length=2048)] = None
+
+
+class ScreensListResult(BaseModel):
+    """
+    The answer to screens.list: the screens the agent can capture (api.json's Screen).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    screens: Annotated[list[Screen], Field(max_length=16)]
 
 
 class ServiceStatus(BaseModel):
@@ -1269,6 +1544,7 @@ class SourceLive(BaseModel):
     input: InputStatus | None = None
     beat: BeatStatus | None = None
     media: MediaState | None = None
+    screen: ScreenStatus | None = None
 
 
 class Span(BaseModel):
@@ -1729,6 +2005,55 @@ class Calibration(BaseModel):
     brightness_max: Annotated[float, Field(ge=0.0, le=1.0)] = 1
     color_order: Literal['rgb', 'rbg', 'grb', 'gbr', 'brg', 'bgr'] = 'rgb'
     latency_ms: Annotated[float, Field(ge=0.0, le=5000.0)] = 0
+
+
+class CaptureStatusParams(BaseModel):
+    """
+    The capture agent's state, sent at least once a second and when it changes (its heartbeat). The node removes restore_token before it shows the status to clients (live.json's ScreenStatus).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    state: Literal['off', 'starting', 'waiting_consent', 'capturing', 'paused', 'error']
+    backend: Annotated[
+        str,
+        Field(
+            description='dda, wgc, gdi, portal, synthetic or replay; empty while off.',
+            max_length=32,
+        ),
+    ]
+    screen: Annotated[
+        str,
+        Field(
+            description='The screen being captured; empty while off.', max_length=128
+        ),
+    ]
+    fps: Annotated[float, Field(description='Frames sent per second.', ge=0.0)]
+    hdr: Annotated[
+        bool, Field(description='The screen runs in HDR and is tone-mapped.')
+    ]
+    protected: Annotated[
+        bool, Field(description="Protected content is on screen and can't be captured.")
+    ]
+    bars: ScreenBars
+    restore_token: Annotated[
+        str | None,
+        Field(
+            description="Linux: the portal's new restore token, to keep in secrets.json.",
+            max_length=256,
+        ),
+    ] = None
+    message: Annotated[
+        str | None, Field(description='Why it is paused or in error.', max_length=500)
+    ] = None
+    settings_uri: Annotated[
+        str | None,
+        Field(
+            description="Where the user can allow capture, when the operating system's privacy setting refuses it.",
+            max_length=2048,
+        ),
+    ] = None
 
 
 class Client(BaseModel):
@@ -2279,6 +2604,7 @@ class SecretsDocument(BaseModel):
         'private_key': '',
     }
     master_key_hash: Annotated[str, Field(max_length=128)] = ''
+    capture: CaptureSecrets | None = None
     providers: Annotated[dict[str, ProviderSecrets], Field(description='Provider instance id: its credentials.', validate_default=True)] = {
 
     }

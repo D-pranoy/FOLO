@@ -1278,6 +1278,161 @@ pub struct BeatStatus {
     ///Share of the current beat gone by.
     pub phase: f64,
 }
+///How the capture agent finds the black bars (letterbox and pillarbox) around the picture.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BlackBars {
+    ///default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.
+    #[serde(default = "defaults::black_bars_mode")]
+    pub mode: BlackBarsMode,
+    ///auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.
+    #[serde(default = "defaults::black_bars_preset")]
+    pub preset: BlackBarsPreset,
+    ///How dark a pixel counts as black, as a share of full scale.
+    #[serde(default = "defaults::black_bars_threshold")]
+    pub threshold: f64,
+}
+impl ::std::default::Default for BlackBars {
+    fn default() -> Self {
+        Self {
+            mode: defaults::black_bars_mode(),
+            preset: defaults::black_bars_preset(),
+            threshold: defaults::black_bars_threshold(),
+        }
+    }
+}
+///default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum BlackBarsMode {
+    #[serde(rename = "default")]
+    Default,
+    #[serde(rename = "letterbox")]
+    Letterbox,
+    #[serde(rename = "osd")]
+    Osd,
+}
+impl ::std::fmt::Display for BlackBarsMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Default => f.write_str("default"),
+            Self::Letterbox => f.write_str("letterbox"),
+            Self::Osd => f.write_str("osd"),
+        }
+    }
+}
+impl ::std::str::FromStr for BlackBarsMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "default" => Ok(Self::Default),
+            "letterbox" => Ok(Self::Letterbox),
+            "osd" => Ok(Self::Osd),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for BlackBarsMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BlackBarsMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for BlackBarsMode {
+    fn default() -> Self {
+        BlackBarsMode::Default
+    }
+}
+///auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum BlackBarsPreset {
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "21:9")]
+    X219,
+    #[serde(rename = "4:3")]
+    X43,
+}
+impl ::std::fmt::Display for BlackBarsPreset {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Auto => f.write_str("auto"),
+            Self::Off => f.write_str("off"),
+            Self::X219 => f.write_str("21:9"),
+            Self::X43 => f.write_str("4:3"),
+        }
+    }
+}
+impl ::std::str::FromStr for BlackBarsPreset {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "auto" => Ok(Self::Auto),
+            "off" => Ok(Self::Off),
+            "21:9" => Ok(Self::X219),
+            "4:3" => Ok(Self::X43),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for BlackBarsPreset {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BlackBarsPreset {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for BlackBarsPreset {
+    fn default() -> Self {
+        BlackBarsPreset::Auto
+    }
+}
 ///The blur post-processing effect: a box blur, in cells on each side.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -1907,6 +2062,1118 @@ impl ::std::convert::TryFrom<::std::string::String> for CapabilityOverridesDeliv
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///The capture agent's handshake payload on the capture link (ADR-0037 D2). It is JSON in the first WebSocket text message, on the loopback link only.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureHello {
+    pub agent: CaptureHelloAgent,
+    ///The node's launch token for its capture agent.
+    pub token: CaptureHelloToken,
+    ///Capture-link versions it supports.
+    pub version: ::std::vec::Vec<CaptureHelloVersionItem>,
+}
+///`CaptureHelloAgent`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureHelloAgent {
+    ///windows or linux.
+    pub platform: CaptureHelloAgentPlatform,
+    ///The agent's software version.
+    pub version: CaptureHelloAgentVersion,
+}
+///windows or linux.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureHelloAgentPlatform(::std::string::String);
+impl ::std::ops::Deref for CaptureHelloAgentPlatform {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureHelloAgentPlatform> for ::std::string::String {
+    fn from(value: CaptureHelloAgentPlatform) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureHelloAgentPlatform {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureHelloAgentPlatform {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureHelloAgentPlatform {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureHelloAgentPlatform {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The agent's software version.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureHelloAgentVersion(::std::string::String);
+impl ::std::ops::Deref for CaptureHelloAgentVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureHelloAgentVersion> for ::std::string::String {
+    fn from(value: CaptureHelloAgentVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureHelloAgentVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureHelloAgentVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureHelloAgentVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureHelloAgentVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The node's launch token for its capture agent.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureHelloToken(::std::string::String);
+impl ::std::ops::Deref for CaptureHelloToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureHelloToken> for ::std::string::String {
+    fn from(value: CaptureHelloToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureHelloToken {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureHelloToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureHelloToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureHelloToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`CaptureHelloVersionItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureHelloVersionItem(::std::string::String);
+impl ::std::ops::Deref for CaptureHelloVersionItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureHelloVersionItem> for ::std::string::String {
+    fn from(value: CaptureHelloVersionItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureHelloVersionItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16usize {
+            return Err("longer than 16 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureHelloVersionItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureHelloVersionItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureHelloVersionItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Node -> capture agent, on the capture link.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CaptureMethod {
+    #[serde(rename = "screens.list")]
+    ScreensList,
+    #[serde(rename = "capture.start")]
+    CaptureStart,
+    #[serde(rename = "capture.stop")]
+    CaptureStop,
+    #[serde(rename = "restart")]
+    Restart,
+}
+impl ::std::fmt::Display for CaptureMethod {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::ScreensList => f.write_str("screens.list"),
+            Self::CaptureStart => f.write_str("capture.start"),
+            Self::CaptureStop => f.write_str("capture.stop"),
+            Self::Restart => f.write_str("restart"),
+        }
+    }
+}
+impl ::std::str::FromStr for CaptureMethod {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "screens.list" => Ok(Self::ScreensList),
+            "capture.start" => Ok(Self::CaptureStart),
+            "capture.stop" => Ok(Self::CaptureStop),
+            "restart" => Ok(Self::Restart),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureMethod {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureMethod {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Capture agent -> node, on the capture link.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CaptureNotificationMethod {
+    #[serde(rename = "capture.status")]
+    CaptureStatus,
+}
+impl ::std::fmt::Display for CaptureNotificationMethod {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::CaptureStatus => f.write_str("capture.status"),
+        }
+    }
+}
+impl ::std::str::FromStr for CaptureNotificationMethod {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "capture.status" => Ok(Self::CaptureStatus),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureNotificationMethod {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureNotificationMethod {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`CaptureRpcNotification`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureRpcNotification {
+    pub jsonrpc: ::serde_json::Value,
+    pub method: CaptureNotificationMethod,
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub params: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+}
+///`CaptureRpcRequest`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureRpcRequest {
+    pub id: CaptureRpcRequestId,
+    pub jsonrpc: ::serde_json::Value,
+    pub method: CaptureMethod,
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub params: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+}
+///`CaptureRpcRequestId`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum CaptureRpcRequestId {
+    Integer(i64),
+    String(::std::string::String),
+}
+impl ::std::fmt::Display for CaptureRpcRequestId {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match self {
+            Self::Integer(x) => x.fmt(f),
+            Self::String(x) => x.fmt(f),
+        }
+    }
+}
+impl ::std::convert::From<i64> for CaptureRpcRequestId {
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+///What the capture agent's portal session needs to be restored without asking again (docs/decisions/ADR-0037-display-capture-agent.md D14). Single use: the node replaces it after every start. Absent (not defaulted) so existing documents clamp to the same bytes.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureSecrets {
+    ///Absent until the portal has given one.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub restore_token: ::std::option::Option<CaptureSecretsRestoreToken>,
+}
+///Absent until the portal has given one.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureSecretsRestoreToken(::std::string::String);
+impl ::std::ops::Deref for CaptureSecretsRestoreToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureSecretsRestoreToken> for ::std::string::String {
+    fn from(value: CaptureSecretsRestoreToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureSecretsRestoreToken {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureSecretsRestoreToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureSecretsRestoreToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureSecretsRestoreToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Starts capturing one screen (ADR-0037 D3, D5). The agent delivers frames that fit width x height in the screen's aspect ratio, at most rate_hz a second.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureStartParams {
+    pub black_bars: BlackBars,
+    pub height: ::std::num::NonZeroU64,
+    pub profile: CaptureStartParamsProfile,
+    pub rate_hz: f64,
+    ///Linux: the portal's restore token from secrets.json, when there is one.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub restore_token: ::std::option::Option<CaptureStartParamsRestoreToken>,
+    ///A screen id from screens.list.
+    pub screen: CaptureStartParamsScreen,
+    pub width: ::std::num::NonZeroU64,
+}
+///`CaptureStartParamsProfile`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CaptureStartParamsProfile {
+    #[serde(rename = "video")]
+    Video,
+    #[serde(rename = "game")]
+    Game,
+}
+impl ::std::fmt::Display for CaptureStartParamsProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Video => f.write_str("video"),
+            Self::Game => f.write_str("game"),
+        }
+    }
+}
+impl ::std::str::FromStr for CaptureStartParamsProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "video" => Ok(Self::Video),
+            "game" => Ok(Self::Game),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStartParamsProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStartParamsProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Linux: the portal's restore token from secrets.json, when there is one.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStartParamsRestoreToken(::std::string::String);
+impl ::std::ops::Deref for CaptureStartParamsRestoreToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStartParamsRestoreToken> for ::std::string::String {
+    fn from(value: CaptureStartParamsRestoreToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStartParamsRestoreToken {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStartParamsRestoreToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStartParamsRestoreToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStartParamsRestoreToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///A screen id from screens.list.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStartParamsScreen(::std::string::String);
+impl ::std::ops::Deref for CaptureStartParamsScreen {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStartParamsScreen> for ::std::string::String {
+    fn from(value: CaptureStartParamsScreen) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStartParamsScreen {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 128usize {
+            return Err("longer than 128 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStartParamsScreen {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStartParamsScreen {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStartParamsScreen {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The capture agent's state, sent at least once a second and when it changes (its heartbeat). The node removes restore_token before it shows the status to clients (live.json's ScreenStatus).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureStatusParams {
+    ///dda, wgc, gdi, portal, synthetic or replay; empty while off.
+    pub backend: CaptureStatusParamsBackend,
+    pub bars: ScreenBars,
+    ///Frames sent per second.
+    pub fps: f64,
+    ///The screen runs in HDR and is tone-mapped.
+    pub hdr: bool,
+    ///Why it is paused or in error.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub message: ::std::option::Option<CaptureStatusParamsMessage>,
+    ///Protected content is on screen and can't be captured.
+    pub protected: bool,
+    ///Linux: the portal's new restore token, to keep in secrets.json.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub restore_token: ::std::option::Option<CaptureStatusParamsRestoreToken>,
+    ///The screen being captured; empty while off.
+    pub screen: CaptureStatusParamsScreen,
+    ///Where the user can allow capture, when the operating system's privacy setting refuses it.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub settings_uri: ::std::option::Option<CaptureStatusParamsSettingsUri>,
+    pub state: CaptureStatusParamsState,
+}
+///dda, wgc, gdi, portal, synthetic or replay; empty while off.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStatusParamsBackend(::std::string::String);
+impl ::std::ops::Deref for CaptureStatusParamsBackend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStatusParamsBackend> for ::std::string::String {
+    fn from(value: CaptureStatusParamsBackend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStatusParamsBackend {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStatusParamsBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStatusParamsBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStatusParamsBackend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Why it is paused or in error.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStatusParamsMessage(::std::string::String);
+impl ::std::ops::Deref for CaptureStatusParamsMessage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStatusParamsMessage> for ::std::string::String {
+    fn from(value: CaptureStatusParamsMessage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStatusParamsMessage {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStatusParamsMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStatusParamsMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStatusParamsMessage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Linux: the portal's new restore token, to keep in secrets.json.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStatusParamsRestoreToken(::std::string::String);
+impl ::std::ops::Deref for CaptureStatusParamsRestoreToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStatusParamsRestoreToken> for ::std::string::String {
+    fn from(value: CaptureStatusParamsRestoreToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStatusParamsRestoreToken {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStatusParamsRestoreToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStatusParamsRestoreToken {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStatusParamsRestoreToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The screen being captured; empty while off.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStatusParamsScreen(::std::string::String);
+impl ::std::ops::Deref for CaptureStatusParamsScreen {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStatusParamsScreen> for ::std::string::String {
+    fn from(value: CaptureStatusParamsScreen) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStatusParamsScreen {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 128usize {
+            return Err("longer than 128 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStatusParamsScreen {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStatusParamsScreen {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStatusParamsScreen {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Where the user can allow capture, when the operating system's privacy setting refuses it.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureStatusParamsSettingsUri(::std::string::String);
+impl ::std::ops::Deref for CaptureStatusParamsSettingsUri {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureStatusParamsSettingsUri> for ::std::string::String {
+    fn from(value: CaptureStatusParamsSettingsUri) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureStatusParamsSettingsUri {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStatusParamsSettingsUri {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStatusParamsSettingsUri {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureStatusParamsSettingsUri {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`CaptureStatusParamsState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CaptureStatusParamsState {
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "starting")]
+    Starting,
+    #[serde(rename = "waiting_consent")]
+    WaitingConsent,
+    #[serde(rename = "capturing")]
+    Capturing,
+    #[serde(rename = "paused")]
+    Paused,
+    #[serde(rename = "error")]
+    Error,
+}
+impl ::std::fmt::Display for CaptureStatusParamsState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Off => f.write_str("off"),
+            Self::Starting => f.write_str("starting"),
+            Self::WaitingConsent => f.write_str("waiting_consent"),
+            Self::Capturing => f.write_str("capturing"),
+            Self::Paused => f.write_str("paused"),
+            Self::Error => f.write_str("error"),
+        }
+    }
+}
+impl ::std::str::FromStr for CaptureStatusParamsState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "off" => Ok(Self::Off),
+            "starting" => Ok(Self::Starting),
+            "waiting_consent" => Ok(Self::WaitingConsent),
+            "capturing" => Ok(Self::Capturing),
+            "paused" => Ok(Self::Paused),
+            "error" => Ok(Self::Error),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureStatusParamsState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureStatusParamsState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///The node's handshake payload on the capture link.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureWelcome {
+    pub result: CaptureWelcomeResult,
+    ///The version chosen.
+    pub version: CaptureWelcomeVersion,
+}
+///`CaptureWelcomeResult`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CaptureWelcomeResult {
+    #[serde(rename = "ok")]
+    Ok,
+    #[serde(rename = "rejected")]
+    Rejected,
+}
+impl ::std::fmt::Display for CaptureWelcomeResult {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ok => f.write_str("ok"),
+            Self::Rejected => f.write_str("rejected"),
+        }
+    }
+}
+impl ::std::str::FromStr for CaptureWelcomeResult {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ok" => Ok(Self::Ok),
+            "rejected" => Ok(Self::Rejected),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureWelcomeResult {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureWelcomeResult {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///The version chosen.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CaptureWelcomeVersion(::std::string::String);
+impl ::std::ops::Deref for CaptureWelcomeVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CaptureWelcomeVersion> for ::std::string::String {
+    fn from(value: CaptureWelcomeVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for CaptureWelcomeVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16usize {
+            return Err("longer than 16 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CaptureWelcomeVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CaptureWelcomeVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CaptureWelcomeVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///Absolute cells start-end (inclusive) of a strip.
@@ -13182,11 +14449,48 @@ impl ::std::convert::TryFrom<String> for SchemaVersion {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Screen {
-    pub height: ::std::num::NonZeroU64,
+    ///In pixels; 0 while it isn't known.
+    pub height: u64,
     pub id: ScreenId,
     pub name: ScreenName,
     pub primary: bool,
-    pub width: ::std::num::NonZeroU64,
+    ///In pixels; 0 while it isn't known (the Linux portal entry, before the user has chosen a screen).
+    pub width: u64,
+}
+///The black bars found around the picture, each as a share (0-1) of the frame's height (top, bottom) or width (left, right).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenBars {
+    pub bottom: f64,
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+}
+///Header of a screen frame (FOLC), little-endian, on the loopback links only; the payload follows: width x height x 3 bytes of rgb8, row-major (ADR-0037 D4).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(transparent)]
+pub struct ScreenFrameHeader(
+    pub ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+);
+impl ::std::ops::Deref for ScreenFrameHeader {
+    type Target = ::serde_json::Map<::std::string::String, ::serde_json::Value>;
+    fn deref(&self) -> &::serde_json::Map<::std::string::String, ::serde_json::Value> {
+        &self.0
+    }
+}
+impl ::std::convert::From<ScreenFrameHeader>
+for ::serde_json::Map<::std::string::String, ::serde_json::Value> {
+    fn from(value: ScreenFrameHeader) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::serde_json::Map<::std::string::String, ::serde_json::Value>>
+for ScreenFrameHeader {
+    fn from(
+        value: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    ) -> Self {
+        Self(value)
+    }
 }
 ///`ScreenId`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -13246,17 +14550,24 @@ impl<'de> ::serde::Deserialize<'de> for ScreenId {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ScreenInput {
+    #[serde(default = "defaults::screen_input_black_bars")]
+    pub black_bars: BlackBars,
     #[serde(default)]
     pub enabled: bool,
     ///The selected screen.
     #[serde(default = "defaults::screen_input_id")]
     pub id: ScreenInputId,
+    ///video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars.
+    #[serde(default = "defaults::screen_input_profile")]
+    pub profile: ScreenInputProfile,
 }
 impl ::std::default::Default for ScreenInput {
     fn default() -> Self {
         Self {
+            black_bars: defaults::screen_input_black_bars(),
             enabled: Default::default(),
             id: defaults::screen_input_id(),
+            profile: defaults::screen_input_profile(),
         }
     }
 }
@@ -13319,6 +14630,89 @@ impl<'de> ::serde::Deserialize<'de> for ScreenInputId {
             })
     }
 }
+///video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ScreenInputProfile {
+    #[serde(rename = "video")]
+    Video,
+    #[serde(rename = "game")]
+    Game,
+}
+impl ::std::fmt::Display for ScreenInputProfile {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Video => f.write_str("video"),
+            Self::Game => f.write_str("game"),
+        }
+    }
+}
+impl ::std::str::FromStr for ScreenInputProfile {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "video" => Ok(Self::Video),
+            "game" => Ok(Self::Game),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenInputProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenInputProfile {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for ScreenInputProfile {
+    fn default() -> Self {
+        ScreenInputProfile::Video
+    }
+}
+///`ScreenMargins`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenMargins {
+    #[serde(default = "defaults::screen_margins_bottom")]
+    pub bottom: f64,
+    #[serde(default = "defaults::screen_margins_left")]
+    pub left: f64,
+    #[serde(default = "defaults::screen_margins_right")]
+    pub right: f64,
+    #[serde(default = "defaults::screen_margins_top")]
+    pub top: f64,
+}
+impl ::std::default::Default for ScreenMargins {
+    fn default() -> Self {
+        Self {
+            bottom: defaults::screen_margins_bottom(),
+            left: defaults::screen_margins_left(),
+            right: defaults::screen_margins_right(),
+            top: defaults::screen_margins_top(),
+        }
+    }
+}
 ///`ScreenName`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
@@ -13373,10 +14767,481 @@ impl<'de> ::serde::Deserialize<'de> for ScreenName {
             })
     }
 }
+///The screen effect: what the capture agent's frames show, cropped, sampled onto the layer's region of a canvas, coloured and smoothed. On a strip it draws nothing.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenParams {
+    ///follow: leave out the black bars the capture agent found. ignore: use the whole picture.
+    #[serde(default = "defaults::screen_params_bars")]
+    pub bars: ScreenParamsBars,
+    #[serde(default = "defaults::screen_params_brightness")]
+    pub brightness: f64,
+    ///How deep the border reaches into the picture in edge mode, as a share of its width and height.
+    #[serde(default = "defaults::screen_params_edge_depth")]
+    pub edge_depth: f64,
+    ///The shares of the picture to leave out at each side, after the black bars.
+    #[serde(default = "defaults::screen_params_margins")]
+    pub margins: ScreenMargins,
+    ///area: the whole picture. edge: the picture's border, spread inward.
+    #[serde(default = "defaults::screen_params_mode")]
+    pub mode: ScreenParamsMode,
+    #[serde(default = "defaults::screen_params_saturation")]
+    pub saturation: f64,
+    ///The time constant of the smoothing, ms; 0 shows each frame as it is.
+    #[serde(default = "defaults::screen_params_smoothing")]
+    pub smoothing: f64,
+}
+impl ::std::default::Default for ScreenParams {
+    fn default() -> Self {
+        Self {
+            bars: defaults::screen_params_bars(),
+            brightness: defaults::screen_params_brightness(),
+            edge_depth: defaults::screen_params_edge_depth(),
+            margins: defaults::screen_params_margins(),
+            mode: defaults::screen_params_mode(),
+            saturation: defaults::screen_params_saturation(),
+            smoothing: defaults::screen_params_smoothing(),
+        }
+    }
+}
+///follow: leave out the black bars the capture agent found. ignore: use the whole picture.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ScreenParamsBars {
+    #[serde(rename = "follow")]
+    Follow,
+    #[serde(rename = "ignore")]
+    Ignore,
+}
+impl ::std::fmt::Display for ScreenParamsBars {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Follow => f.write_str("follow"),
+            Self::Ignore => f.write_str("ignore"),
+        }
+    }
+}
+impl ::std::str::FromStr for ScreenParamsBars {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "follow" => Ok(Self::Follow),
+            "ignore" => Ok(Self::Ignore),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenParamsBars {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenParamsBars {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for ScreenParamsBars {
+    fn default() -> Self {
+        ScreenParamsBars::Follow
+    }
+}
+///area: the whole picture. edge: the picture's border, spread inward.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ScreenParamsMode {
+    #[serde(rename = "area")]
+    Area,
+    #[serde(rename = "edge")]
+    Edge,
+}
+impl ::std::fmt::Display for ScreenParamsMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Area => f.write_str("area"),
+            Self::Edge => f.write_str("edge"),
+        }
+    }
+}
+impl ::std::str::FromStr for ScreenParamsMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "area" => Ok(Self::Area),
+            "edge" => Ok(Self::Edge),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenParamsMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenParamsMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for ScreenParamsMode {
+    fn default() -> Self {
+        ScreenParamsMode::Area
+    }
+}
+///The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenStatus {
+    ///dda, wgc, gdi, portal, synthetic or replay; empty while off.
+    pub backend: ScreenStatusBackend,
+    pub bars: ScreenBars,
+    pub fps: f64,
+    pub hdr: bool,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub message: ::std::option::Option<ScreenStatusMessage>,
+    ///Protected content is on screen and can't be captured.
+    pub protected: bool,
+    ///The screen being captured; empty while off.
+    pub screen: ScreenStatusScreen,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub settings_uri: ::std::option::Option<ScreenStatusSettingsUri>,
+    pub state: ScreenStatusState,
+}
+///dda, wgc, gdi, portal, synthetic or replay; empty while off.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ScreenStatusBackend(::std::string::String);
+impl ::std::ops::Deref for ScreenStatusBackend {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ScreenStatusBackend> for ::std::string::String {
+    fn from(value: ScreenStatusBackend) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ScreenStatusBackend {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenStatusBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenStatusBackend {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ScreenStatusBackend {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ScreenStatusMessage`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ScreenStatusMessage(::std::string::String);
+impl ::std::ops::Deref for ScreenStatusMessage {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ScreenStatusMessage> for ::std::string::String {
+    fn from(value: ScreenStatusMessage) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ScreenStatusMessage {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenStatusMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenStatusMessage {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ScreenStatusMessage {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The screen being captured; empty while off.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ScreenStatusScreen(::std::string::String);
+impl ::std::ops::Deref for ScreenStatusScreen {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ScreenStatusScreen> for ::std::string::String {
+    fn from(value: ScreenStatusScreen) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ScreenStatusScreen {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 128usize {
+            return Err("longer than 128 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenStatusScreen {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenStatusScreen {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ScreenStatusScreen {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ScreenStatusSettingsUri`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ScreenStatusSettingsUri(::std::string::String);
+impl ::std::ops::Deref for ScreenStatusSettingsUri {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ScreenStatusSettingsUri> for ::std::string::String {
+    fn from(value: ScreenStatusSettingsUri) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ScreenStatusSettingsUri {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 2048usize {
+            return Err("longer than 2048 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenStatusSettingsUri {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenStatusSettingsUri {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ScreenStatusSettingsUri {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ScreenStatusState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ScreenStatusState {
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "starting")]
+    Starting,
+    #[serde(rename = "waiting_consent")]
+    WaitingConsent,
+    #[serde(rename = "capturing")]
+    Capturing,
+    #[serde(rename = "paused")]
+    Paused,
+    #[serde(rename = "error")]
+    Error,
+}
+impl ::std::fmt::Display for ScreenStatusState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Off => f.write_str("off"),
+            Self::Starting => f.write_str("starting"),
+            Self::WaitingConsent => f.write_str("waiting_consent"),
+            Self::Capturing => f.write_str("capturing"),
+            Self::Paused => f.write_str("paused"),
+            Self::Error => f.write_str("error"),
+        }
+    }
+}
+impl ::std::str::FromStr for ScreenStatusState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "off" => Ok(Self::Off),
+            "starting" => Ok(Self::Starting),
+            "waiting_consent" => Ok(Self::WaitingConsent),
+            "capturing" => Ok(Self::Capturing),
+            "paused" => Ok(Self::Paused),
+            "error" => Ok(Self::Error),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ScreenStatusState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ScreenStatusState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///The answer to screens.list: the screens the agent can capture (api.json's Screen).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreensListResult {
+    pub screens: ::std::vec::Vec<Screen>,
+}
 ///secrets.json: identity keys and provider credentials. Owner-only permissions; never exported or returned by the API (docs/specs/config-model.md, docs/architecture/security.md).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SecretsDocument {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub capture: ::std::option::Option<CaptureSecrets>,
     #[serde(default = "defaults::secrets_document_identity")]
     pub identity: Identity,
     #[serde(default = "defaults::secrets_document_master_key_hash")]
@@ -13394,6 +15259,7 @@ pub struct SecretsDocument {
 impl ::std::default::Default for SecretsDocument {
     fn default() -> Self {
         Self {
+            capture: Default::default(),
             identity: defaults::secrets_document_identity(),
             master_key_hash: defaults::secrets_document_master_key_hash(),
             providers: Default::default(),
@@ -13646,6 +15512,8 @@ pub struct SourceLive {
     pub input: ::std::option::Option<InputStatus>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub media: ::std::option::Option<MediaState>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub screen: ::std::option::Option<ScreenStatus>,
     pub state: SourceLiveState,
 }
 ///`SourceLiveState`
@@ -17548,6 +19416,15 @@ pub mod defaults {
     pub(super) fn audio_visualizer_params_width() -> f64 {
         20_f64
     }
+    pub(super) fn black_bars_mode() -> super::BlackBarsMode {
+        super::BlackBarsMode::Default
+    }
+    pub(super) fn black_bars_preset() -> super::BlackBarsPreset {
+        super::BlackBarsPreset::Auto
+    }
+    pub(super) fn black_bars_threshold() -> f64 {
+        0.05_f64
+    }
     pub(super) fn bounds_x() -> f64 {
         4_f64
     }
@@ -18182,8 +20059,56 @@ pub mod defaults {
     pub(super) fn scene_item_schema_version() -> super::SchemaVersion {
         super::SchemaVersion(2_i64)
     }
+    pub(super) fn screen_input_black_bars() -> super::BlackBars {
+        super::BlackBars {
+            mode: super::BlackBarsMode::Default,
+            preset: super::BlackBarsPreset::Auto,
+            threshold: 0.05_f64,
+        }
+    }
     pub(super) fn screen_input_id() -> super::ScreenInputId {
         super::ScreenInputId("".to_string())
+    }
+    pub(super) fn screen_input_profile() -> super::ScreenInputProfile {
+        super::ScreenInputProfile::Video
+    }
+    pub(super) fn screen_margins_bottom() -> f64 {
+        0_f64
+    }
+    pub(super) fn screen_margins_left() -> f64 {
+        0_f64
+    }
+    pub(super) fn screen_margins_right() -> f64 {
+        0_f64
+    }
+    pub(super) fn screen_margins_top() -> f64 {
+        0_f64
+    }
+    pub(super) fn screen_params_bars() -> super::ScreenParamsBars {
+        super::ScreenParamsBars::Follow
+    }
+    pub(super) fn screen_params_brightness() -> f64 {
+        1_f64
+    }
+    pub(super) fn screen_params_edge_depth() -> f64 {
+        0.15_f64
+    }
+    pub(super) fn screen_params_margins() -> super::ScreenMargins {
+        super::ScreenMargins {
+            bottom: 0_f64,
+            left: 0_f64,
+            right: 0_f64,
+            top: 0_f64,
+        }
+    }
+    pub(super) fn screen_params_mode() -> super::ScreenParamsMode {
+        super::ScreenParamsMode::Area
+    }
+    pub(super) fn screen_params_saturation() -> f64 {
+        1_f64
+    }
+    pub(super) fn screen_params_smoothing() -> f64 {
+        150_f64
     }
     pub(super) fn secrets_document_identity() -> super::Identity {
         super::Identity {
