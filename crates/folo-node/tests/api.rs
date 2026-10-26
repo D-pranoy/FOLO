@@ -501,7 +501,7 @@ async fn the_node_and_its_catalog(node: &Running) {
     conforms::<Info>(&info, "/info");
     assert_eq!(
         info["contracts"],
-        json!({"client_api": "1.3.0", "source_link": "1.3", "config": 2})
+        json!({"client_api": "1.4.0", "source_link": "1.3", "config": 2})
     );
 
     let effects = node.get("/api/v1/effects").await.json();
