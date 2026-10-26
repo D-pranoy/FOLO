@@ -24,8 +24,13 @@ fn is_integer_literal(n: &serde_json::Number) -> bool {
 /// number, and numbers compare by value (`1e-05` is `1e-5`).
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
+        // Integers compare by their digits: `Num` has no value for those beyond an i128, which
+        // a clamper keeps as they are inside the parameters of effects it doesn't know
+        (Value::Number(x), Value::Number(y)) if is_integer_literal(x) && is_integer_literal(y) => {
+            x.to_string() == y.to_string()
+        }
         (Value::Number(x), Value::Number(y)) => {
-            is_integer_literal(x) == is_integer_literal(y) && Num::of(x).equals(&Num::of(y))
+            !is_integer_literal(x) && !is_integer_literal(y) && Num::of(x).equals(&Num::of(y))
         }
         (Value::Array(x), Value::Array(y)) => {
             x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))
