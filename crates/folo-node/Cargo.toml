@@ -21,11 +21,13 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 folo-identity = { path = "../folo-identity" }
+folo-library = { path = "../folo-library" }
 folo-protocol = { path = "../folo-protocol" }
 folo-settings = { path = "../folo-settings" }
 folo-store = { path = "../folo-store" }
 folo-supervisor = { path = "../folo-supervisor" }
 gethostname = "1"
+semver = "1"
 log = { version = "0.4", features = ["std"] }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
@@ -37,5 +39,6 @@ windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 serde = "1"
+sha2 = "0.10"
 tokio-tungstenite = "0.29"
 tower = { version = "0.5", default-features = false, features = ["util"] }

@@ -1,6 +1,6 @@
 # Content: palettes, reactions, looks, scenes and packs
 
-Status: Accepted · Implementation: Partial (the built-in packs and the alias table in `packs/`, generated and tested against the builders; the library service is not started)
+Status: Accepted · Implementation: Partial (the built-in packs and the alias table in `packs/`, generated and tested against the builders; the library service reads, installs, edits and exports packs; applying them and backup are not started)
 
 Decided in [ADR-0021](../decisions/ADR-0021-content-packs.md) and [ADR-0038](../decisions/ADR-0038-content-library.md). Formats are in [pack format](../specs/pack-format.md), and the library's routes in the [client API](../specs/client-api.md#library).
 

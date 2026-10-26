@@ -201,3 +201,19 @@ Facts that shape the answer:
 - **The first public binary**, `edge` images included, waits on 24 specifications and rewrites (D24), which change the goldens of the six moving modes and of the scenes that use them.
 - **Residual licence risk:** an agent's training data may include LedFx's code; the isolated checkout and the maintainer's review (D23) reduce it, they don't remove it.
 - **Not covered by CI:** installs of packs made by other tools than FOLO's export, restore across node versions (only one format exists), and the UI's gallery, which arrives with RB-11.
+
+## Settled in the library service (RB-09 code change 3)
+
+The service's implementation needed these choices, which D1 to D10 leave open. They are decisions of the implementation, confirmed by review of the pull request that landed it.
+
+- **Reading at start checks structure and clamps, not compatibility.** A pack folder is validated as an install does (D4, D5) but its `folo` range and `requires` aren't checked, so a node downgrade or a removed dependency never hides a pack the user has.
+- **An item `id` longer than 64 characters is a structural error,** because the clamper would truncate it and the id is the item's identity (references, `contents`).
+- **Ranges that don't parse.** A `folo` that isn't a version requirement is a structural error (outside a development build, which skips the check); a `requires` entry that doesn't parse counts as not met (`missing_dependency`).
+- **Ids made while clamping the manifest** use the item id `""`: the first 8 hexadecimal characters of the SHA-256 of `<pack id>::<n>`.
+- **The order of an install's checks** is the archive and structure, `reserved_id`, `incompatible`, `missing_dependency`, `already_installed`, `library_full`.
+- **`PUT` of an item** sets the item's `id` to the one in the path, whatever the body says; a path id of 0 or more than 64 characters is `400 bad_body`. An item of a type the path doesn't name is `404 not_found`.
+- **A folder that failed its checks** is remembered by id: item writes to it answer `409 pack_unreadable` when it is a `local/*` pack, and every read answers `404`. A folder under `library/folo/`, or whose id is a built-in pack's, is skipped as a failure.
+- **Removing an item** also removes its entry in the manifest's `previews`, and the preview file when no other item uses it.
+- **Writes go through `library/.staging/`;** a replaced folder waits in `library/.trash/` until its replacement is in place, and a node that starts finds an interrupted replacement and puts the old folder back.
+- **Events** are numbered in memory (the newest 256); a live connection is sent those after it connected.
+- **The zip exemption** is for the method and path of each zip route (today `POST /library/packs`); a zip route sent anything else is `415 zip_required`, and every other mutating request keeps the JSON rule.

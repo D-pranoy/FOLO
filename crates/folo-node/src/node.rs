@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use folo_identity::{Identity, fingerprint};
+use folo_library::Library;
 use folo_settings::{Launch, Layered, changes};
 use folo_store::{Doc, Store};
 use folo_supervisor::config::local_config;
@@ -41,6 +42,8 @@ pub struct Node {
     settings: Mutex<Layered>,
     pub store: Store,
     pub supervisor: Supervisor,
+    /// The content library: built-in, installed and local packs (RB-09).
+    pub library: Arc<Library>,
     /// The live channel's connections.
     pub live: live::Hub,
 }
@@ -171,8 +174,16 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         settings: Mutex::new(layered),
         store: Store::open(dir).expect("the test's data folder opens"),
         supervisor,
+        library: Arc::new(Library::open(dir.join("library"), library_version())),
         live: live::Hub::default(),
     })
+}
+
+/// The node's version, which pack ranges are checked against.
+fn library_version() -> semver::Version {
+    env!("CARGO_PKG_VERSION")
+        .parse()
+        .expect("Cargo versions are semantic versions")
 }
 
 /// The value at a dotted settings path (`listen.port`), or null.
@@ -343,6 +354,10 @@ async fn start(
         listen,
         flags,
         settings: Mutex::new(place.layered.clone()),
+        library: Arc::new(Library::open(
+            place.folders.data.join("library"),
+            library_version(),
+        )),
         place,
         store,
         supervisor,

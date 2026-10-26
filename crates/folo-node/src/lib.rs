@@ -7,6 +7,7 @@ pub mod api;
 pub mod cli;
 pub mod client;
 pub mod import;
+pub mod library_api;
 pub mod live;
 pub mod lock;
 pub mod logs;

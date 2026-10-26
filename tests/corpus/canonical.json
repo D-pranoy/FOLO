@@ -1,0 +1,485 @@
+{
+  "cases": [
+    {
+      "json": "{ \"b\": 1, \"a\": [ true, null ] }",
+      "canonical": "{\"a\":[true,null],\"b\":1}",
+      "sha256": "51705a2c9eb3e7e410a58f696a770c3ac3885a0cf43eb7fc88f5e47c11d4d30d"
+    },
+    {
+      "json": "45.0",
+      "canonical": "45",
+      "sha256": "811786ad1ae74adfdd20dd0372abaaebc6246e343aebd01da0bfc4c02bf0106c"
+    },
+    {
+      "json": "-0",
+      "canonical": "0",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "json": "-0.0",
+      "canonical": "0",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "json": "0.5",
+      "canonical": "0.5",
+      "sha256": "d2cbad71ff333de67d07ec676e352ab7f38248eb69c942950157220607c55e84"
+    },
+    {
+      "json": "0.1111111111111111",
+      "canonical": "0.1111111111111111",
+      "sha256": "65b7dfcc9b4be6891f07746cbc1a5783341040fe3c3a7f06fb3e63a80ae04cf4"
+    },
+    {
+      "json": "1e21",
+      "canonical": "1e+21",
+      "sha256": "241c4643fa70b1dcde1205b71be4e3bebb17e9f880c8e1a33d0ead6c27271d3c"
+    },
+    {
+      "json": "1e20",
+      "canonical": "100000000000000000000",
+      "sha256": "c344e9487bfbd5c4e03c9fb90d62a5dde5e00b54d55c46e9f4a803aea162b80c"
+    },
+    {
+      "json": "123456789012345680000",
+      "canonical": "123456789012345680000",
+      "sha256": "725abf175290195635e55a971cf88e02a46d6d56e964ec2d8bc47614b9559062"
+    },
+    {
+      "json": "1.5e-7",
+      "canonical": "1.5e-7",
+      "sha256": "bbe54b73760f9025086de0202c3caa81352dc0260869890c9dca3cda39ba767f"
+    },
+    {
+      "json": "0.000001",
+      "canonical": "0.000001",
+      "sha256": "159fb29a827ad04b260aa6c8ab6d8637f8f2b38af5c4f3cb49d6a21205e040f8"
+    },
+    {
+      "json": "0.0000001",
+      "canonical": "1e-7",
+      "sha256": "5b33e02f2c5103a05d32f6ba9cb058294452bfbf393967f68bb30c1bdcbbab22"
+    },
+    {
+      "json": "1E+2",
+      "canonical": "100",
+      "sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
+    },
+    {
+      "json": "4.35",
+      "canonical": "4.35",
+      "sha256": "6d98ea24827f5a019110f671bdab1596d35800c5ee5557d5af709ed3eab75aea"
+    },
+    {
+      "json": "5e-324",
+      "canonical": "5e-324",
+      "sha256": "c46e7ca1be4c8734f373a56530787288fa2058d73d07855e9247e949f811a42a"
+    },
+    {
+      "json": "1.7976931348623157e308",
+      "canonical": "1.7976931348623157e+308",
+      "sha256": "c2784e1abd6317452708f3fbf9641c16b959561bc621a1d408c23a20aa2cb585"
+    },
+    {
+      "json": "9007199254740993",
+      "canonical": "9007199254740992",
+      "sha256": "c681da39d7273a6a24c15c9cac3a75526ff2ecf8ba4ee60346a0c70c8163bdb2"
+    },
+    {
+      "json": "-12.5",
+      "canonical": "-12.5",
+      "sha256": "6e734d1ba4828d18ef4d256e8820f89e30551bca8b2c5740f2ed9fc532da07de"
+    },
+    {
+      "json": "\"a\\\"b\\\\c\\n\\t\\u0001\\u007fé\\ud83d\\ude00/\"",
+      "canonical": "\"a\\\"b\\\\c\\n\\t\\u0001é😀/\"",
+      "sha256": "bfbb376a2549b9a91bb3f5829dda10616c5d31008309ece45f048a90e07091d1"
+    },
+    {
+      "json": "{\"\\uff5e\":1,\"\\ud83d\\ude00\":2}",
+      "canonical": "{\"😀\":2,\"～\":1}",
+      "sha256": "c44a324298283d910e4120a2ff3c2d7746b4a5c9f2d9625c67f6abb58748cf31"
+    },
+    {
+      "json": "{\"z\":{\"b\":[1.0,2.50,3e0],\"a\":\"x\"},\"A\":0}",
+      "canonical": "{\"A\":0,\"z\":{\"a\":\"x\",\"b\":[1,2.5,3]}}",
+      "sha256": "4f2926967a9a73470d752aabe126d7e23ff67a98ee34acadbad49a1756370d47"
+    },
+    {
+      "json": "[]",
+      "canonical": "[]",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "json": "{}",
+      "canonical": "{}",
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "json": "\"\"",
+      "canonical": "\"\"",
+      "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+    },
+    {
+      "json": "123456789.123456789",
+      "canonical": "123456789.12345679",
+      "sha256": "773807b45c9a120b28c7173e360024cce99d0608d4c5d8f25b9e954d9f1c7ba4"
+    },
+    {
+      "json": "0.3",
+      "canonical": "0.3",
+      "sha256": "221764976efe04132774d96b0253cc31434c5261737469324f222621baf34b20"
+    },
+    {
+      "json": "100",
+      "canonical": "100",
+      "sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
+    },
+    {
+      "json": "1e-6",
+      "canonical": "0.000001",
+      "sha256": "159fb29a827ad04b260aa6c8ab6d8637f8f2b38af5c4f3cb49d6a21205e040f8"
+    },
+    {
+      "json": "12345678901234567890123",
+      "canonical": "1.2345678901234568e+22",
+      "sha256": "7f239edaa0d92dcfc40b4a933a418f33e2a75cd0a15e368c7e0d25b61172ff6f"
+    },
+    {
+      "json": "0.00001234",
+      "canonical": "0.00001234",
+      "sha256": "269e79850f6588ee09f1e30596f7edc6878d37bbe367fba58d1837c27578020d"
+    },
+    {
+      "json": "1.0e+0",
+      "canonical": "1",
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    }
+  ],
+  "files": [
+    {
+      "path": "packs/folo/core/palettes/abyss.json",
+      "sha256": "70bc8dd3fe1725bd852e5fe0b2c712f9a68acfd4cfb744233e910d3255e60419"
+    },
+    {
+      "path": "packs/folo/core/palettes/deep-night.json",
+      "sha256": "a0de0029e19a5b5d9103038b33b9613679236ece66ebf88ecbe7730dd3f8975d"
+    },
+    {
+      "path": "packs/folo/core/palettes/fire.json",
+      "sha256": "e288854c23219292b37220e38c7d4cd1f5906538bcd9279f2719a713e0fad926"
+    },
+    {
+      "path": "packs/folo/core/palettes/neon-pink.json",
+      "sha256": "0c11e3d8f50a2780e18239b0184f731c8075eae4e86d87e0115d02ae9afbf27a"
+    },
+    {
+      "path": "packs/folo/core/palettes/ocean.json",
+      "sha256": "c4db9f21ae38c75af03bdd822fa678ebfd5b2aa94128b83f29ca91417e9c9c6c"
+    },
+    {
+      "path": "packs/folo/core/palettes/rainbow.json",
+      "sha256": "2cb63f3d7acf972a1f96f5260fa65b354bdede37dd16f54adc6c0f1f42f13723"
+    },
+    {
+      "path": "packs/folo/core/palettes/synthwave.json",
+      "sha256": "f81e750793558c0fb8699ebc61a202435a8e30bb9fcb72f0f792e63059353156"
+    },
+    {
+      "path": "packs/folo/core/palettes/violet.json",
+      "sha256": "2bf3b79c7005213c046baacb5daa86a2610c38416ef9d13c085db51bf28a8e68"
+    },
+    {
+      "path": "packs/folo/core/palettes/white.json",
+      "sha256": "1709c482cf0fc85c52293d3ff617f35130a045e9ff666c39e7aa08a43d14f703"
+    },
+    {
+      "path": "packs/folo/core/reactions/air-twinkle.json",
+      "sha256": "0762021ce2caaff0c9685a09fd9b4dd7697b3d684cfcd854a4c26e00f7411c4a"
+    },
+    {
+      "path": "packs/folo/core/reactions/bar-swell.json",
+      "sha256": "7d89274b66bdb64a7c16c12fec96b3c39f4e91b372d35b6c600f3b667c2b08da"
+    },
+    {
+      "path": "packs/folo/core/reactions/bass-meter.json",
+      "sha256": "72f2cb2e1daa57d58e0ef3986fa116e9b67a525ee545cef6d55a6522e7399691"
+    },
+    {
+      "path": "packs/folo/core/reactions/bass-on-the-beat.json",
+      "sha256": "80d1943f4edd96b4d1781ec488ad6fca3e4dd289215db4dca48a57cfc9a345e7"
+    },
+    {
+      "path": "packs/folo/core/reactions/bass-strobe.json",
+      "sha256": "eab5ece976f2f498bc5a7eed4b6b211a4ba84d775fcae027e73da32d5f9049d2"
+    },
+    {
+      "path": "packs/folo/core/reactions/beat-flash.json",
+      "sha256": "deba67445419313bd1b5310ce38425b90e4ed9773f8ced454f108c3561b0e51a"
+    },
+    {
+      "path": "packs/folo/core/reactions/beat-pulse.json",
+      "sha256": "409b9ea30a86263f643623eae1d14ac65f1cdb2104f4b9ebf60ff1f4d38f14d9"
+    },
+    {
+      "path": "packs/folo/core/reactions/calm-ambient.json",
+      "sha256": "3f167dd69a9f6ac1717c7b43613e1b40b23667d1f2f8a3dede9bde1c393e82df"
+    },
+    {
+      "path": "packs/folo/core/reactions/color-drift.json",
+      "sha256": "18024dc2382f064fa881113e4e857491b992724951d5d3b8b012c757c44cbc98"
+    },
+    {
+      "path": "packs/folo/core/reactions/cymbal-flash.json",
+      "sha256": "3ba91e57a7e395303cbad5b1db967d097e7bfc3d80f4147640a94c9415ffd409"
+    },
+    {
+      "path": "packs/folo/core/reactions/every-other-beat.json",
+      "sha256": "df3780429ad4d62715be527a335591a44f4cc80f1bea8fb29c76d00f08a95559"
+    },
+    {
+      "path": "packs/folo/core/reactions/guitar-wave.json",
+      "sha256": "d1c50aff7a601a49be94d8a149314e02182f9345dadd43c1ce3e7b5f9b93df68"
+    },
+    {
+      "path": "packs/folo/core/reactions/half-beat-strobe.json",
+      "sha256": "3cc0633ff5151675c57bc92f35d9b6171e04f1fc9cbab502f423db0545141f3d"
+    },
+    {
+      "path": "packs/folo/core/reactions/heartbeat.json",
+      "sha256": "a04ba914cb7ad34841cdf3b419692feb5d05f624b35fdb72159afca3e1ec3214"
+    },
+    {
+      "path": "packs/folo/core/reactions/hi-hat-sparkle.json",
+      "sha256": "d5c4e30db0659c4ccf39c3ccd07bc94bda2fd31d6bb11636d0aebd26d59d2eaa"
+    },
+    {
+      "path": "packs/folo/core/reactions/kick-punch.json",
+      "sha256": "4a3a72b8d85fdac26534de19641dcdf41698bfcda8e3c757e86cdbdafe0fa323"
+    },
+    {
+      "path": "packs/folo/core/reactions/mid-ripple.json",
+      "sha256": "1b44dcbb44354c154f46419b35627c95a78f45a2a4beaf04fe0121aec79ca093"
+    },
+    {
+      "path": "packs/folo/core/reactions/mirror-spectrum.json",
+      "sha256": "2d996fe6ab9b75d0bf1dd7c115c7892ce7b7d0f62a3c3410d8c636845baee773"
+    },
+    {
+      "path": "packs/folo/core/reactions/shimmer.json",
+      "sha256": "0df294596f17de5b7eab07344e77a523d0010bf2ea1ad4d9a41e36172653bf42"
+    },
+    {
+      "path": "packs/folo/core/reactions/slow-breathe.json",
+      "sha256": "610c5e2a9b45fd2328e2a65159a64b14c06e6114250d341a853db095c7a105b6"
+    },
+    {
+      "path": "packs/folo/core/reactions/snare-snap.json",
+      "sha256": "2430e8ac67fa78ab0bedee9986138bb9b5c81784720c57fabcaf532de0adae91"
+    },
+    {
+      "path": "packs/folo/core/reactions/spectrum-bars.json",
+      "sha256": "16bd39732bf428d69f995c41feecb72c34521ffe1a3d7a42734169fb87754075"
+    },
+    {
+      "path": "packs/folo/core/reactions/sub-swell.json",
+      "sha256": "cd46126eacb80fe344bbc3faa54e1d8e96520fc376e7f521ef0ff8f3eb2c944e"
+    },
+    {
+      "path": "packs/folo/core/reactions/vocal-glow.json",
+      "sha256": "af3bcc5ca5782913f4fe674a4abb33dddc390f83a624b3c5b892a7e4a1f2f61e"
+    },
+    {
+      "path": "packs/folo/core/reactions/vu-meter.json",
+      "sha256": "d826a7cfd97801e70e7f786950e768e95052cea78e054382e83c674d008b00d4"
+    },
+    {
+      "path": "packs/folo/core/scenes/default.json",
+      "sha256": "0c04b21e190466f35f28d9e5819729d68ba3e4a775551607a8edf95fe5d40099"
+    },
+    {
+      "path": "packs/folo/effects/scenes/alternating-flicker.json",
+      "sha256": "c431937915248300468a0e3827e15919316a56930c24d3c64ef065120933d0c9"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ambient-zones.json",
+      "sha256": "3a99b8e2bacf9730d047c7519853b63cd1bdc4b4ea13c0e251c63548ee7206fb"
+    },
+    {
+      "path": "packs/folo/effects/scenes/bass-burst.json",
+      "sha256": "2e136d450e6fa19338153c098ad0a1a682142e92964119aacd18f89889d1c1d4"
+    },
+    {
+      "path": "packs/folo/effects/scenes/bass-vs-treble.json",
+      "sha256": "ab388acbf3af1ad1fb7d1d9c904a0bc4fca32197bf3d105906e397d399be7984"
+    },
+    {
+      "path": "packs/folo/effects/scenes/beat-sync.json",
+      "sha256": "744d73168a85a943da0531342c9326181d749742973fb4de5220645094b7f96d"
+    },
+    {
+      "path": "packs/folo/effects/scenes/breathing.json",
+      "sha256": "d5d84d792228b40f2bce5180a156884ca7e76abf8df9f13383aa4a4653834c96"
+    },
+    {
+      "path": "packs/folo/effects/scenes/collide.json",
+      "sha256": "cff5ef5587f9c8e4c0d9ab300158abcd124c6f6087d3edfc67c53dd2b4b0ae36"
+    },
+    {
+      "path": "packs/folo/effects/scenes/color-drift.json",
+      "sha256": "73189f0531e5ee7521da46f93b391fd12b5577f149edf56592e7685733fc99fb"
+    },
+    {
+      "path": "packs/folo/effects/scenes/equalizer-bands.json",
+      "sha256": "ae02b052a12acf51c83a96f7a3af234537894eadb577437e6b7f10bd8f3d0c17"
+    },
+    {
+      "path": "packs/folo/effects/scenes/half-time-pulse.json",
+      "sha256": "b84df2195e70a8e05779a641e003a05800eee18a3f8a559c35b6f5e74d8ebb17"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-bands.json",
+      "sha256": "e06d87f1fd89646343e8bdeb7a44a44f1accec41919f313d771384b6d90bb9a3"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-bar.json",
+      "sha256": "714675e8c89c343890e09a94fce4fda877957e73ca5d4086597b39fc06988bbf"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-blade-power.json",
+      "sha256": "c2ab95ae08d3f079df374c968de459fe1a7853e8a18cd4f1c6c47ff4f7ed9f7d"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-blocks.json",
+      "sha256": "0da0505e9354d2c2aa8f51e6ed2595ee21fac61f7f22341c693730eb0fc66391"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-energy.json",
+      "sha256": "e2389b59905c23c3541d3b114619987f6833ed2707f88d76f37aea33c7e6db78"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-equalizer.json",
+      "sha256": "1f0f3fc0c5d1eecd432fdff87e19bc384f8975e228934702a6966a5c89241991"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-fire.json",
+      "sha256": "8a28c7f7d29eb363585c404a587684ba708e0c69e9534dc1a420eb2c95d751e6"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-lava-lamp.json",
+      "sha256": "0ee4fd8a1a0aeb47261c22587c3e4e64d66c8e2f7459d8224e49b735a8619d9e"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-marching.json",
+      "sha256": "00731554a6faba74e321ae3ebbd2f842e23e8195efc57554683919b859d3b79f"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-multicolor-bar.json",
+      "sha256": "19afd111aa873ee0fc064bb36fff94a110732ca3b846a912ca4cc181af84188a"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-power.json",
+      "sha256": "76c721713df653fc0515c6253db73a3d0ee8d01053516aaa4ddae4247e331523"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-rain.json",
+      "sha256": "f2e9e7c08eea0d4fff6234fee827cdab2e90b7c21c6870864b0cec3d6b3a5641"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-scan-multi.json",
+      "sha256": "ca6021f01942e46e9107bd0d4e093a0019dfb663a7279b18a8fb3d81390f67ad"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-scan.json",
+      "sha256": "1c2c041b822c5e61a42b530175ba7682b481212ba43efd940d53d68183d98afd"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-scroll.json",
+      "sha256": "90f107fb8cf72aaf2fe309411b99fd623d7de295f31f069846e2ce5156a43641"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-spotlight.json",
+      "sha256": "392bd7e676decc54d99aaf20cb03334fc51a07f0893942b0044be56e5e044c16"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-strobe.json",
+      "sha256": "c76fe20dcdf98acb76ca0de0ba122379449f545599815b04fb70cbf18d3f872e"
+    },
+    {
+      "path": "packs/folo/effects/scenes/ledfx-wavelength.json",
+      "sha256": "ea4f20a24103f58b43277381169f2facf45c8754f971aed9ddfc5adb2cffc452"
+    },
+    {
+      "path": "packs/folo/effects/scenes/mirror-spectrum.json",
+      "sha256": "1c9649bea6c607bd35c07fcf3f26da6093c20f7f8213de67ba2806e8a7800cfb"
+    },
+    {
+      "path": "packs/folo/effects/scenes/starfield.json",
+      "sha256": "99626aae7c632e2c0a410fcbf77959d2678a084f8f9def6358885b1a0ab6fe43"
+    },
+    {
+      "path": "packs/folo/effects/scenes/strobe-sparkle.json",
+      "sha256": "a3cbd7c2125381a06a689cb5c6ae2df5d86ea1ab18cac87e1da39ad1aad8633d"
+    },
+    {
+      "path": "packs/folo/effects/scenes/vu-meter.json",
+      "sha256": "c3486322d7b8efcfef66f5b62dcfbdff9fb1fb6ea3de6534778835e548f7934a"
+    },
+    {
+      "path": "packs/folo/genres/scenes/ambient.json",
+      "sha256": "74c171d8a17e89386d5fc954ca7511825f500b1ab47b4b3972a65765bdc5206d"
+    },
+    {
+      "path": "packs/folo/genres/scenes/classical.json",
+      "sha256": "2c93e58f7cb5646b5cd0dd5f56ea79571d74973335bbdb0bc3ae59c32d5b66cc"
+    },
+    {
+      "path": "packs/folo/genres/scenes/dnb.json",
+      "sha256": "f9231e72e968ba03d1a1bd084041ffec7651e649dcd0a82bd9f0adb3305a164e"
+    },
+    {
+      "path": "packs/folo/genres/scenes/dubstep.json",
+      "sha256": "3067d168f9dfd58e65fafae46d49cb6ec7f9fc90ab1a3c499b8906e51d503707"
+    },
+    {
+      "path": "packs/folo/genres/scenes/edm.json",
+      "sha256": "22abfd38a4c76a80a1497869b8ca12cf678811136f5c4c47485152db8b987254"
+    },
+    {
+      "path": "packs/folo/genres/scenes/hiphop.json",
+      "sha256": "7fc0c7bdfe3accb1f6d5977aaf916a28a795197bb405d43bb59bec0f03e6fc70"
+    },
+    {
+      "path": "packs/folo/genres/scenes/jazz.json",
+      "sha256": "926388b231f71884837ede5a4d2421a351c5263cc4d2e7fb130eed1b302fe0c5"
+    },
+    {
+      "path": "packs/folo/genres/scenes/lofi.json",
+      "sha256": "c16d3cf2e58de5e086743e1b6a6f5b0853a4a2a648020f5a56a449e34426f233"
+    },
+    {
+      "path": "packs/folo/genres/scenes/metal.json",
+      "sha256": "167f398f2a5bc46f11099c796e17bde26e6ed870a71ce938627c22f3fdac53a2"
+    },
+    {
+      "path": "packs/folo/genres/scenes/pop.json",
+      "sha256": "95c92cf7cd8c6d126d3562698525bae7f616ebfff286eb36c3406bbc0996354b"
+    },
+    {
+      "path": "packs/folo/genres/scenes/rnb.json",
+      "sha256": "5f681466811d6515068337774225fa84789f3cd224ff05dcc3f9858a0785bd41"
+    },
+    {
+      "path": "packs/folo/genres/scenes/rock.json",
+      "sha256": "74aa5a4d0ea11d1691c4208b0ef41c96a7d48bf131ab4fbffac0099b873e3f3b"
+    },
+    {
+      "path": "packs/folo/genres/scenes/techno.json",
+      "sha256": "6b365467996b22f3a2a3142d42af5bd98fd444c4b5716d91aa8e15041a9a9d2e"
+    },
+    {
+      "path": "packs/folo/genres/scenes/trap.json",
+      "sha256": "f8d2bf8066ce682e25113b89c8685cc00bca424eceddf457b60bd61cecc661a3"
+    }
+  ]
+}

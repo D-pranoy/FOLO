@@ -1,6 +1,6 @@
 # Client API
 
-Status: Draft · Implementation: Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; the node serves the API, the live channel and the UI's files, with `501` for the endpoints [before their run books](#before-their-run-books))
+Status: Draft · Implementation: Partial (the OpenAPI contract, generated TypeScript types and the conformance harness; the node serves the API, the live channel and the UI's files, and the library's routes; the other endpoints [before their run books](#before-their-run-books) answer `501`)
 
 The controller's API for clients: the UI, the desktop app, the Android app later, the Home Assistant client library, and scripts. It is served on the controller's single port (default 8777). The machine-readable form is `specs/openapi.yaml` ([specifications](README.md)). How it is served before its later run books land is decided in [ADR-0035](../decisions/ADR-0035-serving-the-client-api.md).
 
@@ -30,7 +30,7 @@ Every request goes through these checks in order. The first that fails answers:
 | Authentication: loopback clients and the unauthenticated endpoints need no key; every other request to `/api/` does. Until client keys and sessions arrive ([RB-15](../runbooks/m7-network.md#rb-15-client-access)), no key is valid. | 401 `unauthorized` |
 | The resource exists | 404 `not_found` |
 | The resource takes the method | 405 `method_not_allowed` |
-| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either (from RB-09; until then they get the JSON rule) | 415 `json_required` / `zip_required` |
+| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either (the install route today; the restore route when it lands) | 415 `json_required` / `zip_required` |
 | The body fits the limit | 413 `body_too_large` |
 
 Routes that answer loopback clients only (`/system/status`, `/system/reload`) answer others with 403 `loopback_only`.
@@ -54,7 +54,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 | Endpoints | Run book |
 |---|---|
 | `/zones/{id}/activate`, `/deactivate`, `/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
-| `/scenes/{ref}/apply`; `/show/reset`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
+| `/scenes/{ref}/apply`; `/show/reset`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
 | `DELETE /sources/{id}`; `/sources/invites`; `/sources/join-requests/...`; `/ingest/surfaces` | [RB-16](../runbooks/m7-network.md#rb-16-source-pairing-and-link) |
@@ -138,6 +138,10 @@ Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D1 to D10; the f
 
 - An install, a removal, an item write and a restore each send `event {kind: library, id: <pack id>, state: installed | removed | changed | restored}` on the [live channel](#live-websocket) (`id` empty for a restore), so clients reload the gallery.
 - Paths take pack ids and references percent-encoded; their length limits apply to the decoded text.
+- **Details:** `missing_dependency` has `details.requires`, an object of pack id to the range that isn't met; `required_by` has `details.packs`, a list of pack ids; `incompatible` has `details.folo`, the range.
+- **Other answers:** an item type in a path that isn't one of `palettes`, `reactions`, `looks`, `scenes`, `zone-templates` is 404 `not_found`; `type` in a query that isn't one, or `replace` that isn't `true` or `false`, is 400 `bad_query`; an install over 10 MB or an item over 1 MB is 413 `body_too_large`; an install that isn't `application/zip` is 415 `zip_required`.
+- **Export** is sent as `attachment; filename="<author>-<name>.folopack"`.
+- **The order of an install's checks:** the archive and the pack's structure (422 `structural_error`), then 409 `reserved_id`, 422 `incompatible`, 422 `missing_dependency`, 409 `already_installed` and 409 `library_full`.
 - Scopes, from RB-15: installing, replacing and removing packs need `admin`; the rest need `control`.
 
 ### Applying scenes and Reset all
