@@ -32,6 +32,21 @@ Indices = npt.NDArray[np.intp]
 _ = (_post, _visualizers)
 
 
+def round_half_up(value: float) -> int:
+    """`value` rounded to the nearest integer, halves up, as JavaScript's `Math.round`."""
+    whole = math.floor(value)
+    return whole + 1 if value - whole >= 0.5 else whole
+
+
+def nearest_cells(lo: float, hi: float, size: int) -> tuple[int, int]:
+    """
+    The first and last cell of a `relative` region with `snap: nearest` on a
+    strip of `size` cells (ADR-0038 D14), not yet clipped below zero.
+    """
+    first = min(round_half_up(lo * size), size - 1)
+    return first, min(max(first, round_half_up(hi * size) - 1), size - 1)
+
+
 def strip_cells(region: Mapping[str, Any], size: int) -> tuple[int, int]:
     """
     The cells [first, stop) a region covers on a strip of `size` cells,
@@ -46,8 +61,11 @@ def strip_cells(region: Mapping[str, Any], size: int) -> tuple[int, int]:
             hi = lo + float(region.get('width', 1.0))
         else:
             lo, hi = float(region.get('start', 0.0)), float(region.get('end', 1.0))
-        first = math.floor(lo * size)
-        last = max(first, math.ceil(hi * size) - 1)
+        if kind == 'relative' and region.get('snap') == 'nearest':
+            first, last = nearest_cells(lo, hi, size)
+        else:
+            first = math.floor(lo * size)
+            last = max(first, math.ceil(hi * size) - 1)
     return max(0, first), min(last, size - 1) + 1
 
 

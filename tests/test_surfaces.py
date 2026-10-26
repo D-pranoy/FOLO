@@ -38,6 +38,44 @@ def test_strip_regions() -> None:
     assert strip_cells({'kind': 'rect', 'x': 0.5, 'width': 0.5, 'y': 0, 'height': 1}, 10) == (5, 10)
 
 
+def js_round(value: float) -> int:
+    """`Math.round`: halves go up."""
+    return math.floor(value + 0.5)
+
+
+@pytest.mark.parametrize('size', [1, 2, 3, 7, 30, 31, 32, 60, 61, 100, 144, 150, 300])
+def test_snap_nearest_matches_the_builders(size: int) -> None:
+    # The builders place `n` equal segments from Math.round(i * N / n)
+    # to Math.round((i + 1) * N / n) - 1.
+    for parts in (1, 2, 3, 4, 5, 6, 7, 8, 16):
+        for index in range(parts):
+            region = {
+                'kind': 'relative',
+                'start': index / parts,
+                'end': (index + 1) / parts,
+                'snap': 'nearest',
+            }
+            first = min(js_round(index * size / parts), size - 1)
+            last = min(max(first, js_round((index + 1) * size / parts) - 1), size - 1)
+            assert strip_cells(region, size) == (first, last + 1), (size, parts, index)
+
+
+def test_snap_nearest_rounding_and_default() -> None:
+    nearest = {'kind': 'relative', 'start': 1 / 3, 'end': 2 / 3, 'snap': 'nearest'}
+    assert strip_cells(nearest, 32) == (11, 21)  # ADR-0038: 11-20 where cover gives 10-21
+    assert strip_cells({'kind': 'relative', 'start': 0.5, 'end': 0.5, 'snap': 'nearest'}, 10) == (
+        5,
+        5 + 1,
+    )
+    assert strip_cells({'kind': 'relative', 'start': 0.95, 'end': 1.0, 'snap': 'nearest'}, 10) == (
+        9,
+        10,
+    )
+    for absent in ({}, {'snap': 'cover'}):
+        plain = {'kind': 'relative', 'start': 1 / 3, 'end': 2 / 3, **absent}
+        assert strip_cells(plain, 32) == (10, 22)
+
+
 def test_canvas_regions() -> None:
     rect = {'kind': 'rect', 'x': 0.25, 'y': 0.5, 'width': 0.5, 'height': 0.5}
     assert canvas_cells(rect, 64, 36) == (18, 36, 16, 48)
