@@ -20,6 +20,7 @@ Status: Accepted · Implementation: Partial (owner-only secrets, the local link'
 | Sniffing on the LAN | **Source links are Noise-encrypted.** UI traffic is plain HTTP by decision ([ADR-0009](../decisions/ADR-0009-client-access.md)). Anyone who can sniff the LAN can capture a client key. Optional HTTPS is a later option. |
 | Rogue source or impersonated controller | Pinned static keys after pairing; one-time, expiring invites; join requests require a verification code and admin approval |
 | A local program posing as the effect engine | The node starts its engine with a launch token in the engine's environment, and its loopback source link accepts only that token ([ADR-0032](../decisions/ADR-0032-local-source-link.md)) |
+| A program on `PATH` named `folo-capture` | The node runs the agent from its own folder first, else from the `PATH`, as it does the engine, and hands that program the launch token; installs keep the agent beside the node. |
 | A local program posing as the capture agent | The node starts its capture agent with a launch token in the agent's environment, and its loopback capture link accepts only that token ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D2) |
 | Malicious content pack | Data-only packs, validated and clamped; size limits; no code execution in v1 ([ADR-0021](../decisions/ADR-0021-content-packs.md)) |
 | Tampered update | Signatures verified against a public key built into FOLO; SHA-256 checks; approvals; provenance attestations ([updates](updates.md)) |

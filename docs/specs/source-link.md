@@ -1,6 +1,6 @@
 # Source link
 
-Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, and both sides of the local link) · Contract version: 1.4
+Status: Draft · Implementation: Partial (the AsyncAPI contract, message fixtures, the conformance harness, both sides of the local link, and both sides of the capture link; the engine does not decode screen frames yet) · Contract version: 1.4
 
 The connection between a source node and a controller. Decided in [ADR-0008](../decisions/ADR-0008-networking-pairing-and-encryption.md).
 
@@ -33,8 +33,8 @@ A node's own effect engine uses the same endpoint on loopback, `ws://127.0.0.1:<
 
 The display capture agent `folo-capture` has a loopback endpoint of its own, `ws://127.0.0.1:<port>/api/v1/capture-link`, without Noise ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D1 to D3). Only a node's own agent uses it, and nothing on it ever goes to another machine. Like `/source-link` it needs no key, and the node applies the Host, Origin and client-address checks before the upgrade ([security](../architecture/security.md#rules)), so a web page can't open it; a client on another machine gets `403 loopback_only`, even with remote access on, and a request that isn't a WebSocket upgrade gets `400 websocket_required`.
 - **Launch:** the node starts the agent with the link's URL and a random 256-bit launch token (base64url) in its environment, `FOLO_CAPTURE_LINK` and `FOLO_CAPTURE_TOKEN`, never on its command line.
-- **Handshake:** the subprotocol is `folo.capture.v1`. The first message each way is JSON in a WebSocket text message. The agent sends `{version: ["1"], agent: {version, platform}, token}`; the node checks the token (in constant time) before it tests whether an agent is already connected, accepts one agent connection at a time, closes any other and answers `{version: "1", result: "ok" | "rejected"}`. A response other than `ok` ends the agent with status 1, and the node starts a new one with a new token.
-- **Limits:** the first message must arrive within 5 s, and no message may exceed 400,000 bytes. The engine's decoder checks every screen frame it gets (magic, version, pixel format, flags with none but bits 0 to 2 set, size, length `36 + 3 × width × height`, bars; the reserved fields are not checked) and drops one that fails, logging the reason without any pixels, at most once in 10 s.
+- **Handshake:** the subprotocol is `folo.capture.v1`. The first message each way is JSON in a WebSocket text message. The agent sends `{version: ["1"], agent: {version, platform}, token}`; the node checks the token (in constant time) before it tests whether an agent is already connected, accepts one agent connection at a time, closes any other and answers `{version: "1", result: "ok" | "rejected"}`. A response other than `ok` ends the agent with status 1. (The node answers `rejected` only to a connection that isn't its agent, so it starts no new one for it.)
+- **Limits:** the first message must arrive within 5 s, and no message may exceed 400,000 bytes. The engine's decoder checks every screen frame it gets (magic, version, pixel format, flags, size, length `36 + 3 × width × height`, bars) and drops one that fails, logging the reason without any pixels.
 - **Messages:** each WebSocket binary message after that starts with a type byte, `0x01` for JSON-RPC 2.0 or `0x04` for a [screen frame](#screen-frames).
 - **Heartbeat:** the agent sends `capture.status` at least once a second; after 5 s without any message the node treats it as hung and restarts it.
 - **Losing the node:** the agent reconnects with the backoff above, and exits after 30 s without its node.

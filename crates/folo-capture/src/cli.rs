@@ -7,6 +7,8 @@ use folo_capture_core::types::ScreensListResult;
 
 use crate::backends::BackendChoice;
 use crate::environment::Environment;
+use crate::link::{self, Timing};
+use crate::worker::{self, Agent};
 
 /// Exit statuses: 0 after a stop request or a restart the node asked for; 1
 /// when the link was refused or the node lost (or the backend failed); 2 when
@@ -54,21 +56,36 @@ pub fn main() -> ExitCode {
 }
 
 fn run(backend: &BackendChoice) -> u8 {
-    let _environment = match Environment::read(|name| std::env::var(name).ok()) {
+    let environment = match Environment::read(|name| std::env::var(name).ok()) {
         Ok(environment) => environment,
         Err(missing) => {
             eprintln!("folo-capture: {missing}.");
             return EXIT_USAGE;
         }
     };
-    if let Err(error) = backend.open() {
-        eprintln!("folo-capture: {error}.");
-        return EXIT_FAILED;
-    }
-    // The link client (the handshake, `capture.start`, frames and the
-    // reconnecting) is the node-side change's counterpart and comes with it.
-    eprintln!("folo-capture: the capture link isn't built yet, so there is nothing to run for.");
-    EXIT_FAILED
+    let backend = match backend.open() {
+        Ok(backend) => backend,
+        Err(error) => {
+            eprintln!("folo-capture: {error}.");
+            return EXIT_FAILED;
+        }
+    };
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("folo-capture: the runtime can't start: {error}.");
+            return EXIT_FAILED;
+        }
+    };
+    let (handle, worker) = worker::spawn(Agent::new(backend));
+    let status = runtime.block_on(link::run(&environment, &handle, Timing::default()));
+    // The worker ends once nothing holds its handle
+    drop(handle);
+    let _ = worker.join();
+    status
 }
 
 fn screens(backend: &BackendChoice, json: bool) -> u8 {
