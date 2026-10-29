@@ -87,13 +87,22 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md); the messa
 
 The agent detects the bars on the downscaled frame and reports them; the Screen effect crops them. The detector is a port of Hyperion.NG's black-border detector, which is MIT-licensed ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D7, [third-party notices](../../THIRD_PARTY_NOTICES)):
 - **Black pixel:** R, G and B all below `ceil(threshold × 255)`; default threshold 5% (`black_bars.threshold`, 1–50%).
-- **Modes** (`black_bars.mode`): default (samples at 1/3 and 2/3 of the frame plus the centre, on all sides), letterbox (top and bottom only, ignoring subtitle areas), OSD (finds the horizontal border first, to avoid overlays).
-- **Hysteresis is time-based** rather than frame-based, because capture rates vary. A new border is adopted after a stable period. "Unknown", for example a black scene, is adopted only after a long period, and a few inconsistent frames are tolerated.
-- A blur margin absorbs scaling blur.
-- **Presets** (`black_bars.preset`): `auto`, `off`, and `21:9` and `4:3`, which force the bars of a picture of that shape.
-- **Profiles** (`profile`): `video`, and `game`, which ignores the screen's edges (HUDs) and adopts changes faster.
+- **Modes** (`black_bars.mode`): default (samples at 1/3 and 2/3 of the frame plus the centre, on all sides), letterbox (top and bottom only, ignoring subtitle areas), OSD (finds the columns first, then the rows at that column, to avoid overlays). Hyperion.NG's fourth mode, classic (a single diagonal line from the top-left corner), is not ported.
+- **Hysteresis is time-based** rather than frame-based, because capture rates vary. A new border is adopted after a stable period. "Unknown", for example a black scene, is adopted only after a long period, and a few inconsistent frames are tolerated. The first border found, and any border after "unknown", is adopted without the stable period (after the tolerance below). Hyperion.NG counts frames (50 to switch to a border, 600 for unknown, 10 inconsistent frames tolerated, for a capture of 25 frames a second); the periods are those counts as time, per profile (the `video` ones follow Hyperion.NG's; the `game` ones and the edge margin below are FOLO's, tunable defaults):
+
+  | | `video` | `game` |
+  |---|---|---|
+  | Stable period before a new border is adopted | 2 s | 0.5 s |
+  | Stable period before "unknown" is adopted | 24 s | 6 s |
+  | Time a differing picture is tolerated before it is watched | 0.4 s | 0.1 s |
+
+  The watched border's period starts when the differing frames have lasted the tolerance (Hyperion.NG tolerates 10 differing frames and the 11th replaces the watched border); a frame that matches the border being watched ends the tolerance. A frame of another size, and a change of mode, threshold, profile or of detection being on, starts the detector over.
+- **Blur margin:** 1 cell is added to every border that isn't 0, to leave out what the downscale blurred into the picture (Hyperion.NG's `blurRemoveCnt`).
+- **Bars on both sides:** the detector finds one number of rows and one of columns, as Hyperion.NG's does, and reports them at the top and bottom and at the left and right. The bars leave at least one row and one column. The letterbox mode reports no columns.
+- **Presets** (`black_bars.preset`): `auto`, `off`, and `21:9` and `4:3`, which force the bars of a picture of that shape in the frame, with no detection, no hysteresis and no blur margin: a wider frame gets columns, a taller one rows, each side `(frame − picture) / 2` cells rounded down, the picture's size rounded to the nearest cell (64 × 36 at `21:9`: 4 rows at the top and bottom; at `4:3`: 8 columns at the left and right).
+- **Profiles** (`profile`): `video`, and `game`, which doesn't look at the outer 5% of the frame on each side (HUDs) and uses the shorter periods above. A scan that finds the picture within that margin reports no bar on that side; a bar thinner than the margin isn't seen.
 - **Reported as:** cells in each frame's header and fractions of the frame in the agent's status. The UI's black-bar preview is drawn from the bars over the zone's surface, never from screen frames.
-- Protected content is reported, not shown as black.
+- Protected content is reported, not shown as black. The detector doesn't look at `held` or `protected` frames: they carry the bars in force.
 
 ## The Screen effect
 

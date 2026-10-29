@@ -7,10 +7,12 @@
 //! - [`codec`]: the `FOLC` screen frame of docs/specs/source-link.md#screen-frames
 //! - [`color`] and [`sizing`]: the reference for linear-light downscaling and
 //!   the frame size that fits a box (D5, D6)
+//! - [`bars`]: the black-bar detector, a port of Hyperion.NG's (D7)
 //! - [`pacer`]: sequence numbers, the rate limit, repeats and `held` (D5, D13)
 //! - [`synthetic`] and [`replay`]: the backends the tests use
 
 pub mod backend;
+pub mod bars;
 pub mod clock;
 pub mod codec;
 pub mod color;
