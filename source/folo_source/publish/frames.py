@@ -3,14 +3,16 @@ Surface and signal frames on the source link (RB-04 step 7,
 docs/specs/source-link.md#surface-frames): resampling to the requested
 resolution, quantising to the requested pixel format, the optional LZ4
 payload, and the little-endian headers. Decoding is here too, for the
-receiving side's tests and tools.
+receiving side's tests and tools. The capture agent's screen frames
+(docs/specs/source-link.md#screen-frames) only come the other way: the
+engine decodes and checks them.
 """
 
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass
-from functools import cache
+from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import cast
 
 import lz4.frame as lz4_frame  # pyright: ignore[reportMissingTypeStubs]
@@ -22,6 +24,7 @@ from folo_source.core import BYTES_PER_CHANNEL, FULL_SCALE, PIXEL_FORMAT_CODES, 
 FORMAT_VERSION = 1
 SURFACE_MAGIC = b'FOLS'
 SIGNAL_MAGIC = b'FOLG'
+SCREEN_MAGIC = b'FOLC'
 FLAG_LZ4 = 0b01
 FLAG_KEY_FRAME = 0b10
 # magic, version, pixel format, flags, reserved, surface index, width, height,
@@ -29,7 +32,19 @@ FLAG_KEY_FRAME = 0b10
 SURFACE_HEADER = struct.Struct('<4sBBBBHHHHIQ')
 # magic, version, reserved, signal index, count, reserved, sequence, timestamp
 SIGNAL_HEADER = struct.Struct('<4sBBHHHIQ')
+# magic, version, pixel format, flags, reserved, screen index, width, height,
+# reserved, sequence, timestamp, black bars (top, bottom, left, right)
+SCREEN_HEADER = struct.Struct('<4sBBBBHHHHIQHHHH')
+SCREEN_FLAG_PROTECTED = 0b001
+SCREEN_FLAG_HDR = 0b010
+SCREEN_FLAG_HELD = 0b100
+SCREEN_FLAGS = SCREEN_FLAG_PROTECTED | SCREEN_FLAG_HDR | SCREEN_FLAG_HELD
+SCREEN_RGB8 = 1  # the only pixel format of a screen frame
+SCREEN_MAX_WIDTH = 480
+SCREEN_MAX_HEIGHT = 270
 SEQUENCE_WRAP = 1 << 32
+# Sizes come from the picture a Screen layer crops, which follows the black bars
+AREA_WEIGHTS_CACHED = 64
 RGB16_SCALE = 257.0  # 255 -> 65535
 CHANNELS = 3
 
@@ -54,7 +69,7 @@ def _lz4_decompress(data: bytes) -> bytes:
         raise FrameError(f'the LZ4 payload is not an LZ4 frame: {error}') from error
 
 
-@cache
+@lru_cache(maxsize=AREA_WEIGHTS_CACHED)
 def area_weights(size: int, wanted: int) -> Weights:
     """
     The (wanted, size) matrix that resamples `size` cells to `wanted` by
@@ -209,3 +224,71 @@ def decode_signal_frame(data: bytes) -> SignalFrame:
         raise FrameError(f'payload is {len(payload)} bytes, not {4 * count}')
     values = tuple(float(v) for v in np.frombuffer(payload, dtype='<f4'))
     return SignalFrame(index, sequence, timestamp, values)
+
+
+@dataclass(frozen=True, slots=True, eq=False)  # compared by identity: the pixels are an array
+class ScreenFrame:
+    """
+    A decoded and checked screen frame. The pixels are a picture of the
+    user's screen, so they stay out of every repr, log and message.
+    """
+
+    screen_index: int
+    flags: int
+    sequence: int
+    timestamp_us: int
+    bars: tuple[int, int, int, int]  # rows at the top and bottom, columns at the left and right
+    pixels: npt.NDArray[np.uint8] = field(repr=False)  # (H, W, 3), read only
+
+    @property
+    def protected(self) -> bool:
+        return bool(self.flags & SCREEN_FLAG_PROTECTED)
+
+    @property
+    def hdr(self) -> bool:
+        return bool(self.flags & SCREEN_FLAG_HDR)
+
+    @property
+    def held(self) -> bool:
+        return bool(self.flags & SCREEN_FLAG_HELD)
+
+    @property
+    def usable(self) -> bool:
+        """Whether its pixels may be drawn: neither held nor protected (ADR-0037 D13)."""
+        return not self.flags & (SCREEN_FLAG_PROTECTED | SCREEN_FLAG_HELD)
+
+
+def decode_screen_frame(data: bytes) -> ScreenFrame:
+    """
+    Reads and checks a screen frame (without its message type byte): magic,
+    version, pixel format, flags, size, length and bars. The error says
+    what is wrong, never what the pixels are.
+    """
+    if len(data) < SCREEN_HEADER.size:
+        raise FrameError('shorter than a screen frame header')
+    magic, version, code, flags, _, index, width, height, _, sequence, timestamp, *bars = (
+        SCREEN_HEADER.unpack_from(data)
+    )
+    if magic != SCREEN_MAGIC or version != FORMAT_VERSION:
+        raise FrameError(f'not a version {FORMAT_VERSION} screen frame')
+    if code != SCREEN_RGB8:
+        raise FrameError(f'pixel format {code} is not rgb8')
+    if flags & ~SCREEN_FLAGS:
+        raise FrameError(f'unknown flags {flags:#04x}')
+    if not 1 <= width <= SCREEN_MAX_WIDTH or not 1 <= height <= SCREEN_MAX_HEIGHT:
+        raise FrameError(f'{width} x {height} cells is outside 1-480 x 1-270')
+    size = width * height * CHANNELS
+    if len(data) != SCREEN_HEADER.size + size:
+        raise FrameError(f'{len(data)} bytes, not {SCREEN_HEADER.size + size}')
+    top, bottom, left, right = bars
+    if top + bottom > height - 1 or left + right > width - 1:
+        raise FrameError('the black bars leave no picture')
+    pixels = np.frombuffer(data, dtype=np.uint8, count=size, offset=SCREEN_HEADER.size)
+    return ScreenFrame(
+        index,
+        flags,
+        sequence,
+        timestamp,
+        (top, bottom, left, right),
+        pixels.reshape(height, width, 3),
+    )

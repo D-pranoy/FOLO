@@ -571,6 +571,39 @@
    ],
    "additionalProperties": false
   },
+  "BlackBars": {
+   "description": "How the capture agent finds the black bars (letterbox and pillarbox) around the picture.",
+   "type": "object",
+   "properties": {
+    "preset": {
+     "description": "auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.",
+     "enum": [
+      "auto",
+      "off",
+      "21:9",
+      "4:3"
+     ],
+     "default": "auto"
+    },
+    "mode": {
+     "description": "default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.",
+     "enum": [
+      "default",
+      "letterbox",
+      "osd"
+     ],
+     "default": "default"
+    },
+    "threshold": {
+     "description": "How dark a pixel counts as black, as a share of full scale.",
+     "type": "number",
+     "minimum": 0.01,
+     "maximum": 0.5,
+     "default": 0.05
+    }
+   },
+   "additionalProperties": false
+  },
   "BlurParams": {
    "description": "The blur post-processing effect: a box blur, in cells on each side.",
    "type": "object",
@@ -876,6 +909,263 @@
      "$ref": "#/$defs/CapabilityLimits"
     }
    },
+   "additionalProperties": false
+  },
+  "CaptureHello": {
+   "description": "The capture agent's handshake payload on the capture link (ADR-0037 D2). It is JSON in the first WebSocket text message, on the loopback link only.",
+   "type": "object",
+   "properties": {
+    "version": {
+     "description": "Capture-link versions it supports.",
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 16
+     },
+     "minItems": 1
+    },
+    "agent": {
+     "type": "object",
+     "properties": {
+      "version": {
+       "description": "The agent's software version.",
+       "type": "string",
+       "maxLength": 32
+      },
+      "platform": {
+       "description": "windows or linux.",
+       "type": "string",
+       "maxLength": 32
+      }
+     },
+     "required": [
+      "version",
+      "platform"
+     ],
+     "additionalProperties": false
+    },
+    "token": {
+     "description": "The node's launch token for its capture agent.",
+     "type": "string",
+     "maxLength": 64
+    }
+   },
+   "required": [
+    "version",
+    "agent",
+    "token"
+   ],
+   "additionalProperties": false
+  },
+  "CaptureMethod": {
+   "description": "Node -> capture agent, on the capture link.",
+   "enum": [
+    "screens.list",
+    "capture.start",
+    "capture.stop",
+    "restart"
+   ]
+  },
+  "CaptureNotificationMethod": {
+   "description": "Capture agent -> node, on the capture link.",
+   "enum": [
+    "capture.status"
+   ]
+  },
+  "CaptureRpcNotification": {
+   "type": "object",
+   "properties": {
+    "jsonrpc": {
+     "const": "2.0"
+    },
+    "method": {
+     "$ref": "#/$defs/CaptureNotificationMethod"
+    },
+    "params": {
+     "type": "object"
+    }
+   },
+   "required": [
+    "jsonrpc",
+    "method"
+   ],
+   "additionalProperties": false
+  },
+  "CaptureRpcRequest": {
+   "type": "object",
+   "properties": {
+    "jsonrpc": {
+     "const": "2.0"
+    },
+    "id": {
+     "type": [
+      "integer",
+      "string"
+     ]
+    },
+    "method": {
+     "$ref": "#/$defs/CaptureMethod"
+    },
+    "params": {
+     "type": "object"
+    }
+   },
+   "required": [
+    "jsonrpc",
+    "id",
+    "method"
+   ],
+   "additionalProperties": false
+  },
+  "CaptureSecrets": {
+   "description": "What the capture agent's portal session needs to be restored without asking again (docs/decisions/ADR-0037-display-capture-agent.md D14). Single use: the node replaces it after every start. Absent (not defaulted) so existing documents clamp to the same bytes.",
+   "type": "object",
+   "properties": {
+    "restore_token": {
+     "description": "Absent until the portal has given one.",
+     "type": "string",
+     "maxLength": 256
+    }
+   },
+   "additionalProperties": false
+  },
+  "CaptureStartParams": {
+   "description": "Starts capturing one screen (ADR-0037 D3, D5). The agent delivers frames that fit width x height in the screen's aspect ratio, at most rate_hz a second.",
+   "type": "object",
+   "properties": {
+    "screen": {
+     "description": "A screen id from screens.list.",
+     "type": "string",
+     "maxLength": 128
+    },
+    "width": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 480
+    },
+    "height": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 270
+    },
+    "rate_hz": {
+     "type": "number",
+     "minimum": 1,
+     "maximum": 60
+    },
+    "black_bars": {
+     "$ref": "#/$defs/BlackBars"
+    },
+    "profile": {
+     "enum": [
+      "video",
+      "game"
+     ]
+    },
+    "restore_token": {
+     "description": "Linux: the portal's restore token from secrets.json, when there is one.",
+     "type": "string",
+     "maxLength": 256
+    }
+   },
+   "required": [
+    "screen",
+    "width",
+    "height",
+    "rate_hz",
+    "black_bars",
+    "profile"
+   ],
+   "additionalProperties": false
+  },
+  "CaptureStatusParams": {
+   "description": "The capture agent's state, sent at least once a second and when it changes (its heartbeat). The node removes restore_token before it shows the status to clients (live.json's ScreenStatus).",
+   "type": "object",
+   "properties": {
+    "state": {
+     "enum": [
+      "off",
+      "starting",
+      "waiting_consent",
+      "capturing",
+      "paused",
+      "error"
+     ]
+    },
+    "backend": {
+     "description": "dda, wgc, gdi, portal, synthetic or replay; empty while off.",
+     "type": "string",
+     "maxLength": 32
+    },
+    "screen": {
+     "description": "The screen being captured; empty while off.",
+     "type": "string",
+     "maxLength": 128
+    },
+    "fps": {
+     "description": "Frames sent per second.",
+     "type": "number",
+     "minimum": 0
+    },
+    "hdr": {
+     "description": "The screen runs in HDR and is tone-mapped.",
+     "type": "boolean"
+    },
+    "protected": {
+     "description": "Protected content is on screen and can't be captured.",
+     "type": "boolean"
+    },
+    "bars": {
+     "$ref": "#/$defs/ScreenBars"
+    },
+    "restore_token": {
+     "description": "Linux: the portal's new restore token, to keep in secrets.json.",
+     "type": "string",
+     "maxLength": 256
+    },
+    "message": {
+     "description": "Why it is paused or in error.",
+     "type": "string",
+     "maxLength": 500
+    },
+    "settings_uri": {
+     "description": "Where the user can allow capture, when the operating system's privacy setting refuses it: an ms-settings: link.",
+     "type": "string",
+     "maxLength": 2048,
+     "pattern": "^ms-settings:"
+    }
+   },
+   "required": [
+    "state",
+    "backend",
+    "screen",
+    "fps",
+    "hdr",
+    "protected",
+    "bars"
+   ],
+   "additionalProperties": false
+  },
+  "CaptureWelcome": {
+   "description": "The node's handshake payload on the capture link.",
+   "type": "object",
+   "properties": {
+    "version": {
+     "description": "The version chosen.",
+     "type": "string",
+     "maxLength": 16
+    },
+    "result": {
+     "enum": [
+      "ok",
+      "rejected"
+     ]
+    }
+   },
+   "required": [
+    "version",
+    "result"
+   ],
    "additionalProperties": false
   },
   "CellsRegion": {
@@ -1979,7 +2269,8 @@
       "brightness": "#/$defs/BrightnessParams",
       "mirror": "#/$defs/MirrorParams",
       "blur": "#/$defs/BlurParams",
-      "trail": "#/$defs/TrailParams"
+      "trail": "#/$defs/TrailParams",
+      "screen": "#/$defs/ScreenParams"
      },
      "x-folo-effects": {
       "audio-visualizer": {
@@ -2019,6 +2310,15 @@
        "name": "Trail",
        "description": "An afterglow: what is below it fades out instead of going dark at once.",
        "inputs": [],
+       "min_elements": 1
+      },
+      "screen": {
+       "version": "1.0.0",
+       "name": "Screen",
+       "description": "The picture of a captured screen, without its black bars, as a canvas.",
+       "inputs": [
+        "screen"
+       ],
        "min_elements": 1
       }
      }
@@ -4561,12 +4861,14 @@
      "maxLength": 128
     },
     "width": {
+     "description": "In pixels; 0 while it isn't known (the Linux portal entry, before the user has chosen a screen).",
      "type": "integer",
-     "minimum": 1
+     "minimum": 0
     },
     "height": {
+     "description": "In pixels; 0 while it isn't known.",
      "type": "integer",
-     "minimum": 1
+     "minimum": 0
     },
     "primary": {
      "type": "boolean"
@@ -4581,6 +4883,133 @@
    ],
    "additionalProperties": false
   },
+  "ScreenBars": {
+   "description": "The black bars found around the picture, each as a share (0-1) of the frame's height (top, bottom) or width (left, right).",
+   "type": "object",
+   "properties": {
+    "top": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    },
+    "bottom": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    },
+    "left": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    },
+    "right": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    }
+   },
+   "required": [
+    "top",
+    "bottom",
+    "left",
+    "right"
+   ],
+   "additionalProperties": false
+  },
+  "ScreenFrameHeader": {
+   "description": "Header of a screen frame (FOLC), little-endian, on the loopback links only; the payload follows: width x height x 3 bytes of rgb8, row-major (ADR-0037 D4).",
+   "type": "object",
+   "x-folo-layout": [
+    {
+     "offset": 0,
+     "size": 4,
+     "field": "magic",
+     "value": "FOLC"
+    },
+    {
+     "offset": 4,
+     "size": 1,
+     "field": "version",
+     "value": 1
+    },
+    {
+     "offset": 5,
+     "size": 1,
+     "field": "pixel_format",
+     "values": {
+      "rgb8": 1
+     }
+    },
+    {
+     "offset": 6,
+     "size": 1,
+     "field": "flags",
+     "bits": {
+      "protected": 0,
+      "hdr": 1,
+      "held": 2
+     }
+    },
+    {
+     "offset": 7,
+     "size": 1,
+     "field": "reserved",
+     "value": 0
+    },
+    {
+     "offset": 8,
+     "size": 2,
+     "field": "screen_index"
+    },
+    {
+     "offset": 10,
+     "size": 2,
+     "field": "width"
+    },
+    {
+     "offset": 12,
+     "size": 2,
+     "field": "height"
+    },
+    {
+     "offset": 14,
+     "size": 2,
+     "field": "reserved",
+     "value": 0
+    },
+    {
+     "offset": 16,
+     "size": 4,
+     "field": "sequence"
+    },
+    {
+     "offset": 20,
+     "size": 8,
+     "field": "timestamp_us"
+    },
+    {
+     "offset": 28,
+     "size": 2,
+     "field": "bars_top"
+    },
+    {
+     "offset": 30,
+     "size": 2,
+     "field": "bars_bottom"
+    },
+    {
+     "offset": 32,
+     "size": 2,
+     "field": "bars_left"
+    },
+    {
+     "offset": 34,
+     "size": 2,
+     "field": "bars_right"
+    }
+   ],
+   "x-folo-header-size": 36
+  },
   "ScreenInput": {
    "type": "object",
    "properties": {
@@ -4593,8 +5022,191 @@
     "enabled": {
      "type": "boolean",
      "default": false
+    },
+    "black_bars": {
+     "$ref": "#/$defs/BlackBars",
+     "default": {
+      "preset": "auto",
+      "mode": "default",
+      "threshold": 0.05
+     }
+    },
+    "profile": {
+     "description": "video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars.",
+     "enum": [
+      "video",
+      "game"
+     ],
+     "default": "video"
     }
    },
+   "additionalProperties": false
+  },
+  "ScreenMargins": {
+   "type": "object",
+   "properties": {
+    "top": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 0.45,
+     "default": 0
+    },
+    "bottom": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 0.45,
+     "default": 0
+    },
+    "left": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 0.45,
+     "default": 0
+    },
+    "right": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 0.45,
+     "default": 0
+    }
+   },
+   "additionalProperties": false
+  },
+  "ScreenParams": {
+   "description": "The screen effect: what the capture agent's frames show, cropped, sampled onto the layer's region of a canvas, coloured and smoothed. On a strip it draws nothing.",
+   "type": "object",
+   "properties": {
+    "mode": {
+     "description": "area: the whole picture. edge: the picture's border, spread inward.",
+     "enum": [
+      "area",
+      "edge"
+     ],
+     "default": "area"
+    },
+    "edge_depth": {
+     "description": "How deep the border reaches into the picture in edge mode, as a share of its width and height.",
+     "type": "number",
+     "minimum": 0.02,
+     "maximum": 0.5,
+     "default": 0.15
+    },
+    "margins": {
+     "description": "The shares of the picture to leave out at each side, after the black bars.",
+     "$ref": "#/$defs/ScreenMargins",
+     "default": {
+      "top": 0,
+      "bottom": 0,
+      "left": 0,
+      "right": 0
+     }
+    },
+    "brightness": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 4,
+     "default": 1
+    },
+    "saturation": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 4,
+     "default": 1
+    },
+    "smoothing": {
+     "description": "The time constant of the smoothing, ms; 0 shows each frame as it is.",
+     "type": "number",
+     "minimum": 0,
+     "maximum": 2000,
+     "default": 150
+    },
+    "bars": {
+     "description": "follow: leave out the black bars the capture agent found. ignore: use the whole picture.",
+     "enum": [
+      "follow",
+      "ignore"
+     ],
+     "default": "follow"
+    }
+   },
+   "additionalProperties": false
+  },
+  "ScreenStatus": {
+   "description": "The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9). unavailable: capture is wanted but no agent can run (no user session, or the desktop app hasn't started it); message says why.",
+   "type": "object",
+   "properties": {
+    "state": {
+     "enum": [
+      "off",
+      "starting",
+      "waiting_consent",
+      "capturing",
+      "paused",
+      "error",
+      "unavailable"
+     ]
+    },
+    "backend": {
+     "description": "dda, wgc, gdi, portal, synthetic or replay; empty while off.",
+     "type": "string",
+     "maxLength": 32
+    },
+    "screen": {
+     "description": "The screen being captured; empty while off.",
+     "type": "string",
+     "maxLength": 128
+    },
+    "fps": {
+     "type": "number",
+     "minimum": 0
+    },
+    "hdr": {
+     "type": "boolean"
+    },
+    "protected": {
+     "description": "Protected content is on screen and can't be captured.",
+     "type": "boolean"
+    },
+    "bars": {
+     "$ref": "#/$defs/ScreenBars"
+    },
+    "message": {
+     "type": "string",
+     "maxLength": 500
+    },
+    "settings_uri": {
+     "description": "An ms-settings: link to the Windows privacy setting.",
+     "type": "string",
+     "maxLength": 2048,
+     "pattern": "^ms-settings:"
+    }
+   },
+   "required": [
+    "state",
+    "backend",
+    "screen",
+    "fps",
+    "hdr",
+    "protected",
+    "bars"
+   ],
+   "additionalProperties": false
+  },
+  "ScreensListResult": {
+   "description": "The answer to screens.list: the screens the agent can capture (api.json's Screen).",
+   "type": "object",
+   "properties": {
+    "screens": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Screen"
+     },
+     "maxItems": 16
+    }
+   },
+   "required": [
+    "screens"
+   ],
    "additionalProperties": false
   },
   "SecretsDocument": {
@@ -4625,6 +5237,9 @@
      "type": "string",
      "maxLength": 128,
      "default": ""
+    },
+    "capture": {
+     "$ref": "#/$defs/CaptureSecrets"
     },
     "providers": {
      "description": "Provider instance id: its credentials.",
@@ -4878,6 +5493,9 @@
     },
     "media": {
      "$ref": "#/$defs/MediaState"
+    },
+    "screen": {
+     "$ref": "#/$defs/ScreenStatus"
     }
    },
    "required": [

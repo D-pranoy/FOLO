@@ -1,0 +1,20 @@
+[package]
+name = "folo-capture-core"
+description = "The display capture agent's core: types, the backend trait, the FOLC frame codec, the colour and downscale reference, and the synthetic and replay backends (RB-14, ADR-0037)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+
+[dev-dependencies]
+folo-protocol = { path = "../folo-protocol" }

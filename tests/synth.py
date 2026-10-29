@@ -326,9 +326,18 @@ def speech(seconds: float = 20.0, seed: int = 6) -> Capture:
     return capture(_mono(x * (0.6 / float(np.max(np.abs(x))))))
 
 
+def gap() -> Floats:
+    """
+    Kicks, 2 s of silence, kicks, 1.5 s of silence: 6 s. Long enough for the
+    ambient light to fade in part way, back out when the kicks return, and in again.
+    """
+    return np.concatenate((kicks(1.0), silence(2.0), kicks(1.5, seed=3), silence(1.5)))
+
+
 # Signals by name: captured frames ready to be cut into packets
 SIGNALS: dict[str, Callable[[], Capture]] = {
     'medley': lambda: capture(medley()),
     'medley_quiet': lambda: capture(medley(0.01)),  # -40 dB: auto level adds the most
+    'gap': lambda: capture(gap()),  # silence in the middle: ambient fades in and out
     'song': lambda: song(120.0, 5).frames,  # 12.5 s: about 6 s of beats after the lock
 }
