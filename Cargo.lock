@@ -339,6 +339,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "folo-capture"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "folo-capture-core",
+ "serde_json",
+]
+
+[[package]]
+name = "folo-capture-core"
+version = "0.0.0"
+dependencies = [
+ "folo-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "folo-compositor"
 version = "0.0.0"
 dependencies = [
