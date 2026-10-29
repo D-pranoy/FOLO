@@ -22,7 +22,7 @@ The first half runs in a **source** (the effect engine and capture agent). The s
 |---|---|
 | Audio | See [Audio inputs](#audio-inputs) below. Captured in about 10 ms packets and analysed with 4096- and 2048-point Hann-windowed FFTs, as today ([current system](current-system.md)). |
 | Media session | Now playing: title, artist, album art, cover colours, play state; player controls. Windows media sessions or Linux MPRIS ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). On Linux, art is read when the player names a local file (`file://`); art a player only has on the web isn't fetched. |
-| Screen | One selected screen per source in v1, captured on demand by the capture agent ([display capture](../integrations/display-capture.md)) |
+| Screen | One selected screen per source in v1, captured on demand by the capture agent ([display capture](../integrations/display-capture.md)). Its small frames reach the engine through the node, in their own message type ([source link](../specs/source-link.md#screen-frames)); they are never published. |
 | Generator | Time, LFO, noise; for idle and ambient effects |
 | Local ingest | Signals or frames pushed by local programs over loopback ([source link](../specs/source-link.md#local-ingest)) |
 
@@ -60,7 +60,7 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 - **Built-in effects:**
   - **Audio visualizers:** the existing modes fill, pulse, spectrum, shift, scroll, drops, scan, wipe, flow and fire. Each layer has the existing segment semantics: band, trigger (level, hits or beat), beats per flash, threshold, ceiling, gain, curve, attack, release, idle glow, direction, speed, size, peak hold and palette.
   - **Album colours:** when the zone enables them, each layer's palette is replaced by colours from the album art (strongest for lows, then mids, then highs), recomputed only when the cover changes.
-  - **Screen:** turns a captured frame into a canvas, with colour, saturation, smoothing and video/game profiles.
+  - **Screen:** a canvas effect. It turns a captured frame into a picture for its layer's rectangle of a canvas: the black bars and margins cut away, sampled by area or from the picture's edges, with colour, saturation and smoothing ([display capture](../integrations/display-capture.md#the-screen-effect)). The video/game profile sets how the capture agent finds black bars.
   - **Post-processing:** brightness and saturation, mirror, blur, trail. These layers change what is below them in the stack, inside their region, instead of drawing a line; their blend mode doesn't apply. Their parameters are in the [configuration model](../specs/config-model.md#entities-summary).
     - `brightness`: moves each channel toward the cell's luma (`0.2126 R + 0.7152 G + 0.0722 B`) or away from it by `saturation` (0 grey, 1 unchanged), multiplies by `brightness` and clips to 0–255.
     - `mirror`: copies the half of the region that `keep` names, reversed, onto the other half. It works along a strip, or along a canvas's columns (its rows when the layer's `axis` is `linear_y`). A middle cell stays as it is.
@@ -73,6 +73,7 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
     - `radial`: the distance from the rectangle's centre, 1 at its corners; `L` is half its diagonal, rounded.
     - `angular`: the angle around the centre, clockwise from the side of row 0; `L` is its perimeter.
   - On a strip, the line is the layer's region itself.
+- **Canvas effects** (the Screen effect) are a third kind, beside effects that draw a line and post-processing effects. They draw a 2D picture of rows × columns for their layer's rectangle of a canvas, and on a strip surface they draw nothing; projection maps canvases onto strips. Effect factories get a handle to the engine's inputs, which the Screen effect uses to read the newest screen frame ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D10).
 - Effects run in-process in the effect engine. An out-of-process host is reserved for future plugins.
 
 ## Surfaces and layer stacks
@@ -113,9 +114,10 @@ The effect engine's executor renders the surfaces `config.apply` assigns and pub
 - **Double-buffered surfaces:** a step renders into new frames and swaps them in as a whole, so the publisher never reads a half-rendered surface.
 - **Timing:** each step times every surface and every effect in it (an effect draws all its layers of a surface in one go). The metrics notification carries the mean step time, and a step over the budget logs its slowest effect.
 - **Budget:** rendering runs on a thread of its own. Packets that arrive while a frame renders become one step: each still reaches the beat tracker and the activity, and only the newest is rendered, with their time added up (at most 0.1 s). A slow frame therefore skips frames instead of queueing them.
-- **Idle rendering:** after 0.1 s without an audio packet the executor renders silence at 30 fps, so releases, moving modes and the controller's ambient light keep time.
+- **Idle rendering:** after 0.1 s without an audio packet the executor renders silence at 30 fps, so releases, moving modes and the controller's ambient light keep time. While audio is idle, the arrival of a screen frame also starts a step, so Screen layers render at the capture rate; while audio plays, they render with the audio steps, with the newest frame ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D11).
 - **Beat tracker:** it runs while an enabled layer uses the `beat` trigger or the `beat` signal is published; a new song from the media input makes it find the tempo afresh. Each beat offset among the assigned surfaces has its tracker.
 - **Activity:** the audio is active while its loudest bin, without the input gain, reaches −70 dB. `quiet_s` adds up the seconds since it last was, as the ambient light counts them. It describes the whole source, so the notification leaves out `surface`.
+  - **Screen activity:** each surface with an enabled Screen layer gets an `activity` notification of its own, with its `surface` and without `level_db`. It is active while the newest screen frame that is neither `held` nor `protected` is less than 0.5 s old, and `quiet_s` counts the seconds since it last was. A surface that also has enabled audio layers is active when either input is ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D12). On the secure desktop or for protected content the screen goes inactive, and the controller's ambient light crossfades in.
 - **Layer state** (smoothing, moving modes, trails) is kept per surface index across `config.apply` calls.
 
 ## Controller stages

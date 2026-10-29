@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 done but for the last bullet of step 5, default surfaces per zone type)
+Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done; RB-08's default surfaces per zone type, the last bullet of step 5, are left for a follow-up)
 
 ## RB-06: Node core
 
@@ -135,6 +135,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-08 done bu
 ## RB-10: Hyperion provider
 
 **Goal:** Hyperion on the provider interface, with parity and basic administration.
+**Status:** steps 1 to 4 are implemented in `crates/folo-provider-hyperion` ([how it is built](../integrations/hyperion.md#how-it-is-built)); step 5 needs the controller's output, and step 6 is a person's.
 **Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)); step 5 below also needs the rest of RB-08, the controller's output.
 
 1. **Fake first:** a Hyperion JSON server in tests that records frames and answers `serverinfo`, `clear`, `sourceselect` and `componentstate`.

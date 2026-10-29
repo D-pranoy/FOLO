@@ -27,9 +27,10 @@ const BODY_LIMIT: usize = 1024 * 1024;
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
 /// proofs, or reveal nothing (ADR-0035 D1).
-const WITHOUT_KEY: [&str; 4] = [
+const WITHOUT_KEY: [&str; 5] = [
     "/api/v1/health",
     "/api/v1/source-link",
+    "/api/v1/capture-link",
     "/api/v1/auth/login",
     "/api/v1/auth/requests",
 ];
@@ -161,11 +162,13 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/live"), get(live::live))
         .route(&v1("/ingest/surfaces"), later_get("RB-16"))
         .route(&v1("/source-link"), get(source_link))
+        .route(&v1("/capture-link"), later_get("RB-14"))
         // Only requests a route takes; the rest get their 404 or 405
         .route_layer(middleware::from_fn(json_only))
         .fallback(fallback)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(middleware::from_fn(no_empty_segments))
         .layer(middleware::from_fn_with_state(Arc::clone(&node), guard))
         .layer(middleware::from_fn(headers))
         .with_state(node)
@@ -322,6 +325,18 @@ fn is_json(headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(';').next())
         .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
+}
+
+/// An empty segment in an API path names no resource, so it gets the 404 of
+/// any id that isn't there, rather than the `{id}` route its neighbours match
+/// (`/zones//identify`) (docs/specs/client-api.md#conventions). Runs after
+/// the request checks, as "the resource exists" does.
+async fn no_empty_segments(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    if path.starts_with("/api/") && path.contains("//") {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such resource");
+    }
+    next.run(request).await
 }
 
 /// Paths no route takes: 404 under `/api/`, the UI's files elsewhere.
