@@ -122,6 +122,26 @@ pub fn with_effective(zones: &Value) -> Value {
     out
 }
 
+/// Whether an effectively active zone other than `zone` drives `target` of `zone`: has the same
+/// target, or one on overlapping addresses of its instance (a test pattern is refused with
+/// `409 target_busy` then, docs/specs/client-api.md#test-patterns).
+#[must_use]
+pub fn busy(zones: &Value, zone: &str, target: &str) -> bool {
+    let list = zone_list(zones);
+    let Some(wanted) = list
+        .iter()
+        .find(|z| id_of(z) == zone)
+        .and_then(|z| z["targets"].as_array()?.iter().find(|t| t["id"] == target))
+    else {
+        return false;
+    };
+    let found = check(zones);
+    list.iter()
+        .filter(|other| id_of(other) != zone && found.is_active(id_of(other)))
+        .flat_map(|other| other["targets"].as_array().into_iter().flatten())
+        .any(|other| same_target(wanted, other))
+}
+
 /// Whether two zones share a target ([ADR-0036](../../../docs/decisions/ADR-0036-controller-output.md) D4).
 fn shares(a: &Value, b: &Value) -> bool {
     let targets = |zone: &'_ Value| zone["targets"].as_array().map_or(Vec::new(), Clone::clone);
@@ -184,6 +204,31 @@ mod tests {
 
     fn stored(zones: &Value, id: &str) -> bool {
         stored_active(zone_list(zones).iter().find(|z| id_of(z) == id).unwrap())
+    }
+
+    #[test]
+    fn a_target_another_active_zone_drives_is_busy() {
+        let zones = doc(vec![
+            zone("a", true, vec![leds("t1", "p", 0, 10)]),
+            zone(
+                "b",
+                false,
+                vec![
+                    leds("t1", "p", 0, 10),
+                    leds("t2", "p", 5, 10),
+                    leds("t3", "p", 20, 5),
+                ],
+            ),
+            zone("c", false, vec![leds("t4", "q", 0, 10)]),
+        ]);
+        // the same id, and overlapping LEDs of the same instance
+        assert!(busy(&zones, "b", "t1"));
+        assert!(busy(&zones, "b", "t2"));
+        assert!(!busy(&zones, "b", "t3"));
+        assert!(!busy(&zones, "c", "t4"));
+        // the zone that drives it may test it
+        assert!(!busy(&zones, "a", "t1"));
+        assert!(!busy(&zones, "b", "missing"));
     }
 
     #[test]

@@ -382,6 +382,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "folo-controller"
+version = "0.0.0"
+dependencies = [
+ "folo-adapters",
+ "folo-compositor",
+ "folo-geometry",
+ "folo-protocol",
+ "folo-provider",
+ "png",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "folo-geometry"
 version = "0.0.0"
 dependencies = [
@@ -407,8 +422,10 @@ dependencies = [
  "axum",
  "base64",
  "clap",
+ "folo-controller",
  "folo-identity",
  "folo-protocol",
+ "folo-provider",
  "folo-settings",
  "folo-store",
  "folo-supervisor",

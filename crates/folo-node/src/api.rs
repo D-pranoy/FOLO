@@ -12,13 +12,17 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Json, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use folo_controller::Pattern;
 use folo_protocol::clamp::{SCHEMA_VERSION, clamp};
+use folo_protocol::generated::{DiscoverRequest, ProviderInstanceKind};
+use folo_provider::{AdminError, AdminMethod, runbook};
 use folo_store::{Doc, StoreError};
 use folo_supervisor::config::LOCAL_SOURCE;
 use folo_supervisor::{RequestError, RpcError};
 use serde_json::{Value, json};
 
 use crate::node::Node;
+use crate::output::{ProviderAbsent, TestRefused};
 use crate::server::error;
 use crate::status;
 use crate::zones;
@@ -599,6 +603,90 @@ pub async fn deactivate_zone(State(node): Shared, Path(id): Path<String>) -> Res
     })
 }
 
+// ---------------------------------------------------------------- test patterns
+
+/// A `TestRequest` (specs/schema/api.json): the pattern, the target (empty for all) and the
+/// seconds (1–60). An empty body takes the defaults.
+fn test_request_of(body: Body) -> Result<(Pattern, String, f64), Refusal> {
+    let refused = || {
+        Box::new(error(
+            StatusCode::BAD_REQUEST,
+            "bad_body",
+            "the body isn't a TestRequest",
+        ))
+    };
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    let request = if empty { json!({}) } else { read_json(body)? };
+    let fields = request.as_object().ok_or_else(refused)?;
+    let known = ["pattern", "target", "seconds"];
+    if !fields.keys().all(|key| known.contains(&key.as_str())) {
+        return Err(refused());
+    }
+    let pattern = match fields.get("pattern") {
+        None => Pattern::Identify,
+        Some(name) => name
+            .as_str()
+            .and_then(Pattern::from_name)
+            .ok_or_else(refused)?,
+    };
+    let target = match fields.get("target") {
+        None => String::new(),
+        Some(target) => target
+            .as_str()
+            .filter(|t| t.chars().count() <= 64)
+            .ok_or_else(refused)?
+            .to_owned(),
+    };
+    let seconds = match fields.get("seconds") {
+        None => 5.0,
+        Some(seconds) => seconds
+            .as_f64()
+            .filter(|s| (1.0..=60.0).contains(s))
+            .ok_or_else(refused)?,
+    };
+    Ok((pattern, target, seconds))
+}
+
+/// Starts a test pattern and answers `202`, or why not
+/// (docs/specs/client-api.md#test-patterns).
+fn start_test(node: &Node, zone: &str, pattern: Pattern, target: &str, seconds: f64) -> Response {
+    match node.output.test(node, zone, target, pattern, seconds) {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(TestRefused::UnknownZone) => error(StatusCode::NOT_FOUND, "not_found", "no such zone"),
+        Err(TestRefused::UnknownTarget(target)) => error(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            &format!("the zone has no target {target}"),
+        ),
+        Err(TestRefused::Busy(targets)) => {
+            let body = json!({"error": {
+                "code": "target_busy",
+                "message": "another active zone drives the target",
+                "details": {"targets": targets},
+            }});
+            (StatusCode::CONFLICT, Json(body)).into_response()
+        }
+    }
+}
+
+/// `POST /zones/{id}/identify`: always the `identify` pattern.
+pub async fn identify_zone(State(node): Shared, Path(id): Path<String>, body: Body) -> Response {
+    match test_request_of(body) {
+        Ok((_, target, seconds)) => start_test(&node, &id, Pattern::Identify, &target, seconds),
+        Err(refused) => *refused,
+    }
+}
+
+/// `POST /zones/{id}/test`.
+pub async fn test_zone(State(node): Shared, Path(id): Path<String>, body: Body) -> Response {
+    match test_request_of(body) {
+        Ok((pattern, target, seconds)) => start_test(&node, &id, pattern, &target, seconds),
+        Err(refused) => *refused,
+    }
+}
+
 pub async fn show(State(node): Shared) -> Json<Value> {
     get_document(&node, Doc::Show)
 }
@@ -644,6 +732,132 @@ pub async fn put_provider(
 
 pub async fn delete_provider(State(node): Shared, Path(id): Path<String>) -> Response {
     delete_item(&node, PROVIDERS, &id)
+}
+
+/// `POST /providers/discover`: every registered kind among the request's `kinds` (all of them
+/// by default); empty until a provider arrives. It changes no configuration.
+pub async fn discover_providers(State(node): Shared, body: Body) -> Response {
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    let request = if empty {
+        Ok(DiscoverRequest::default())
+    } else {
+        match read_json(body) {
+            // serde would read a struct from an array too
+            Ok(value) if value.is_object() => {
+                serde_json::from_value::<DiscoverRequest>(value).map_err(|_| ())
+            }
+            Ok(_) => Err(()),
+            Err(refused) => return *refused,
+        }
+    };
+    let Ok(request) = request else {
+        return error(
+            StatusCode::BAD_REQUEST,
+            "bad_body",
+            "the body isn't a DiscoverRequest",
+        );
+    };
+    // The two enums list the same names
+    let kinds: Vec<ProviderInstanceKind> = request
+        .kinds
+        .iter()
+        .filter_map(|kind| serde_json::to_value(kind).ok())
+        .filter_map(|kind| serde_json::from_value(kind).ok())
+        .collect();
+    let found = node.output.registry().discover(&kinds).await;
+    Json(json!(found)).into_response()
+}
+
+/// `GET` and `POST /providers/{id}/admin/{action}` through the instance's provider
+/// (docs/architecture/providers.md#describe-discover-and-administration).
+async fn admin(node: &Node, id: &str, action: &str, method: AdminMethod, body: Value) -> Response {
+    let kind = find(&node.store.get(Doc::Providers), PROVIDERS, id).map(|p| p["kind"].clone());
+    let Some(kind) = kind else {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such provider");
+    };
+    let provider = match node.output.provider(node, id) {
+        Ok(provider) => provider,
+        Err(ProviderAbsent::NotImplemented) => {
+            let kind: Option<ProviderInstanceKind> = serde_json::from_value(kind).ok();
+            let book = kind.map_or("RB-10", runbook);
+            return admin_error(&AdminError::NotImplemented { runbook: book });
+        }
+        // In the source role the controller's configuration is dormant: nothing runs
+        Err(ProviderAbsent::Off | ProviderAbsent::Unknown) if node.role != "controller" => {
+            return error(
+                StatusCode::CONFLICT,
+                "provider_disabled",
+                "the controller is dormant in the source role",
+            );
+        }
+        Err(ProviderAbsent::Off) => {
+            return error(
+                StatusCode::CONFLICT,
+                "provider_disabled",
+                "the provider is disabled",
+            );
+        }
+        Err(ProviderAbsent::Failed(message)) => {
+            return error(StatusCode::BAD_GATEWAY, "provider_error", &message);
+        }
+        Err(ProviderAbsent::Unknown) => {
+            return error(StatusCode::NOT_FOUND, "not_found", "no such provider");
+        }
+    };
+    match provider.admin(action, method, body).await {
+        Ok(answer) => Json(answer).into_response(),
+        Err(failure) => admin_error(&failure),
+    }
+}
+
+fn admin_error(failure: &AdminError) -> Response {
+    let status = StatusCode::from_u16(failure.status()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let (message, details) = match failure {
+        AdminError::NotImplemented { runbook } => (
+            format!("this arrives with {runbook}"),
+            json!({"runbook": runbook}),
+        ),
+        AdminError::UnknownAction(action) => (format!("no action {action}"), json!({})),
+        AdminError::BadRequest(why) => (why.clone(), json!({})),
+        AdminError::Provider(why) => (why.to_string(), json!({})),
+    };
+    let body = json!({"error": {"code": failure.code(), "message": message, "details": details}});
+    (status, Json(body)).into_response()
+}
+
+pub async fn get_provider_admin(
+    State(node): Shared,
+    Path((id, action)): Path<(String, String)>,
+) -> Response {
+    admin(&node, &id, &action, AdminMethod::Read, Value::Null).await
+}
+
+pub async fn post_provider_admin(
+    State(node): Shared,
+    Path((id, action)): Path<(String, String)>,
+    body: Body,
+) -> Response {
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    let request = if empty {
+        json!({})
+    } else {
+        match read_json(body) {
+            Ok(value) if value.is_object() => value,
+            Ok(_) => {
+                return error(
+                    StatusCode::BAD_REQUEST,
+                    "bad_body",
+                    "the body isn't an object",
+                );
+            }
+            Err(refused) => return *refused,
+        }
+    };
+    admin(&node, &id, &action, AdminMethod::Change, request).await
 }
 
 // ---------------------------------------------------------------- sources

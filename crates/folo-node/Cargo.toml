@@ -20,8 +20,10 @@ path = "src/main.rs"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "ws"] }
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
+folo-controller = { path = "../folo-controller" }
 folo-identity = { path = "../folo-identity" }
 folo-protocol = { path = "../folo-protocol" }
+folo-provider = { path = "../folo-provider" }
 folo-settings = { path = "../folo-settings" }
 folo-store = { path = "../folo-store" }
 folo-supervisor = { path = "../folo-supervisor" }

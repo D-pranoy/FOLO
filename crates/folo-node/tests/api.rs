@@ -17,8 +17,14 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use folo_node::cli::{LocationArgs, RunArgs};
 use folo_protocol::generated::{
-    EffectInfo, Info, InputList, LiveLevelsMessage, LiveStatusMessage, LogLines, MediaState, State,
+    DiscoveredDevice, EffectInfo, Info, InputList, LiveLevelsMessage, LiveStatusMessage, LogLines,
+    MediaState, NodeStatus, ProviderInstance, ProviderInstanceKind, ProviderSecrets, State,
     SystemSettings, Zone, ZoneActivation,
+};
+use folo_provider::testing::{Event, Op, RecordingKind, RecordingProvider};
+use folo_provider::{
+    AdminError, AdminMethod, BoxFuture, DeliveryPolicy, DescribedTarget, ElementOutput, Provider,
+    ProviderError, ProviderKind, Registry,
 };
 use folo_supervisor::EngineCommand;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -260,6 +266,11 @@ struct Running {
 
 impl Running {
     async fn start(home: &Home, engine: bool) -> Self {
+        Self::start_with(home, engine, Registry::new()).await
+    }
+
+    /// With the provider kinds in `registry`.
+    async fn start_with(home: &Home, engine: bool, registry: Registry) -> Self {
         let port = free_port();
         let args = RunArgs {
             port: Some(port.to_string()),
@@ -283,7 +294,7 @@ impl Running {
         };
         let (stop, stopped) = oneshot::channel::<()>();
         let done = tokio::spawn(async move {
-            folo_node::node::run_with(&location, &args, Some(command), async {
+            folo_node::node::run_with_providers(&location, &args, Some(command), registry, async {
                 let _ = stopped.await;
             })
             .await
@@ -930,11 +941,11 @@ async fn every_kind_of_data_arrives(socket: &mut Live, zone_id: &str) {
     let data = &status["data"];
     assert_eq!(data["sources"]["local"]["state"], "connected");
     assert_eq!(data["sources"]["local"]["beat"]["locked"], true);
-    assert_eq!(
-        data["zones"][zone_id],
-        json!({"active": true, "ambient": 0, "quiet_s": 0}),
-        "a new zone is active"
-    );
+    // a new zone is active; the fake engine reports no activity, so it counts silence
+    let zone = &data["zones"][zone_id];
+    assert_eq!(zone["active"], true, "a new zone is active");
+    assert!(zone["quiet_s"].as_f64().unwrap() >= 0.0);
+    assert!((0.0..=1.0).contains(&zone["ambient"].as_f64().unwrap()));
     let levels = levels.unwrap();
     conforms::<LiveLevelsMessage>(&levels, "a levels message");
     assert_eq!(levels["data"]["surface"], "main");
@@ -1168,6 +1179,454 @@ async fn the_live_channel_reports_the_effective_activation() {
     let (ka, kb) = (a.clone(), b.clone());
     status_until(&mut socket, |d| {
         d["zones"][&ka]["active"] == false && d["zones"][&kb]["active"] == true
+    })
+    .await;
+    assert_eq!(node.stop().await, 0);
+}
+
+// ------------------------------------------------------------------ the controller's output
+
+/// `POST /zones/{zone}/test`.
+async fn test_pattern(node: &Running, zone: &str, body: Value) -> Answer {
+    node.send_json("POST", &format!("/api/v1/zones/{zone}/test"), &body)
+        .await
+}
+
+async fn add_provider(node: &Running, body: Value) -> Answer {
+    node.send_json("POST", "/api/v1/providers", &body).await
+}
+
+/// A zone whose strip `main` (10 cells) feeds the line target `lamp` (10 LEDs on the instance
+/// `rec`) through a 1:1 manual mapping, rendered by the local source; and the instance.
+async fn assign_lamp(node: &Running) -> String {
+    let provider = json!({"id": "rec", "name": "Recorder", "kind": "hyperion", "settings": {"kind": "hyperion"}});
+    assert_eq!(
+        node.send_json("POST", "/api/v1/providers", &provider)
+            .await
+            .status,
+        201
+    );
+    let zone = json!({
+        "name": "Desk", "reactive": "on",
+        "surfaces": [{"id": "main", "kind": "strip", "resolution": {"width": 10, "height": 1}, "role": "strip.main", "sources": ["local"]}],
+        "targets": [{
+            "id": "lamp", "kind": "line", "geometry": {"kind": "line", "count": 10},
+            "provider": {"instance": "rec", "address": {"start": 0, "count": 10}},
+        }],
+        "mappings": [{
+            "id": "m", "surface": "main", "target": "lamp", "method": "manual",
+            "ranges": [{"cells": {"start": 0, "count": 10}, "elements": {"start": 0, "count": 10}}],
+        }],
+    });
+    let zone_id = add_zone(node, &zone).await;
+    let local = node
+        .send_json(
+            "PUT",
+            "/api/v1/sources/local",
+            &json!({"surfaces": ["main"]}),
+        )
+        .await;
+    assert_eq!(local.status, 200);
+    zone_id
+}
+
+/// The recording provider the node made for `rec`.
+async fn recorder(kind: &RecordingKind) -> std::sync::Arc<RecordingProvider> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(provider) = kind.created().last() {
+            return std::sync::Arc::clone(provider);
+        }
+        assert!(Instant::now() < deadline, "no provider made");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Waits until `wanted` holds of what the provider recorded.
+async fn recorded(provider: &RecordingProvider, what: &str, wanted: impl Fn(&[Event]) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !wanted(&provider.events()) {
+        assert!(Instant::now() < deadline, "timed out waiting for {what}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// The colours of `lamp` in a send, as bytes.
+fn lamp_bytes(event: &Event) -> Option<Vec<u8>> {
+    let Event::Send { frame, .. } = event else {
+        return None;
+    };
+    frame
+        .targets
+        .iter()
+        .find(|t| t.target == "lamp")
+        .map(|t| t.colors.to_bytes())
+}
+
+/// The engine's frames reach the provider through the compositor, the projection and the
+/// adapters, and the live channel shows the target and the provider; deactivating the zone
+/// releases the target, and stopping the node releases what it drives and disconnects.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_engines_frames_drive_a_provider_end_to_end() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let kind = std::sync::Arc::new(RecordingKind::new(
+        ProviderInstanceKind::Hyperion,
+        Vec::new(),
+    ));
+    let mut registry = Registry::new();
+    registry.register(kind.clone());
+    let node = Running::start_with(&home, true, registry).await;
+    let zone_id = assign_lamp(&node).await;
+    let provider = recorder(&kind).await;
+    // the fake engine's frames are one value throughout, its sequence number
+    recorded(&provider, "the engine's frames", |events| {
+        events
+            .iter()
+            .filter_map(lamp_bytes)
+            .any(|bytes| bytes.len() == 30 && bytes[0] > 0 && bytes.iter().all(|b| *b == bytes[0]))
+    })
+    .await;
+    assert!(provider.events().contains(&Event::Start("lamp".into())));
+
+    // the live channel: the provider is connected and the target's frames come
+    let url = format!("ws://127.0.0.1:{}/api/v1/live", node.port);
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    let topics = json!({"subscribe": ["status", "target:lamp"]});
+    socket
+        .send(Message::Text(topics.to_string().into()))
+        .await
+        .unwrap();
+    let status = status_until(&mut socket, |data| {
+        data["providers"]["rec"]["state"] == "connected"
+    })
+    .await;
+    assert_eq!(status["data"]["zones"][&zone_id]["active"], true);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        assert!(Instant::now() < deadline, "no target frame");
+        if let Message::Binary(bytes) = next(&mut socket).await {
+            assert_eq!(&bytes[..4], b"FOLS");
+            assert_eq!(&bytes[8..10], &[0, 0], "the target's index");
+            assert_eq!(
+                u16::from_le_bytes([bytes[10], bytes[11]]),
+                10,
+                "one cell per element"
+            );
+            assert_eq!(u16::from_le_bytes([bytes[12], bytes[13]]), 1);
+            capture("surfaceFrame--target.fols", &bytes);
+            break;
+        }
+    }
+    let status = node.get("/api/v1/system/status").await.json();
+    conforms::<NodeStatus>(&status, "the node's status");
+    assert_eq!(status["providers"][0]["state"], "connected");
+
+    // deactivating the zone releases its target
+    toggle(&node, &zone_id, "deactivate", &json!({})).await;
+    recorded(&provider, "the release", |events| {
+        events.contains(&Event::Release("lamp".into()))
+    })
+    .await;
+    toggle(&node, &zone_id, "activate", &json!({})).await;
+    recorded(&provider, "the start again", |events| {
+        events
+            .iter()
+            .filter(|e| **e == Event::Start("lamp".into()))
+            .count()
+            == 2
+    })
+    .await;
+
+    assert_eq!(node.stop().await, 0);
+    let events = provider.events();
+    let releases = events
+        .iter()
+        .filter(|e| **e == Event::Release("lamp".into()))
+        .count();
+    assert_eq!(releases, 2, "released when the node stopped");
+    assert_eq!(events.last(), Some(&Event::Disconnect));
+}
+
+/// Test patterns run on a zone's targets, go through the adapters to the provider, and are
+/// refused with 409 `target_busy` on a target another active zone drives.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_patterns_reach_the_provider_and_busy_targets_are_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let kind = std::sync::Arc::new(RecordingKind::new(
+        ProviderInstanceKind::Hyperion,
+        Vec::new(),
+    ));
+    let mut registry = Registry::new();
+    registry.register(kind.clone());
+    let node = Running::start_with(&home, true, registry).await;
+    let zone_id = assign_lamp(&node).await;
+    // the same lamp in a second zone: written later, it comes up inactive
+    let mut other = node.get(&format!("/api/v1/zones/{zone_id}")).await.json();
+    other["id"] = json!("other");
+    let other_id = add_zone(&node, &other).await;
+    let provider = recorder(&kind).await;
+
+    let busy = test_pattern(
+        &node,
+        &other_id,
+        json!({"pattern": "sweep", "target": "lamp"}),
+    )
+    .await;
+    assert_eq!((busy.status, busy.code()), (409, json!("target_busy")));
+    assert_eq!(busy.json()["error"]["details"]["targets"], json!(["lamp"]));
+    let started = test_pattern(
+        &node,
+        &zone_id,
+        json!({"pattern": "sweep", "target": "lamp", "seconds": 1}),
+    )
+    .await;
+    assert_eq!(started.status, 202);
+    // one element at 25% white, the others dark
+    recorded(&provider, "the sweep", |events| {
+        events.iter().filter_map(lamp_bytes).any(|bytes| {
+            let lit = bytes.chunks(3).filter(|c| *c == [63; 3]).count();
+            let dark = bytes.chunks(3).filter(|c| *c == [0; 3]).count();
+            (lit, dark) == (1, 9)
+        })
+    })
+    .await;
+    let identify = node
+        .send_json(
+            "POST",
+            &format!("/api/v1/zones/{zone_id}/identify"),
+            &json!({"pattern": "position"}),
+        )
+        .await;
+    assert_eq!(identify.status, 202, "identify takes no other pattern");
+    for (body, status) in [
+        (json!({"pattern": "strobe"}), 400),
+        (json!({"seconds": 0.5}), 400),
+        (json!({"seconds": 61}), 400),
+        (json!({"colour": "red"}), 400),
+        (json!({"target": "nope"}), 404),
+    ] {
+        assert_eq!(
+            test_pattern(&node, &zone_id, body.clone()).await.status,
+            status,
+            "{body}"
+        );
+    }
+    assert_eq!(test_pattern(&node, "nowhere", json!({})).await.status, 404);
+    // once the first zone lets the lamp go, the other zone takes it and may test it
+    toggle(&node, &zone_id, "deactivate", &json!({})).await;
+    assert_eq!(
+        test_pattern(
+            &node,
+            &other_id,
+            json!({"pattern": "identify", "seconds": 1})
+        )
+        .await
+        .status,
+        202
+    );
+    assert_eq!(node.stop().await, 0);
+}
+
+/// A provider whose administration answers `info` and fails `reboot`, as a device that
+/// refuses would.
+struct AdminProvider(RecordingProvider);
+
+impl Provider for AdminProvider {
+    fn connect(&self) -> BoxFuture<'_, Result<(), ProviderError>> {
+        self.0.connect()
+    }
+    fn describe(&self) -> BoxFuture<'_, Result<Vec<DescribedTarget>, ProviderError>> {
+        self.0.describe()
+    }
+    fn disconnect(&self) -> BoxFuture<'_, ()> {
+        self.0.disconnect()
+    }
+    fn admin(
+        &self,
+        action: &str,
+        method: AdminMethod,
+        body: Value,
+    ) -> BoxFuture<'_, Result<Value, AdminError>> {
+        if action == "reboot" {
+            let refused = ProviderError::Refused("the device said no".into());
+            return Box::pin(async move { Err(AdminError::Provider(refused)) });
+        }
+        self.0.admin(action, method, body)
+    }
+    fn delivery_policy(&self) -> DeliveryPolicy {
+        self.0.delivery_policy()
+    }
+    fn element_output(&self) -> Option<&dyn ElementOutput> {
+        self.0.element_output()
+    }
+}
+
+struct AdminKind;
+
+impl ProviderKind for AdminKind {
+    fn kind(&self) -> ProviderInstanceKind {
+        ProviderInstanceKind::Hue
+    }
+    fn discover(&self) -> BoxFuture<'_, Result<Vec<DiscoveredDevice>, ProviderError>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    fn create(
+        &self,
+        _instance: &ProviderInstance,
+        _secrets: Option<&ProviderSecrets>,
+    ) -> Result<std::sync::Arc<dyn Provider>, ProviderError> {
+        let inner = RecordingProvider::new().with_admin("info", json!({"name": "Bridge"}));
+        Ok(std::sync::Arc::new(AdminProvider(inner)))
+    }
+}
+
+/// Discovery goes to the registered kinds; administration to the instance's provider, with
+/// 501 for a kind not implemented here, 404 for an unknown action or instance, and 409 for a
+/// disabled instance.
+#[tokio::test(flavor = "multi_thread")]
+async fn discovery_and_administration_go_through_the_registry() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let device: DiscoveredDevice = serde_json::from_value(json!({
+        "kind": "hyperion", "id": "h1", "name": "Hyperion", "address": "127.0.0.1:19444",
+    }))
+    .unwrap();
+    let kind = std::sync::Arc::new(RecordingKind::new(
+        ProviderInstanceKind::Hyperion,
+        vec![device],
+    ));
+    let mut registry = Registry::new();
+    registry.register(kind.clone());
+    registry.register(std::sync::Arc::new(AdminKind));
+    let node = Running::start_with(&home, false, registry).await;
+
+    let found = node
+        .send_json("POST", "/api/v1/providers/discover", &json!({}))
+        .await;
+    assert_eq!(found.status, 200);
+    assert_eq!(found.json()[0]["id"], "h1");
+    let nothing = node
+        .send_json(
+            "POST",
+            "/api/v1/providers/discover",
+            &json!({"kinds": ["wled"]}),
+        )
+        .await;
+    assert_eq!(nothing.json(), json!([]));
+    let bad = node
+        .send_json(
+            "POST",
+            "/api/v1/providers/discover",
+            &json!({"kinds": ["lamp"]}),
+        )
+        .await;
+    assert_eq!(bad.status, 400);
+    let listed = node
+        .send_json("POST", "/api/v1/providers/discover", &json!([[]]))
+        .await;
+    assert_eq!(listed.status, 400, "an array isn't a DiscoverRequest");
+
+    assert_eq!(
+        add_provider(
+            &node,
+            json!({"id": "rec", "kind": "hyperion", "settings": {"kind": "hyperion"}})
+        )
+        .await
+        .status,
+        201
+    );
+    assert_eq!(
+        add_provider(
+            &node,
+            json!({"id": "strip", "kind": "wled", "settings": {"kind": "wled"}})
+        )
+        .await
+        .status,
+        201
+    );
+    assert_eq!(add_provider(&node, json!({"id": "off", "kind": "hyperion", "enabled": false, "settings": {"kind": "hyperion"}})).await.status, 201);
+    let unknown = node.get("/api/v1/providers/rec/admin/reboot").await;
+    assert_eq!((unknown.status, unknown.code()), (404, json!("not_found")));
+    let later = node
+        .send_json("POST", "/api/v1/providers/strip/admin/reboot", &json!({}))
+        .await;
+    assert_eq!(
+        (later.status, later.code()),
+        (501, json!("not_implemented"))
+    );
+    assert_eq!(later.json()["error"]["details"]["runbook"], "RB-12");
+    let off = node.get("/api/v1/providers/off/admin/reboot").await;
+    assert_eq!((off.status, off.code()), (409, json!("provider_disabled")));
+    assert_eq!(
+        node.get("/api/v1/providers/gone/admin/reboot").await.status,
+        404
+    );
+    let status = node.get("/api/v1/system/status").await.json();
+    let kinds: Vec<&Value> = status["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| &p["state"])
+        .collect();
+    assert_eq!(kinds[1], "stopped", "a kind without an implementation");
+    assert_eq!(kinds[2], "stopped", "disabled");
+    assert_eq!(node.stop().await, 0);
+}
+
+/// A provider instance whose settings change gets a new sender only after the old one has
+/// released its target and disconnected; a disabled one releases its target too.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_changed_or_disabled_provider_releases_its_targets_first() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let kind = std::sync::Arc::new(RecordingKind::new(
+        ProviderInstanceKind::Hyperion,
+        Vec::new(),
+    ));
+    let mut registry = Registry::new();
+    registry.register(kind.clone());
+    let node = Running::start_with(&home, true, registry).await;
+    assign_lamp(&node).await;
+    let first = recorder(&kind).await;
+    recorded(&first, "the start", |events| {
+        events.contains(&Event::Start("lamp".into()))
+    })
+    .await;
+
+    // a slow device: the release takes a while, and the output goes on meanwhile
+    first.set_delay(Op::Release, Duration::from_millis(400));
+    let changed = json!({"id": "rec", "name": "Recorder", "kind": "hyperion", "rate_hz": 30, "settings": {"kind": "hyperion"}});
+    let put = node
+        .send_json("PUT", "/api/v1/providers/rec", &changed)
+        .await;
+    assert_eq!(put.status, 200);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let second = loop {
+        let created = kind.created();
+        if created.len() == 2 && !created[1].events().is_empty() {
+            break std::sync::Arc::clone(&created[1]);
+        }
+        assert!(Instant::now() < deadline, "no new sender");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    };
+    // the new provider acted only after the old one had released and disconnected
+    let old = first.events();
+    assert!(old.contains(&Event::Release("lamp".into())));
+    assert_eq!(old.last(), Some(&Event::Disconnect));
+    recorded(&second, "the new start", |events| {
+        events.contains(&Event::Start("lamp".into()))
+    })
+    .await;
+
+    let disabled = json!({"id": "rec", "name": "Recorder", "kind": "hyperion", "enabled": false, "settings": {"kind": "hyperion"}});
+    let put = node
+        .send_json("PUT", "/api/v1/providers/rec", &disabled)
+        .await;
+    assert_eq!(put.status, 200);
+    recorded(&second, "the release when disabled", |events| {
+        events.contains(&Event::Release("lamp".into())) && events.last() == Some(&Event::Disconnect)
     })
     .await;
     assert_eq!(node.stop().await, 0);

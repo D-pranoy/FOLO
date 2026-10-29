@@ -1,6 +1,6 @@
 # Spatial model, zones and projection
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (activation, element positions, kernels, gather plans and mappings, run per zone by the node's output; not yet the defaults per zone type or the Hue conversion)
 
 Decided in [ADR-0006](../decisions/ADR-0006-spatial-model-zones-and-projection.md) and, for activation, defaults and the details of projection, [ADR-0036](../decisions/ADR-0036-controller-output.md).
 
