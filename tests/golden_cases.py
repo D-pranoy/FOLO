@@ -29,6 +29,7 @@ import numpy.typing as npt
 
 from folo_source.effects.base import shown_levels
 from folo_source.inputs.audio.analyzer import (
+    QUIET_DB,
     SAMPLERATE,
     Analyzer,
     AutoLevel,
@@ -44,6 +45,8 @@ from tests import synth
 GOLDEN_DIR = Path(__file__).parent / 'golden'
 RENDERER_DIR = GOLDEN_DIR / 'renderer'
 MANIFEST = RENDERER_DIR / 'manifest.json'
+AMBIENT_DIR = GOLDEN_DIR / 'ambient'
+AMBIENT_MANIFEST = AMBIENT_DIR / 'manifest.json'
 BUILTINS = GOLDEN_DIR / 'builtins.json'
 
 SEED = 1234  # the renderer's random generator (drops, fire)
@@ -351,9 +354,17 @@ def uses_beat(config: Config) -> bool:
     return any(s['trigger'] == 'beat' and s['enabled'] for s in config['segments'])
 
 
-def render(case: Case) -> Result:
-    """Renders a case from the shared spectra, packet by packet like the engine."""
-    config = case.config
+def render(
+    case: Case,
+    config: Config | None = None,
+    observe: Callable[[Spectrum, float], None] | None = None,
+) -> Result:
+    """
+    Renders a case from the shared spectra, packet by packet like the engine.
+    `config` replaces the case's config for the renderer (the spectra still
+    follow the case's), and `observe` sees every step's spectrum and dt.
+    """
+    config = case.config if config is None else config
     analyzer = Analyzer()
     renderer = Renderer(analyzer, rng=np.random.default_rng(SEED))
     beat = BeatTracker(analyzer.freqs, SAMPLERATE)
@@ -363,6 +374,8 @@ def render(case: Case) -> Result:
     levels: list[Any] = []
 
     def step(spectrum: Spectrum, count: int, dt: float) -> None:
+        if observe is not None:
+            observe(spectrum, dt)
         # StudioEngine._track_beat, without a page watching
         if tracking:
             beat.lead = ONSET_DELAY + config['beat']['offset'] / 1000.0
@@ -467,6 +480,134 @@ def read_png(path: Path) -> Frames:
         elif raw[y, 0] not in (0, 2):
             raise ValueError(f'{path}: unsupported PNG filter {raw[y, 0]}')
     return rows.astype(np.uint8).reshape(height, width, 3)
+
+
+# ---------------------------------------------------------------- ambient light (RB-08)
+
+
+AMBIENT_NAMES = (
+    'ambient-auto-solid',
+    'ambient-auto-breathe',
+    'ambient-off-solid',
+    'ambient-off-breathe',
+    'ambient-auto-paused',
+)
+
+
+@dataclass
+class AmbientInputs:
+    """
+    What the controller's ambient light gets in place of the legacy renderer:
+    the reactive frames the engine would send (master applied, truncated to
+    bytes, no ambient light), and per step the seconds elapsed and whether the
+    audio was active (its loudest bin, without gain, at QUIET_DB or above).
+    """
+
+    frames: Frames
+    dts: list[float]
+    active: list[bool]
+
+
+def ambient_inputs(case: Case) -> AmbientInputs:
+    """
+    Renders an ambient case with the ambient light left out (`reactive: on`
+    never leaves the reactive look). The expected output is the case's own
+    PNG in tests/golden/renderer/, which the legacy renderer made with it.
+    """
+    dts: list[float] = []
+    active: list[bool] = []
+
+    def observe(spectrum: Spectrum, dt: float) -> None:
+        dts.append(dt)
+        active.append(bool(spectrum.loudest >= QUIET_DB))
+
+    result = render(case, config=dict(case.config, reactive='on'), observe=observe)
+    return AmbientInputs(result.frames, dts, active)
+
+
+def ambient_entry(case: Case, inputs: AmbientInputs, expected: str) -> dict[str, Any]:
+    """
+    One case of tests/golden/ambient/manifest.json. `expected`: the PNG of the
+    legacy renderer's frames, relative to tests/golden/.
+    """
+    config = case.config
+    return {
+        'reactive': config['reactive'],
+        'ambient': config['ambient'],
+        'on_pause': config['now_playing']['pause_ambient'],
+        'master': config['master'],
+        'paused': case.paused,
+        'input': f'{case.name}.png',
+        'expected': expected,
+        'frames': int(inputs.frames.shape[0]),
+        'leds': int(inputs.frames.shape[1]),
+        'frames_sha256': hashlib.sha256(inputs.frames.tobytes()).hexdigest(),
+        'dts': inputs.dts,
+        'active': ''.join('1' if a else '0' for a in inputs.active),
+    }
+
+
+def ambient_cases() -> list[Case]:
+    """The ambient cases of renderer/ (master 1): their PNGs are the expected frames."""
+    cases = by_name(look_cases())
+    return [cases[name] for name in AMBIENT_NAMES]
+
+
+def ambient_expected_path(case: Case) -> str:
+    """Where a case's expected frames are, relative to tests/golden/."""
+    if case.name in AMBIENT_NAMES:
+        return f'renderer/{case.name}.png'
+    return f'ambient/{case.name}-expected.png'
+
+
+def master_ambient_cases() -> list[Case]:
+    """
+    Ambient cases with master below 1, which the renderer's own do not have: the
+    light has to be scaled by master, the frames stay within 1 of the legacy ones,
+    and a fade out from part way is checked ('gap' has silence in the middle).
+    Their expected frames are written beside their inputs, by the legacy renderer.
+    """
+    segs = [
+        segment(0, 39, 'lows', 'hits', mode='pulse'),
+        segment(40, 79, 'mids', 'level', mode='fill', direction='center'),
+        segment(80, 119, 'highs', 'level', mode='spectrum'),
+    ]
+
+    def cfg(reactive: str, master: float, color: str, style: str, level: float, idle: float):
+        ambient = {'color': color, 'style': style, 'level': level, 'idle_after': idle}
+        return make_config(120, segs, reactive=reactive, master=master, ambient=ambient)
+
+    return [
+        Case(
+            'ambient-master-auto-solid',
+            'gap',
+            cfg('auto', 0.4, '#4B00FF', 'solid', 0.5, 1.0),
+            idle=IDLE_SECONDS,
+        ),
+        Case(
+            'ambient-master-auto-breathe',
+            'gap',
+            cfg('auto', 0.7, '#FF3399', 'breathe', 0.8, 1.0),
+            idle=IDLE_SECONDS,
+        ),
+        Case(
+            'ambient-master-off-solid',
+            'gap',
+            cfg('off', 0.55, '#0033CC', 'solid', 1.0, 1.0),
+            idle=IDLE_SECONDS,
+        ),
+        Case(
+            'ambient-master-auto-paused',
+            'gap',
+            cfg('auto', 0.4, '#FF3399', 'solid', 0.4, 30.0),
+            paused=True,
+            idle=IDLE_SECONDS,
+        ),
+    ]
+
+
+def all_ambient_cases() -> list[Case]:
+    return ambient_cases() + master_ambient_cases()
 
 
 # ---------------------------------------------------------------- manifest

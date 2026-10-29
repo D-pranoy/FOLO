@@ -1,8 +1,8 @@
 # Display capture (screen sync)
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (the core crate and the agent scaffold; see [RB-14](../runbooks/m6-screen.md))
 
-Decided in [ADR-0015](../decisions/ADR-0015-display-capture.md).
+Decided in [ADR-0015](../decisions/ADR-0015-display-capture.md) and [ADR-0037](../decisions/ADR-0037-display-capture-agent.md).
 
 ## Requirements
 
@@ -27,11 +27,29 @@ So capture is done by the **capture agent** `folo-capture` (Rust), which always 
 | Node runs as | Who starts the capture agent |
 |---|---|
 | Desktop-managed node (user mode) | The node, on demand |
-| Windows service | The desktop app at sign-in. Later, the service may launch it into the console session (`CreateProcessAsUser`). |
+| Windows service | The desktop app at sign-in. Later, the service may launch it into the console session (`CreateProcessAsUser`). How it then gets its launch token is decided with the service (RB-19, RB-20). |
 | Linux system unit or Docker | Not available. Screen sync needs a user-session source. |
-| Linux user unit | The node, or a user unit `app-<app-id>-capture.service` (`PartOf=`/`After=graphical-session.target`) |
+| Linux user unit | The node. (A user unit `app-<app-id>-capture.service` that systemd starts is reserved with service mode: it can't get the node's launch token until RB-19 and RB-20 decide how.) |
 
-The agent sends small frames over loopback to the effect engine, where the Screen effect runs.
+The agent sends small frames to its node over loopback, and the node hands them on to the effect engine, where the Screen effect runs.
+
+## The agent and its link
+
+Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md); the messages and the frame are in the [source link](../specs/source-link.md#the-capture-link).
+
+- **Link:** the agent dials its node at `ws://127.0.0.1:<port>/api/v1/capture-link`. Its launch token and the link's URL are in its environment (`FOLO_CAPTURE_TOKEN`, `FOLO_CAPTURE_LINK`), never on its command line. The node forwards the frames unchanged to the engine over the local source link.
+- **Lifecycle:** the node starts the agent while capture is **wanted**: a screen input is enabled and an enabled Screen layer is in the active scene of one of the source's surfaces. It then asks for a capture (`capture.start`) and, when capture isn't wanted any more, stops it and the agent.
+- **Health:** the agent reports its state (`off`, `starting`, `waiting_consent`, `capturing`, `paused` or `error`) at least once a second. The node restarts a silent agent, and the agent exits when its node has been gone for 30 s.
+- **Screens:** on Windows a screen is identified by its monitor's device path. On Linux there is one entry, `portal`: the portal names no screens before the user chooses one. `folo-capture screens --json` lists them without capturing, for the node to use when no agent is linked.
+
+## Frames from the agent
+
+- **Format:** `rgb8`, sRGB-encoded, in the `FOLC` frame of the [source link](../specs/source-link.md#screen-frames), never compressed. Frames are never wider than 480 or higher than 270.
+- **Size:** at most 480 wide and 270 high. The node asks for twice the largest canvas among the surfaces with a Screen layer (at least 64×36, at most 480×270). The agent delivers the largest frame of the screen's aspect ratio that fits.
+- **Rate:** the highest rate those surfaces publish at, at most 60 Hz. When nothing on the screen changes, the last picture is sent again after 0.25 s, as a new frame with the send time and the next sequence number. Every frame, new or repeated, carries the time it is sent. Repeats are not held to `rate_hz`, and a new picture waiting for the rate holds them back, so rates under about 4 Hz can't keep frames inside the engine's 0.5 s limit.
+- **Clock:** timestamps are microseconds on the operating system's monotonic clock (`QueryPerformanceCounter`, `CLOCK_MONOTONIC`), the clock the engine stamps its own frames with.
+- **Flags:** `protected` (protected content is on screen), `hdr` (the desktop is HDR, and the frame was tone-mapped) and `held` (the agent can't capture right now, and sends its last picture again; a picture just captured never carries it).
+- **Bars:** the black bars found, in cells, in every frame's header. The picture isn't cropped.
 
 ## Windows
 
@@ -39,10 +57,11 @@ The agent sends small frames over loopback to the effect engine, where the Scree
   1. **DXGI Desktop Duplication**, using `DuplicateOutput1` with {BGRA8, R16G16B16A16_FLOAT}. A D3D11 device is created on the adapter that drives the output, with one duplication per output.
   2. **Windows.Graphics.Capture**, for cases Desktop Duplication can't handle: hybrid-GPU laptops capturing against the discrete GPU fail by design. Settings: cursor capture off, a free-threaded frame pool, borderless when the user consents (build 20348+). Otherwise the yellow border shows.
   3. GDI, as a last resort.
-- **Recovery:** a state machine handles `ACCESS_LOST` (mode changes, UAC, lock screen), `DXGI_ERROR_UNSUPPORTED`, `SESSION_DISCONNECTED` and the four-processes-per-session limit, with backoff. On the secure desktop, FOLO holds or fades the last frame.
+- **Recovery:** a state machine handles `ACCESS_LOST` (mode changes, UAC, lock screen), `DXGI_ERROR_UNSUPPORTED`, `SESSION_DISCONNECTED` and the four-processes-per-session limit, with backoff. On the secure desktop, the agent is `paused` and holds the last frame (`held`); the Screen effect keeps showing it, the screen's activity ends, and the controller's ambient light takes over.
 - **HDR:** detected through the output colour space (`DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020`). Frames are averaged in linear FP16, then tone-mapped against the user's SDR white level (from `DISPLAYCONFIG_SDR_WHITE_LEVEL`).
-- **Protected content:** Desktop Duplication's `ProtectedContentMaskedOut` flag is reported as **"protected content"** rather than black. Hardware-DRM video, for example the Netflix app or PlayReady in Edge, can't be captured.
-- **Privacy setting:** newer Windows 11 builds have a "Screenshots and screen recording" setting and policy. If access is denied, FOLO reports it with a link to the setting.
+- **Shaders:** the downscale and tone-mapping shaders are HLSL embedded in the agent and compiled at run time with the in-box `d3dcompiler_47`.
+- **Protected content:** Desktop Duplication's `ProtectedContentMaskedOut` flag is reported as **"protected content"** (the `protected` flag) rather than black. Hardware-DRM video, for example the Netflix app or PlayReady in Edge, can't be captured.
+- **Privacy setting:** newer Windows 11 builds have a "Screenshots and screen recording" setting and policy. If access is denied, the agent's status says so with a link to the setting (`settings_uri`).
 
 ## Linux (Wayland)
 
@@ -51,39 +70,82 @@ The agent sends small frames over loopback to the effect engine, where the Scree
   2. `SelectSources` with monitor type, hidden cursor, `persist_mode=2` and the saved `restore_token` (portal version 4 or newer)
   3. `Start`, with the FOLO window as parent for the consent dialog
   4. `OpenPipeWireRemote`, to consume the PipeWire stream
-- **Tokens** are single-use: save the new one after every start. Restoring fails, and the dialog appears again, when the monitor set changes (for example a TV turned off and on). FOLO shows a notification before re-prompting.
-- **Stable app id:** the unit name `app-<app-id>-capture.service`, or registration with the portal.
-- **Frames:** DMA-BUF (imported into EGL or Vulkan for GPU downscaling), with shared memory as a fallback. Compositors don't downscale monitor streams.
+- **Tokens** are single-use: save the new one after every start. The agent returns it in its status and the node keeps it in `secrets.json` (`capture.restore_token`). Restoring fails, and the dialog appears again, when the monitor set changes (for example a TV turned off and on). The agent shows a notification before re-prompting.
+- **Stable app id:** the portal needs one. The agent registers it through the portal's host registry (xdg-desktop-portal 1.19 and newer). Otherwise the node starts the agent in a transient scope, `systemd-run --user --scope`, named `app-io.github.d-pranoy.folo-capture-<random>.scope`.
+- **Frames:** shared-memory buffers first, downscaled on the CPU. DMA-BUF buffers imported into EGL, so the GPU can downscale them, come second. There is no Vulkan path. Compositors don't downscale monitor streams.
+- **HDR:** out of scope on Linux in v1: frames are treated as SDR.
 - **KDE pre-authorization and KWin's privileged screencast protocol** are optional power-user paths, not the default.
 
 ## Downscaling
 
-- **Always downscale on the GPU before reading back.** A 4K frame is 33 MB; mip level 3 of 3840×2160 is 480×270 (518 KB).
+- **Always downscale before the frame is copied to the CPU.** A 4K frame is 33 MB; mip level 3 of 3840×2160 is 480×270 (518 KB). On Linux's shared-memory path the compositor has already copied the frame, so it is downscaled on the CPU.
 - Methods: a mip chain (`GenerateMips`, then copy the chosen level to a staging texture), or a box-filter shader with tone mapping in the same pass.
+- Averages are taken in linear light, and the result is encoded to sRGB again.
 - The agent delivers at most 480×270. The Screen effect produces the zone's requested canvas (default 64×36, at most 128×72 on the network).
 
 ## Black-bar detection
 
-- A port of Hyperion.NG's detector, run on the downscaled frame:
-  - **Black pixel:** R, G and B all below `ceil(threshold × 255)`; default threshold 5%.
-  - **Modes:** default (samples at 1/3 and 2/3 of the frame plus the centre, on all sides), letterbox (top and bottom only, ignoring subtitle areas), OSD (finds the horizontal border first, to avoid overlays).
-  - **Hysteresis is time-based** rather than frame-based, because capture rates vary. A new border is adopted after a stable period. "Unknown", for example a black scene, is adopted only after a long period, and a few inconsistent frames are tolerated.
-  - A blur margin absorbs scaling blur.
-- Presets: Auto, Off, Force 21:9, Force 4:3. Video and game profiles: game ignores screen edges (HUD) and adopts changes faster.
+The agent detects the bars on the downscaled frame and reports them; the Screen effect crops them. The detector is a port of Hyperion.NG's black-border detector, which is MIT-licensed ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D7, [third-party notices](../../THIRD_PARTY_NOTICES)):
+- **Black pixel:** R, G and B all below `ceil(threshold × 255)`; default threshold 5% (`black_bars.threshold`, 1–50%).
+- **Modes** (`black_bars.mode`): default (samples at 1/3 and 2/3 of the frame plus the centre, on all sides), letterbox (top and bottom only, ignoring subtitle areas), OSD (finds the horizontal border first, to avoid overlays).
+- **Hysteresis is time-based** rather than frame-based, because capture rates vary. A new border is adopted after a stable period. "Unknown", for example a black scene, is adopted only after a long period, and a few inconsistent frames are tolerated.
+- A blur margin absorbs scaling blur.
+- **Presets** (`black_bars.preset`): `auto`, `off`, and `21:9` and `4:3`, which force the bars of a picture of that shape.
+- **Profiles** (`profile`): `video`, and `game`, which ignores the screen's edges (HUDs) and adopts changes faster.
+- **Reported as:** cells in each frame's header and fractions of the frame in the agent's status. The UI's black-bar preview is drawn from the bars over the zone's surface, never from screen frames.
+- Protected content is reported, not shown as black.
+
+## The Screen effect
+
+The `screen` effect runs in the engine. It is a **canvas effect**: it draws a 2D picture for its layer's rectangle of a canvas surface, and on a strip surface its layers draw nothing (projection, [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters), maps canvases onto strips). Its parameters are in the [configuration model](../specs/config-model.md#entities-summary). For each frame it renders:
+1. **The picture:** the newest frame that has neither the `held` nor the `protected` flag. The pixels of those are ignored, and the effect keeps drawing the last picture it had; a layer that never had one draws nothing.
+2. **Crop:** with `bars` set to `follow`, the black bars in the frame's header are cut away; then the `margins` (shares of what remains, at least one cell is left). With `ignore`, only the margins apply.
+3. **Sample:** onto the layer's cells, as the layer's rectangle covers them.
+   - `area`: each cell is the average of the picture's cells under it, weighted by how much of each it covers, across the columns and then down the rows, as a surface is resampled for publishing.
+   - `edge`: each cell takes the colour of the picture's nearest side, spread inward. The nearest side is the one with the smallest of the cell's distances to the top, bottom, left and right of the layer's rectangle (the top and bottom win ties). The colour is the average of the picture's cells in a band along that side, `edge_depth` of the picture's height deep (top, bottom) or width (left, right), over the same span along the side that `area` would use for the cell.
+4. **Colour:** saturation around the cell's luma, then brightness, clipped to 0–255, as the `brightness` post-processing effect does.
+5. **Smoothing:** each cell moves towards its new colour by `1 − e^(−dt / smoothing)` of the difference. `smoothing` 0 shows each frame as it is. The first picture appears at once, and a layer whose region changes size starts over.
+6. **Blend:** the layer's `blend` applies, inside its region, as for any layer. Its `axis` doesn't apply.
+
+**Activity and rendering:**
+- Each surface with an enabled Screen layer has its own activity ([pipeline](../architecture/pipeline.md#the-executor)): active while the newest frame that isn't `held` or `protected` arrived less than 0.5 s ago (age counts from its arrival at the engine). A surface with audio layers too is active when either input is.
+- While audio plays, Screen layers render with the audio steps. While it is idle, a screen frame starts a step, so they render at the capture rate.
 
 ## Latency and privacy
 
 - **Latency targets:** about 50 ms or less glass-to-light for games, 100 ms or less for films. Capture costs about one frame; smoothing is usually the largest term.
 - **Privacy:**
   - Capture runs on demand only, with FOLO's own "screen sync active" indicator in the tray and the UI.
-  - Full frames are never stored or sent. Only the zone's low-resolution surface leaves the machine.
+  - Raw screen frames travel only from the agent to its node and on to its engine, on loopback. They never reach the live channel, the client API, ingest, a remote source link, a log or a file FOLO writes. The status clients see holds the state, rate, flags and bars, and nothing of the picture.
+  - The zone's canvas, which the Screen effect renders from them (64×36 by default), is published like any surface and is a picture of the screen: clients holding a key can subscribe to it (`surface:<id>`, `target:<id>`) for their own preview, and on the LAN it travels over plain HTTP like the rest of the live channel. It is the only screen picture that leaves the engine.
+  - Operating-system crash dumps and swap are outside FOLO's control.
+  - Test fixtures and replay files are synthetic; recordings of real screens are never committed.
 
 ## Testing
 
-- Capture sits behind an interface with synthetic and replay inputs (recorded frame sequences).
+- Capture sits behind an interface with synthetic and replay inputs (recorded frame sequences, committed as synthetic ones). The node is tested with a fake agent, and the agent with a fake node.
 - **Golden tests** for black bars: letterbox, pillarbox, 21:9, subtitles in the bars, logos, fade to black, OSD, noise near the threshold.
 - **Downscale and tone-map shaders** run on Windows' WARP software device with fixtures.
-- **Linux:** a fake PipeWire screencast node in a container (`videotestsrc ! pipewiresink`). Optional end-to-end runs use a headless compositor. The consent path is tested manually.
+- **Linux:** on the CI runner, a real PipeWire daemon with a test producer and a fake ScreenCast portal (a service on a private `dbus-daemon`). These capture tests run in an Ubuntu 24.04 job; the workspace must still build on Ubuntu 22.04. The consent path is tested manually.
+- **Privacy:** a run with marker pixels the effect can't copy (in `held` and `protected` frames, the bar rows and the margins) collects every status, levels and spectrum message, log line, the node's status, API answer and file in the temporary and data folders, and asserts neither the raw payload nor the markers are in them. The `surface:` and `target:` topics are expected to carry the canvas and nothing else.
+- **End to end:** the node, the agent in replay mode and the real engine, asserting the canvas frames the engine publishes; through projection once RB-08 lands.
+
+## Replay files
+
+The replay backend (`--backend replay:<file>`) plays back recorded frames, for tests of the agent, the node and the engine. A file holds synthetic frames only; recordings of real screens are never committed. All integers are little-endian.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | Magic `FOLR` |
+| 4 | 1 | File format version (1) |
+| 5 | 3 | Reserved (0) |
+| 8 | n | Records, until the end of the file |
+
+A record is a `u32` length (36 to 400,000) and that many bytes of a [`FOLC` screen frame](../specs/source-link.md#screen-frames), checked as any untrusted frame is. The file holds at least one frame and at most 64 MiB.
+- **Screen:** one, `replay`, named "Replay", as large as the first frame in pixels.
+- **Playback:** each frame is delivered after the gap between its recorded time and the next one's (at most 1 s), and the file plays again from the first frame after the last. The gap after the last frame is that of the requested rate. The frames' sequence numbers and times are used for the gaps only: the agent numbers and stamps what it sends. Flags and bars are kept as recorded. The frame size is the recorded one: the box of `capture.start` is not applied.
+
+The synthetic backend (`--backend synthetic`) shows one 1920 × 1080 screen, `synthetic-0`, with a deterministic test pattern (a moving gradient by default) at the size that fits the box.
 
 ## Libraries
 

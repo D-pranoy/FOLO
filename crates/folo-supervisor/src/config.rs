@@ -24,7 +24,8 @@ pub struct Wanted {
 }
 
 /// `config.apply`'s params for the local source, without `revision`, which
-/// the link adds when it sends them. Each signal keeps its index whatever
+/// the link adds when it sends them. Only zones whose `active` is not false
+/// have surfaces assigned (ADR-0036 D6). Each signal keeps its index whatever
 /// else is wanted (`beat` 0, `spectrum` 1), so a frame that arrives after
 /// the wanted signals change is never taken for another signal's.
 #[must_use]
@@ -109,9 +110,14 @@ fn default_inputs() -> Value {
         .expect("an empty object clamps to the defaults")
 }
 
-/// The zone holding the surface `id`, and the surface.
+/// The zone holding the surface `id`, and the surface. Only active zones
+/// have surfaces to assign (ADR-0036 D6): `zones` holds the **effective**
+/// `active` flags, which the node works out (`folo-node`'s `zones` module).
 fn find_surface<'a>(zones: &'a Value, id: &str) -> Option<(&'a Value, &'a Value)> {
     zones["zones"].as_array()?.iter().find_map(|zone| {
+        if zone["active"] == false {
+            return None;
+        }
         zone["surfaces"]
             .as_array()?
             .iter()
@@ -172,6 +178,25 @@ mod tests {
             ]}),
         );
         (zones, show, sources)
+    }
+
+    #[test]
+    fn inactive_zones_have_no_surfaces_assigned() {
+        let (mut zones, show, sources) = documents();
+        zones["zones"][0]["active"] = json!(false);
+        let config = local_config(&zones, &show, &sources, Wanted::default());
+        let surfaces = config["surfaces"].as_array().unwrap();
+        assert_eq!(surfaces.len(), 1);
+        // Surfaces are numbered in the order of the call
+        assert_eq!(surfaces[0]["index"], 0);
+        assert_eq!(surfaces[0]["surface"]["id"], "main");
+        assert_eq!(config["publish"]["surfaces"].as_array().unwrap().len(), 1);
+        let wanted = Wanted {
+            levels: true,
+            ..Wanted::default()
+        };
+        let config = local_config(&zones, &show, &sources, wanted);
+        assert_eq!(config["publish"]["levels"], json!([0]));
     }
 
     #[test]

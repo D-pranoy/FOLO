@@ -10,10 +10,12 @@ Writes the golden files that pin today's engine (RB-01 steps 6 to 8):
 - tests/golden/migration/: sample v1 files and the documents they migrate to (RB-05)
 - tests/golden/hyperion/legacy.json: the bytes the legacy Hyperion sender writes, and how the studio
   scales segments to a new LED count (RB-10)
+- tests/golden/ambient/: what the controller's ambient light gets (the reactive frames, the
+  steps and the activity) to match tests/golden/renderer/ambient-*.png (RB-08)
 
     uv run python scripts/make_golden.py [--export-builtins] [--only PART,...]
 
-The parts are renderer, beat, corpus, clamp, migration and hyperion.
+The parts are renderer, beat, corpus, clamp, migration, hyperion and ambient.
 
 Regenerate only when behaviour is meant to change, and say why in the pull
 request (docs/process/testing-policy.md#golden-files).
@@ -41,7 +43,7 @@ from tests import (  # noqa: E402
     sanitize_corpus,
 )
 
-PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration', 'hyperion')
+PARTS = ('renderer', 'beat', 'corpus', 'clamp', 'migration', 'hyperion', 'ambient')
 
 
 def export_builtins() -> None:
@@ -128,6 +130,35 @@ def write_hyperion() -> None:
     print(f'wrote {count} cases to {hyperion_wire_cases.WIRE.relative_to(ROOT)}')
 
 
+def write_ambient() -> None:
+    out = golden_cases.AMBIENT_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    cases = golden_cases.all_ambient_cases()
+    entries: dict[str, object] = {}
+    names: set[str] = set()
+    for case in cases:
+        inputs = golden_cases.ambient_inputs(case)
+        golden_cases.write_png(out / f'{case.name}.png', inputs.frames)
+        names.add(f'{case.name}.png')
+        expected = golden_cases.ambient_expected_path(case)
+        if case.name not in golden_cases.AMBIENT_NAMES:
+            # these have no PNG in renderer/: the legacy renderer's frames go beside the input
+            golden_cases.write_png(
+                golden_cases.GOLDEN_DIR / expected, golden_cases.render(case).frames
+            )
+            names.add(Path(expected).name)
+        entries[case.name] = golden_cases.ambient_entry(case, inputs, expected)
+    for stale in out.glob('*.png'):
+        if stale.name not in names:
+            stale.unlink()
+    manifest = {'cases': dict(sorted(entries.items()))}
+    golden_cases.AMBIENT_MANIFEST.write_text(
+        json.dumps(manifest, indent=1, sort_keys=True) + '\n', encoding='utf-8'
+    )
+    size = sum(p.stat().st_size for p in out.iterdir())
+    print(f'wrote {len(cases)} ambient cases to {out.relative_to(ROOT)} ({size / 1e6:.1f} MB)')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -161,6 +192,8 @@ def main() -> None:
         write_migration()
     if 'hyperion' in parts:
         write_hyperion()
+    if 'ambient' in parts:
+        write_ambient()
 
 
 if __name__ == '__main__':
