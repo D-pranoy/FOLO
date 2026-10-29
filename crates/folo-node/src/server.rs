@@ -84,10 +84,10 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/zones/{id}"),
             get(api::zone).put(api::put_zone).delete(api::delete_zone),
         )
-        .route(&v1("/zones/{id}/activate"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/deactivate"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/test"), later_post("RB-08"))
+        .route(&v1("/zones/{id}/activate"), post(api::activate_zone))
+        .route(&v1("/zones/{id}/deactivate"), post(api::deactivate_zone))
+        .route(&v1("/zones/{id}/identify"), post(api::identify_zone))
+        .route(&v1("/zones/{id}/test"), post(api::test_zone))
         .route(&v1("/show"), get(api::show).put(api::put_show))
         .route(&v1("/scenes/{id}/apply"), later_post("RB-09"))
         .route(&v1("/effects"), get(api::effects))
@@ -101,10 +101,10 @@ pub fn router(node: Arc<Node>) -> Router {
                 .put(api::put_provider)
                 .delete(api::delete_provider),
         )
-        .route(&v1("/providers/discover"), later_post("RB-08"))
+        .route(&v1("/providers/discover"), post(api::discover_providers))
         .route(
             &v1("/providers/{id}/admin/{action}"),
-            later_get("RB-08").post(later("RB-08")),
+            get(api::get_provider_admin).post(api::post_provider_admin),
         )
         .route(&v1("/providers/{id}/hue/pair"), later_post("RB-13"))
         .route(&v1("/sources"), get(api::sources))
@@ -169,6 +169,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .fallback(fallback)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(middleware::from_fn(no_empty_segments))
         .layer(middleware::from_fn_with_state(Arc::clone(&node), guard))
         .layer(middleware::from_fn(headers))
         .with_state(node)
@@ -325,6 +326,18 @@ fn is_json(headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(';').next())
         .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
+}
+
+/// An empty segment in an API path names no resource, so it gets the 404 of
+/// any id that isn't there, rather than the `{id}` route its neighbours match
+/// (`/zones//identify`) (docs/specs/client-api.md#conventions). Runs after
+/// the request checks, as "the resource exists" does.
+async fn no_empty_segments(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    if path.starts_with("/api/") && path.contains("//") {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such resource");
+    }
+    next.run(request).await
 }
 
 /// Paths no route takes: 404 under `/api/`, the UI's files elsewhere.
@@ -640,7 +653,7 @@ mod tests {
     async fn later_subsystems_answer_501_with_their_run_book() {
         let request = Request::builder()
             .method(Method::POST)
-            .uri("/api/v1/zones/desk/activate")
+            .uri("/api/v1/scenes/desk/apply")
             .header(header::HOST, "localhost")
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from("{}"))
@@ -648,7 +661,7 @@ mod tests {
         let (status, _, body) = ask("", "127.0.0.1:50000", request).await;
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         assert_eq!(body["error"]["code"], "not_implemented");
-        assert_eq!(body["error"]["details"]["runbook"], "RB-08");
+        assert_eq!(body["error"]["details"]["runbook"], "RB-09");
     }
 
     #[test]

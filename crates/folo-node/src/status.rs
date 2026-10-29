@@ -26,6 +26,8 @@ struct Parts<'a> {
     listen: (String, u16),
     overrides: &'a [Override],
     providers: &'a Value,
+    /// A provider instance's `ProviderStatus.state` while the node runs; `stopped` otherwise.
+    provider_state: Option<&'a dyn Fn(&str) -> Value>,
     sources: &'a Value,
     worker: Option<WorkerStatus>,
     capture: Option<WorkerStatus>,
@@ -44,7 +46,13 @@ fn build(parts: &Parts<'_>) -> Value {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|p| json!({"id": p["id"], "kind": p["kind"], "enabled": p["enabled"], "state": "stopped"}))
+        .map(|p| {
+            let id = p["id"].as_str().unwrap_or_default();
+            let state = parts
+                .provider_state
+                .map_or(json!("stopped"), |state| state(id));
+            json!({"id": p["id"], "kind": p["kind"], "enabled": p["enabled"], "state": state})
+        })
         .collect();
     let paired = parts.sources["sources"]
         .as_array()
@@ -82,6 +90,7 @@ pub fn of_running(node: &Node) -> Value {
     let settings = node.settings();
     let providers = node.store.get(Doc::Providers);
     let sources = node.store.get(Doc::Sources);
+    let state = |id: &str| json!(node.output.provider_status(id).state.api());
     build(&Parts {
         running: true,
         id: &node.id,
@@ -90,6 +99,7 @@ pub fn of_running(node: &Node) -> Value {
         listen: (node.listen.ip().to_string(), node.listen.port()),
         overrides: &settings.overrides,
         providers: &providers,
+        provider_state: Some(&state),
         sources: &sources,
         worker: Some(node.supervisor.status()),
         capture: Some(node.capture.status()),
@@ -121,6 +131,7 @@ fn of_files(place: &Place) -> Value {
         listen: (address, port),
         overrides: &place.layered.overrides,
         providers: &read(Doc::Providers),
+        provider_state: None,
         sources: &read(Doc::Sources),
         worker: None,
         capture: None,
