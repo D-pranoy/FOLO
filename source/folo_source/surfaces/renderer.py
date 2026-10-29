@@ -21,6 +21,7 @@ import numpy.typing as npt
 from folo_source.core import Frame, to_rgbf32
 from folo_source.effects import base
 from folo_source.effects import post as _post  # registers the post-processing effects
+from folo_source.effects import screen as _screen  # registers the screen effect
 from folo_source.effects import visualizers as _visualizers  # registers the audio visualizer
 from folo_source.effects.base import Effect, LayerSpec, Levels, Line, PostEffect
 from folo_source.effects.colors import hex_to_rgb
@@ -29,7 +30,7 @@ from folo_source.inputs.audio.analyzer import Analyzer, Spectrum
 Values = npt.NDArray[np.float64]
 Indices = npt.NDArray[np.intp]
 
-_ = (_post, _visualizers)
+_ = (_post, _screen, _visualizers)
 
 
 def strip_cells(region: Mapping[str, Any], size: int) -> tuple[int, int]:

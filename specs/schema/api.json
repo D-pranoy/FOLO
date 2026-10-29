@@ -178,8 +178,8 @@
       "properties": {
         "id": {"type": "string", "maxLength": 128},
         "name": {"type": "string", "maxLength": 128},
-        "width": {"type": "integer", "minimum": 1},
-        "height": {"type": "integer", "minimum": 1},
+        "width": {"description": "In pixels; 0 while it isn't known (the Linux portal entry, before the user has chosen a screen).", "type": "integer", "minimum": 0},
+        "height": {"description": "In pixels; 0 while it isn't known.", "type": "integer", "minimum": 0},
         "primary": {"type": "boolean"}
       },
       "required": ["id", "name", "width", "height", "primary"],

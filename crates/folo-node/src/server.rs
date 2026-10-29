@@ -27,9 +27,10 @@ const BODY_LIMIT: usize = 1024 * 1024;
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
 /// proofs, or reveal nothing (ADR-0035 D1).
-const WITHOUT_KEY: [&str; 4] = [
+const WITHOUT_KEY: [&str; 5] = [
     "/api/v1/health",
     "/api/v1/source-link",
+    "/api/v1/capture-link",
     "/api/v1/auth/login",
     "/api/v1/auth/requests",
 ];
@@ -161,6 +162,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/live"), get(live::live))
         .route(&v1("/ingest/surfaces"), later_get("RB-16"))
         .route(&v1("/source-link"), get(source_link))
+        .route(&v1("/capture-link"), later_get("RB-14"))
         // Only requests a route takes; the rest get their 404 or 405
         .route_layer(middleware::from_fn(json_only))
         .fallback(fallback)
