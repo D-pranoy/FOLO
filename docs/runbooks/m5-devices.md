@@ -1,6 +1,6 @@
 # M5 Devices
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (RB-12 steps 1–8 built on fakes; step 9 and RB-13 not started)
 
 ## RB-12: WLED provider
 
@@ -24,6 +24,7 @@ Status: Accepted · Implementation: Not started
 9. **Live verification** per the [testing policy](../process/testing-policy.md).
 
 **Done when:** the fake suites are green and live verification has passed.
+**Status:** steps 1–8 are built in `crates/folo-provider-wled` ([WLED, Implementation](../integrations/wled.md#implementation)), with the fake device in its `testing` module. Step 9 is a person's. The node does not register the kind yet: RB-08's controller output does, with `WledKind::new()` and `DEFAULT_RATE_HZ`.
 
 ## RB-13: Hue provider and zone sync
 

@@ -1,0 +1,24 @@
+[package]
+name = "folo-provider-wled"
+description = "The WLED provider: DDP and DNRGB(W) output, describe and basic administration (RB-12, ADR-0012)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-protocol = { path = "../folo-protocol" }
+folo-provider = { path = "../folo-provider" }
+log = "0.4"
+mdns-sd = { version = "0.21", default-features = false, features = ["logging"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
