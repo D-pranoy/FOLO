@@ -339,6 +339,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "folo-compositor"
+version = "0.0.0"
+dependencies = [
+ "folo-protocol",
+ "png",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "folo-geometry"
 version = "0.0.0"
 dependencies = [
