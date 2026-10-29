@@ -1,6 +1,6 @@
 # Display capture (screen sync)
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (the core crate and the agent scaffold; see [RB-14](../runbooks/m6-screen.md))
 
 Decided in [ADR-0015](../decisions/ADR-0015-display-capture.md) and [ADR-0037](../decisions/ADR-0037-display-capture-agent.md).
 

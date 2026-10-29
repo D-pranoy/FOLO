@@ -1,0 +1,28 @@
+[package]
+name = "folo-provider-hyperion"
+description = "The Hyperion.NG provider and a fake Hyperion JSON server for tests (RB-10, ADR-0011)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[features]
+# The fake Hyperion JSON server (`testing::FakeHyperion`), for this crate's tests and the node's
+testing = []
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-protocol = { path = "../folo-protocol" }
+folo-provider = { path = "../folo-provider" }
+log = "0.4"
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+
+[dev-dependencies]
+folo-provider-hyperion = { path = ".", features = ["testing"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "test-util", "time"] }

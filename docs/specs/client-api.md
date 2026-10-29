@@ -14,6 +14,7 @@ The controller's API for clients: the UI, the desktop app, the Android app later
   - Unauthenticated: `/api/v1/health`, static UI files and the pairing endpoints, which use their own proofs.
 - **Scopes:** `control` (everyday use) and `admin` (configuration, pairing, packs, updates).
 - **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header ([RFC 9110, section 15.5.6](https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed)).
+- **Ids in paths:** a path parameter (`{id}`, `{node}`, `{action}`) is 1–64 characters. (Ids in documents are different: an empty one gets a new id.) An empty one names no resource: an empty segment anywhere in a path (`/zones//identify`) gets 404 `not_found`, like any id that isn't there. A client that leaves the segment out sends a different path (`/zones/identify` is the zone `identify`, and `POST` to it is a 405).
 - **Concurrency:** documents carry `revision` and `server_id`. Writers may send `If-Match: <revision>`; without it, the last writer wins, as today.
 - **Body limit:** 1 MB by default.
 - **Caching:** API responses carry `Cache-Control: no-store`, and every response carries `X-Content-Type-Options: nosniff`.
@@ -53,7 +54,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/zones/{id}/activate`, `/deactivate`, `/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
+| `/zones/{id}/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
 | `/scenes/{id}/apply`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
