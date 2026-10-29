@@ -299,12 +299,12 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
-=======
+
+[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -312,7 +312,6 @@ checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
 ]
->>>>>>> origin/v1
 
 [[package]]
 name = "fiat-crypto"
@@ -321,14 +320,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
-<<<<<<< HEAD
-name = "flume"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
-dependencies = [
- "spin",
-=======
 name = "flate2"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -337,7 +328,15 @@ dependencies = [
  "crc32fast",
  "miniz_oxide 0.9.1",
  "zlib-rs",
->>>>>>> origin/v1
+]
+
+[[package]]
+name = "flume"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
+dependencies = [
+ "spin",
 ]
 
 [[package]]
@@ -445,22 +444,25 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "folo-provider-wled"
-=======
 name = "folo-provider-hyperion"
->>>>>>> origin/v1
 version = "0.0.0"
 dependencies = [
  "folo-protocol",
  "folo-provider",
-<<<<<<< HEAD
- "log",
- "mdns-sd",
-=======
  "folo-provider-hyperion",
  "log",
->>>>>>> origin/v1
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "folo-provider-wled"
+version = "0.0.0"
+dependencies = [
+ "folo-protocol",
+ "folo-provider",
+ "log",
+ "mdns-sd",
  "serde_json",
  "tokio",
 ]
