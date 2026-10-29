@@ -54,7 +54,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/zones/{id}/activate`, `/deactivate`, `/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
+| `/zones/{id}/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
 | `/scenes/{id}/apply`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
@@ -83,7 +83,7 @@ Until then:
 | `/providers/{id}/admin/...` | GET, POST | Basic device administration ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)) |
 | `/providers/{id}/hue/pair` | POST | The link-button pairing flow, with progress |
 | `/sources`, `/sources/{id}` | GET, PUT, DELETE | Sources, inputs, assignments, priorities |
-| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens. The UI refreshes it every 5 s while the input editor is open. |
+| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens (listed by the source's capture agent; on Linux the one entry `portal`, of unknown size). The UI refreshes it every 5 s while the input editor is open. |
 | `/sources/{id}/media` | GET | Now-playing state: off, unavailable, error, none, playing, paused or stopped; app, title, artist, album, art id, colours |
 | `/sources/{id}/media/art` | GET | The current album art image. Clients add the art id to bust caches. |
 | `/sources/{id}/media/control` | POST | `{"action": "play_pause" \| "next" \| "previous"}` on the source's shown media session |
@@ -155,7 +155,7 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
   |---|---|
   | `status` | `status` messages: every source's state, every zone and every provider |
   | `zone:<id>` | `status` messages: that zone (whether it is active, and its reactive state: ambient fade 0–1, seconds of silence) |
-  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) |
+  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) and its screen capture (state, rate, protected and HDR flags, black bars: never any pixels) |
   | `beat:<source>` | `status` messages: the source's beat (BPM, confidence, locked, phase, bar beat) |
   | `media:<source>` | `status` messages: the source's now playing |
   | `levels:<source>` | `levels` messages, one per surface of the source |
@@ -195,4 +195,5 @@ The node serves the UI's files outside `/api/`, with no key ([ADR-0035](../decis
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/ingest/surfaces` (WebSocket) | Third parties stream surface frames to the controller using a scoped ingest token. Framing as in the [source link](source-link.md#surface-frames). Appears as a source in the compositor. |
+| `GET /api/v1/capture-link` (WebSocket) | The node's own capture agent, on loopback only, with its launch token in the handshake ([source link](source-link.md#the-capture-link)). No key; the Host, Origin and client-address checks apply before the upgrade, and other machines get 403 `loopback_only`. Answers 501 until [RB-14](../runbooks/m6-screen.md). |
 | `GET /api/v1/source-link` (WebSocket) | Source nodes ([source link](source-link.md)). The `local` purpose is taken from loopback clients only; until RB-16 brings the other purposes, clients on other machines get 403 `loopback_only` before the upgrade. |

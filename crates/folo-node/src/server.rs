@@ -27,9 +27,10 @@ const BODY_LIMIT: usize = 1024 * 1024;
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
 /// proofs, or reveal nothing (ADR-0035 D1).
-const WITHOUT_KEY: [&str; 4] = [
+const WITHOUT_KEY: [&str; 5] = [
     "/api/v1/health",
     "/api/v1/source-link",
+    "/api/v1/capture-link",
     "/api/v1/auth/login",
     "/api/v1/auth/requests",
 ];
@@ -82,8 +83,8 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/zones/{id}"),
             get(api::zone).put(api::put_zone).delete(api::delete_zone),
         )
-        .route(&v1("/zones/{id}/activate"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/deactivate"), later_post("RB-08"))
+        .route(&v1("/zones/{id}/activate"), post(api::activate_zone))
+        .route(&v1("/zones/{id}/deactivate"), post(api::deactivate_zone))
         .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
         .route(&v1("/zones/{id}/test"), later_post("RB-08"))
         .route(&v1("/show"), get(api::show).put(api::put_show))
@@ -161,6 +162,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/live"), get(live::live))
         .route(&v1("/ingest/surfaces"), later_get("RB-16"))
         .route(&v1("/source-link"), get(source_link))
+        .route(&v1("/capture-link"), later_get("RB-14"))
         // Only requests a route takes; the rest get their 404 or 405
         .route_layer(middleware::from_fn(json_only))
         .fallback(fallback)
@@ -589,7 +591,7 @@ mod tests {
     async fn later_subsystems_answer_501_with_their_run_book() {
         let request = Request::builder()
             .method(Method::POST)
-            .uri("/api/v1/zones/desk/activate")
+            .uri("/api/v1/zones/desk/identify")
             .header(header::HOST, "localhost")
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from("{}"))
