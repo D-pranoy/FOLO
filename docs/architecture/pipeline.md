@@ -82,7 +82,9 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 - Its layers form an ordered stack. The default blend is **max**, which reproduces today's behaviour; other blend modes are available per layer.
 - A layer covers a **region** of the surface: a cell range on a strip, a rectangle on a canvas. On a strip of `N` cells:
   - `cells`: `start` to `end`, both included, as today's segments.
-  - `relative`: cells `⌊start × N⌋` to `⌈end × N⌉ − 1`, at least one.
+  - `relative`: by its `snap` ([ADR-0038](../decisions/ADR-0038-content-library.md) D14):
+    - `cover` (the default): cells `⌊start × N⌋` to `⌈end × N⌉ − 1`, at least one.
+    - `nearest`: cells `min(R(start × N), N − 1)` to `min(max(first, R(end × N) − 1), N − 1)`, where `R(x)` rounds to the nearest integer, halves up (`⌊x⌋ + 1` when `x − ⌊x⌋ ≥ 0.5`, else `⌊x⌋`), as the studio's built-in builders place segments. The built-in scenes use it.
   - `rect`: as `relative` from `x` to `x + width`.
   - On a `W × H` canvas, a `rect` covers columns `⌊x × W⌋` to `⌈(x + width) × W⌉ − 1` and rows likewise, at least one of each. `cells` and `relative` regions select columns, over every row.
   - A region is clipped to the surface. A layer whose region is empty draws nothing.

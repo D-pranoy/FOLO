@@ -114,21 +114,47 @@ Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done; RB-08'
 ## RB-09: Content library
 
 **Goal:** packs, roles and the built-in library as data.
-**Depends on:** RB-02, RB-08.
+**Depends on:** RB-02, RB-08 (zones and their surfaces, which the documents already hold).
+**Decided in:** [ADR-0038](../decisions/ADR-0038-content-library.md), with the [pack format](../specs/pack-format.md), [content](../architecture/content.md) and the [client API](../specs/client-api.md#library). The contract changes (`snap`, `Provenance.hash`, `bindings`, item `description` and `hints`, manifest `categories`, the library's routes and schemas, client API 1.4.0) land with that ADR, the new routes answering `501`; the steps below implement them.
 
-1. **Library service:**
-   - install, list, remove and export `.folopack` files ([pack format](../specs/pack-format.md))
-   - validation with clamping; size limits; provenance on applied items
-2. **Role binding:** automatic matching by capability, size and tags; remembered overrides; fallbacks (strip roles on `canvas.room` through `linear_x`).
-3. **Built-ins:**
-   - convert the RB-01 export into `folo-core`, `folo-genres` and `folo-effects`
-   - stable ids
-   - an alias table for `fx:*` and `genre:*`
-   - check equivalence against the JS builders at several LED counts
-4. **Reset all** runs on the controller with the default scene.
-5. **Distribution:** compute the packs each source needs; push them over the source link, checked by hash.
-6. **Clean-room rewrite gate:** record the LedFx-inspired items that must be rewritten before the first public binary release ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)). Write their behaviour specifications in `docs/specs/effects/` without reference to LedFx code, and reimplement them from those specifications. Golden tests then pin the new behaviour.
-7. **Backup and restore:** `/system/backup` and `/system/restore`, holding the configuration and the library's packs, secrets excluded ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D2).
+1. **Library service** (a `folo-library` crate, used by the node):
+   - built-in packs embedded from `packs/folo/`; installed and local packs in `library/<author>/<name>/`, read and validated at start, failing folders skipped with an error (D1 to D3); the library's limits
+   - install with structural validation, limits, compatibility, conflicts and `replace`; clamping into the canonical form, written through a staging folder (D4 to D8)
+   - list, manifest, remove (`protected_pack`, `required_by`), deterministic export and the pack hash (D9)
+   - item reads and the gallery listing (`/library/items`); item writes and removals in `local/*` packs, with the 60-scene limit of `local/my-presets` (D10); previews served sandboxed
+   - `event {kind: library}` on the live channel
+2. **Role binding and applying** (D11 to D16):
+   - references, the alias table and bare ids (D19)
+   - binding by override, role, kind, size and `min_elements`, then fallbacks; skipped roles reported
+   - remembered overrides in the show's `bindings`
+   - scaling of `cells` regions by `led_count`
+   - a show scene only made active; a pack item's copy written in place or as a new scene, with provenance and its item hash; the base in `applied/`, named by the hash of the scene id, removed with its scene
+   - `keep_changes`: the three-way merge, and `409 no_base`
+3. **Built-ins as data** (D17 to D20):
+   - `export_builtins.mjs --trace` and `scripts/build_packs.py generate | check`, writing `packs/folo/core`, `genres` and `effects` and `packs/aliases.json`; the check, and `FOLO_NODE_TESTS=1 uv run pytest tests/test_builtin_packs.py`, in CI's contract job
+   - stable ids; descriptions and hints; the categories in `folo/core`
+   - equivalence: the built-in golden frames byte for byte at 30, 61 and 144 LEDs; the layers at every length from 1 to 64 and at 100, 144, 255, 256, 300, 512, 1000, 1024, 1999 and 2000; reactions and palettes; `scaleSegments()` scaling
+4. **Reset all** on the controller: `POST /show/reset` with the default scene, else `folo/core:default`; master 1 and a black background (D21).
+5. **Distribution:** none in v1 (D22). A source answers `packs.install` and `packs.remove` with `-32601` until content that needs them arrives.
+6. **Clean-room rewrite gate** (D23, D24):
+   - the list in the [effect specifications](../specs/effects/README.md#the-clean-room-rewrite-gate) and `tests/test_clean_room_gate.py`, with `FOLO_RELEASE_GATE=1` in every publishing workflow
+   - a behaviour specification for each of the 24 items, then its rewrite from the specification alone in an isolated checkout, with its goldens regenerated; both must be done before any public binary, `edge` images included ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md))
+7. **Backup and restore:** `/system/backup` and `/system/restore` (D25 to D27): the four documents, the installed and local packs and the bases; secrets, client keys and `node.toml` excluded; checked as a whole (paths, sizes counted on decompressed bytes, folders matching ids), then replaced through `restore/` and its marker.
+
+**Code changes,** in order; each is one pull request a separate session can implement from the documents:
+
+| # | Change | Steps | Needs |
+|---|---|---|---|
+| 1 | The engine's `snap: nearest` on `relative` regions, in `surfaces/renderer.py`, with unit tests | 3 (part) | |
+| 2 | Built-in packs: the exporter's trace, `build_packs.py`, the committed packs and alias table, the CI check, the equivalence tests, and `tests/test_clean_room_gate.py` | 3, 6 (the test) | 1 |
+| 3 | The library service and its routes: load, install, list, manifest, remove, export, items, previews, the gallery, live events; RFC 8785 canonical JSON and item hashes in Python and Rust; the JSON rule's exemption for `application/zip` in the node's middleware | 1 | 2 |
+| 4 | Applying and Reset all: references and aliases, binding, bindings, scaling, provenance, bases, `keep_changes`, `/scenes/{ref}/apply`, `/show/reset` | 2, 4 | 3 |
+| 5 | Backup and restore | 7 | 3 |
+| 6 | The gate step in every publishing workflow, written with `docker.yml` and `release.yml` in [RB-22 and RB-23](m8-release.md) | 6 | 2 |
+| 7 | One specification pull request per item, or a few items at a time, by a writer who keeps the clean-room rule | 6 | 2 |
+| 8 | One rewrite pull request per item, by an implementer given only its specification | 6 | 7 |
+
+Changes 7 and 8 block every public binary, not the rest of the rebuild.
 
 **Done when:** the API serves every built-in from packs, equivalence tests pass, and the rewrite gate is tracked.
 

@@ -126,6 +126,234 @@ impl ::std::default::Default for AmbientStyle {
         AmbientStyle::Solid
     }
 }
+///What an apply did in one zone.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyResult {
+    ///Each bound role of the applied scene: the surface it went to.
+    pub roles: ::std::collections::HashMap<::std::string::String, ApplyResultRolesValue>,
+    ///The id of the scene the zone now has active.
+    pub scene: ApplyResultScene,
+    ///Roles no surface of the zone could take.
+    pub skipped: ::std::vec::Vec<ApplyResultSkippedItem>,
+    pub zone: ApplyResultZone,
+}
+///`ApplyResultRolesValue`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ApplyResultRolesValue(::std::string::String);
+impl ::std::ops::Deref for ApplyResultRolesValue {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ApplyResultRolesValue> for ::std::string::String {
+    fn from(value: ApplyResultRolesValue) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ApplyResultRolesValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ApplyResultRolesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ApplyResultRolesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ApplyResultRolesValue {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The id of the scene the zone now has active.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ApplyResultScene(::std::string::String);
+impl ::std::ops::Deref for ApplyResultScene {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ApplyResultScene> for ::std::string::String {
+    fn from(value: ApplyResultScene) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ApplyResultScene {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ApplyResultScene {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ApplyResultScene {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ApplyResultScene {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ApplyResultSkippedItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ApplyResultSkippedItem(::std::string::String);
+impl ::std::ops::Deref for ApplyResultSkippedItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ApplyResultSkippedItem> for ::std::string::String {
+    fn from(value: ApplyResultSkippedItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ApplyResultSkippedItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ApplyResultSkippedItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ApplyResultSkippedItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ApplyResultSkippedItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ApplyResultZone`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ApplyResultZone(::std::string::String);
+impl ::std::ops::Deref for ApplyResultZone {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ApplyResultZone> for ::std::string::String {
+    fn from(value: ApplyResultZone) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ApplyResultZone {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ApplyResultZone {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ApplyResultZone {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ApplyResultZone {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`AssignedSurface`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -1263,6 +1491,133 @@ impl ::std::convert::TryFrom<::std::string::String> for AuthResultState {
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///folo-backup.json, the manifest of a backup archive (ADR-0038 D25).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BackupManifest {
+    ///Unix seconds.
+    pub created: u64,
+    ///path: SHA-256 (hex) of every other file in the archive.
+    pub files: ::std::collections::HashMap<
+        ::std::string::String,
+        BackupManifestFilesValue,
+    >,
+    ///1; a newer format is refused with 422 incompatible.
+    pub format: ::std::num::NonZeroU64,
+    pub node_version: BackupManifestNodeVersion,
+    ///The documents' schema_version; a newer one than the node reads is refused with 422 incompatible.
+    pub schema_version: i64,
+}
+///`BackupManifestFilesValue`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BackupManifestFilesValue(::std::string::String);
+impl ::std::ops::Deref for BackupManifestFilesValue {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BackupManifestFilesValue> for ::std::string::String {
+    fn from(value: BackupManifestFilesValue) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for BackupManifestFilesValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BackupManifestFilesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BackupManifestFilesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BackupManifestFilesValue {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`BackupManifestNodeVersion`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct BackupManifestNodeVersion(::std::string::String);
+impl ::std::ops::Deref for BackupManifestNodeVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BackupManifestNodeVersion> for ::std::string::String {
+    fn from(value: BackupManifestNodeVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for BackupManifestNodeVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for BackupManifestNodeVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for BackupManifestNodeVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BackupManifestNodeVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`BeatStatus`
@@ -4878,6 +5233,7 @@ impl<'de> ::serde::Deserialize<'de> for ErrorErrorMessage {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
+    ///The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).
     pub id: EventId,
     pub kind: EventKind,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -4886,7 +5242,7 @@ pub struct Event {
     pub progress: ::std::option::Option<f64>,
     pub state: EventState,
 }
-///`EventId`
+///The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct EventId(::std::string::String);
@@ -4906,8 +5262,8 @@ impl ::std::str::FromStr for EventId {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 64usize {
-            return Err("longer than 64 characters".into());
+        if value.chars().count() > 65usize {
+            return Err("longer than 65 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -6828,6 +7184,73 @@ impl<'de> ::serde::Deserialize<'de> for IssuedClientKey {
             })
     }
 }
+///A pack item type, as its folder is named.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ItemType {
+    #[serde(rename = "palettes")]
+    Palettes,
+    #[serde(rename = "reactions")]
+    Reactions,
+    #[serde(rename = "looks")]
+    Looks,
+    #[serde(rename = "scenes")]
+    Scenes,
+    #[serde(rename = "zone-templates")]
+    ZoneTemplates,
+}
+impl ::std::fmt::Display for ItemType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Palettes => f.write_str("palettes"),
+            Self::Reactions => f.write_str("reactions"),
+            Self::Looks => f.write_str("looks"),
+            Self::Scenes => f.write_str("scenes"),
+            Self::ZoneTemplates => f.write_str("zone-templates"),
+        }
+    }
+}
+impl ::std::str::FromStr for ItemType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "palettes" => Ok(Self::Palettes),
+            "reactions" => Ok(Self::Reactions),
+            "looks" => Ok(Self::Looks),
+            "scenes" => Ok(Self::Scenes),
+            "zone-templates" => Ok(Self::ZoneTemplates),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`JoinRequest`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -7393,6 +7816,297 @@ impl<'de> ::serde::Deserialize<'de> for LevelsSurface {
             })
     }
 }
+///An item of an installed pack, for the gallery.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LibraryItem {
+    ///SHA-256 (hex) of the item's file, as provenance records it.
+    pub hash: LibraryItemHash,
+    ///The item, as clamped (pack.json's item of this type).
+    pub item: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    pub pack: LibraryItemPack,
+    ///The preview's path under /library/packs/{pack}/previews/, or empty.
+    pub preview: LibraryItemPreview,
+    ///author/pack:item.
+    #[serde(rename = "ref")]
+    pub ref_: LibraryItemRef,
+    #[serde(rename = "type")]
+    pub type_: ItemType,
+    ///The pack's version.
+    pub version: LibraryItemVersion,
+}
+///SHA-256 (hex) of the item's file, as provenance records it.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LibraryItemHash(::std::string::String);
+impl ::std::ops::Deref for LibraryItemHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LibraryItemHash> for ::std::string::String {
+    fn from(value: LibraryItemHash) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LibraryItemHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LibraryItemHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LibraryItemHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LibraryItemHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`LibraryItemPack`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LibraryItemPack(::std::string::String);
+impl ::std::ops::Deref for LibraryItemPack {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LibraryItemPack> for ::std::string::String {
+    fn from(value: LibraryItemPack) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LibraryItemPack {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 65usize {
+            return Err("longer than 65 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LibraryItemPack {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LibraryItemPack {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LibraryItemPack {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The preview's path under /library/packs/{pack}/previews/, or empty.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LibraryItemPreview(::std::string::String);
+impl ::std::ops::Deref for LibraryItemPreview {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LibraryItemPreview> for ::std::string::String {
+    fn from(value: LibraryItemPreview) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LibraryItemPreview {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 255usize {
+            return Err("longer than 255 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LibraryItemPreview {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LibraryItemPreview {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LibraryItemPreview {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///author/pack:item.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LibraryItemRef(::std::string::String);
+impl ::std::ops::Deref for LibraryItemRef {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LibraryItemRef> for ::std::string::String {
+    fn from(value: LibraryItemRef) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LibraryItemRef {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LibraryItemRef {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LibraryItemRef {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LibraryItemRef {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///The pack's version.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LibraryItemVersion(::std::string::String);
+impl ::std::ops::Deref for LibraryItemVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LibraryItemVersion> for ::std::string::String {
+    fn from(value: LibraryItemVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LibraryItemVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 32usize {
+            return Err("longer than 32 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LibraryItemVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LibraryItemVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LibraryItemVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///Elements spaced evenly along a path, or at explicit positions (Hue gradient channels).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -7865,8 +8579,14 @@ pub struct LogsTailParams {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LookItem {
+    ///Shown in the gallery.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub description: ::std::option::Option<LookItemDescription>,
     #[serde(default = "defaults::look_item_effect")]
     pub effect: EffectRef,
+    ///Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub hints: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(default = "defaults::look_item_id")]
     pub id: Id,
     #[serde(default = "defaults::look_item_name")]
@@ -7883,7 +8603,9 @@ pub struct LookItem {
 impl ::std::default::Default for LookItem {
     fn default() -> Self {
         Self {
+            description: Default::default(),
             effect: defaults::look_item_effect(),
+            hints: Default::default(),
             id: defaults::look_item_id(),
             name: defaults::look_item_name(),
             palette: defaults::look_item_palette(),
@@ -7891,6 +8613,60 @@ impl ::std::default::Default for LookItem {
             reaction: defaults::look_item_reaction(),
             schema_version: defaults::look_item_schema_version(),
         }
+    }
+}
+///Shown in the gallery.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct LookItemDescription(::std::string::String);
+impl ::std::ops::Deref for LookItemDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LookItemDescription> for ::std::string::String {
+    fn from(value: LookItemDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for LookItemDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for LookItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LookItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for LookItemDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`LookItemPalette`
@@ -7918,8 +8694,8 @@ impl ::std::str::FromStr for LookItemPalette {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -7977,8 +8753,8 @@ impl ::std::str::FromStr for LookItemReaction {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 160usize {
-            return Err("longer than 160 characters".into());
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -10627,6 +11403,143 @@ impl ::std::default::Default for Orientation {
         }
     }
 }
+///`PackCategory`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PackCategory {
+    #[serde(default = "defaults::pack_category_description")]
+    pub description: PackCategoryDescription,
+    #[serde(default = "defaults::pack_category_id")]
+    pub id: Id,
+    ///Item references (author/pack:item), in order.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub items: ::std::vec::Vec<PackCategoryItemsItem>,
+    #[serde(default = "defaults::pack_category_name")]
+    pub name: Name,
+}
+impl ::std::default::Default for PackCategory {
+    fn default() -> Self {
+        Self {
+            description: defaults::pack_category_description(),
+            id: defaults::pack_category_id(),
+            items: Default::default(),
+            name: defaults::pack_category_name(),
+        }
+    }
+}
+///`PackCategoryDescription`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PackCategoryDescription(::std::string::String);
+impl ::std::ops::Deref for PackCategoryDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PackCategoryDescription> for ::std::string::String {
+    fn from(value: PackCategoryDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::default::Default for PackCategoryDescription {
+    fn default() -> Self {
+        PackCategoryDescription("".to_string())
+    }
+}
+impl ::std::str::FromStr for PackCategoryDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PackCategoryDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PackCategoryDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PackCategoryDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PackCategoryItemsItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PackCategoryItemsItem(::std::string::String);
+impl ::std::ops::Deref for PackCategoryItemsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PackCategoryItemsItem> for ::std::string::String {
+    fn from(value: PackCategoryItemsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PackCategoryItemsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PackCategoryItemsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PackCategoryItemsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PackCategoryItemsItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`PackContents`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -10916,9 +11829,13 @@ impl<'de> ::serde::Deserialize<'de> for PackContentsZoneTemplatesItem {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct PackInfo {
-    ///folo-core, folo-genres and folo-effects can't be removed.
+    ///folo/core, folo/genres and folo/effects ship with the node and can't be removed.
     pub builtin: bool,
     pub description: PackInfoDescription,
+    ///A local pack (author local), whose items can be written.
+    pub editable: bool,
+    ///SHA-256 (hex) of the pack's canonical .folopack (ADR-0038 D9).
+    pub hash: PackInfoHash,
     pub id: PackInfoId,
     pub items: i64,
     pub name: PackInfoName,
@@ -10967,6 +11884,62 @@ impl ::std::convert::TryFrom<::std::string::String> for PackInfoDescription {
     }
 }
 impl<'de> ::serde::Deserialize<'de> for PackInfoDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///SHA-256 (hex) of the pack's canonical .folopack (ADR-0038 D9).
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PackInfoHash(::std::string::String);
+impl ::std::ops::Deref for PackInfoHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PackInfoHash> for ::std::string::String {
+    fn from(value: PackInfoHash) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PackInfoHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PackInfoHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PackInfoHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PackInfoHash {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -11146,6 +12119,9 @@ impl<'de> ::serde::Deserialize<'de> for PackInfoVersion {
 pub struct PackManifest {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub authors: ::std::vec::Vec<PackManifestAuthorsItem>,
+    ///Groups of the gallery, merged by id across packs (ADR-0038 D17).
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub categories: ::std::vec::Vec<PackCategory>,
     #[serde(default = "defaults::pack_manifest_contents")]
     pub contents: PackContents,
     #[serde(default = "defaults::pack_manifest_description")]
@@ -11189,6 +12165,7 @@ impl ::std::default::Default for PackManifest {
     fn default() -> Self {
         Self {
             authors: Default::default(),
+            categories: Default::default(),
             contents: defaults::pack_manifest_contents(),
             description: defaults::pack_manifest_description(),
             files: Default::default(),
@@ -12279,6 +13256,12 @@ impl<'de> ::serde::Deserialize<'de> for PaletteColor {
 pub struct PaletteItem {
     #[serde(default = "defaults::palette_item_colors")]
     pub colors: ::std::vec::Vec<PaletteColor>,
+    ///Shown in the gallery.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub description: ::std::option::Option<PaletteItemDescription>,
+    ///Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub hints: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(default = "defaults::palette_item_id")]
     pub id: Id,
     #[serde(default = "defaults::palette_item_name")]
@@ -12290,10 +13273,66 @@ impl ::std::default::Default for PaletteItem {
     fn default() -> Self {
         Self {
             colors: defaults::palette_item_colors(),
+            description: Default::default(),
+            hints: Default::default(),
             id: defaults::palette_item_id(),
             name: defaults::palette_item_name(),
             schema_version: defaults::palette_item_schema_version(),
         }
+    }
+}
+///Shown in the gallery.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PaletteItemDescription(::std::string::String);
+impl ::std::ops::Deref for PaletteItemDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PaletteItemDescription> for ::std::string::String {
+    fn from(value: PaletteItemDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for PaletteItemDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PaletteItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PaletteItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PaletteItemDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`PathPlacement`
@@ -12370,10 +13409,13 @@ pub struct PointGeometry {
     #[serde(default = "defaults::point_geometry_position")]
     pub position: Vec3,
 }
-///Where an applied scene came from.
+///Where an applied scene came from (ADR-0038 D11).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Provenance {
+    ///SHA-256 (hex) of the item's file as applied; absent when unknown.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hash: ::std::option::Option<ProvenanceHash>,
     #[serde(default = "defaults::provenance_item")]
     pub item: ProvenanceItem,
     #[serde(default = "defaults::provenance_pack")]
@@ -12384,10 +13426,67 @@ pub struct Provenance {
 impl ::std::default::Default for Provenance {
     fn default() -> Self {
         Self {
+            hash: Default::default(),
             item: defaults::provenance_item(),
             pack: defaults::provenance_pack(),
             version: defaults::provenance_version(),
         }
+    }
+}
+///SHA-256 (hex) of the item's file as applied; absent when unknown.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ProvenanceHash(::std::string::String);
+impl ::std::ops::Deref for ProvenanceHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ProvenanceHash> for ::std::string::String {
+    fn from(value: ProvenanceHash) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ProvenanceHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ProvenanceHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ProvenanceHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ProvenanceHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`ProvenanceItem`
@@ -12474,8 +13573,8 @@ impl ::std::str::FromStr for ProvenancePack {
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() > 64usize {
-            return Err("longer than 64 characters".into());
+        if value.chars().count() > 65usize {
+            return Err("longer than 65 characters".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -13615,6 +14714,12 @@ impl<'de> ::serde::Deserialize<'de> for PurposeToken {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ReactionItem {
+    ///Shown in the gallery.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub description: ::std::option::Option<ReactionItemDescription>,
+    ///Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub hints: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(default = "defaults::reaction_item_id")]
     pub id: Id,
     #[serde(default = "defaults::reaction_item_name")]
@@ -13628,11 +14733,67 @@ pub struct ReactionItem {
 impl ::std::default::Default for ReactionItem {
     fn default() -> Self {
         Self {
+            description: Default::default(),
+            hints: Default::default(),
             id: defaults::reaction_item_id(),
             name: defaults::reaction_item_name(),
             params: Default::default(),
             schema_version: defaults::reaction_item_schema_version(),
         }
+    }
+}
+///Shown in the gallery.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ReactionItemDescription(::std::string::String);
+impl ::std::ops::Deref for ReactionItemDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ReactionItemDescription> for ::std::string::String {
+    fn from(value: ReactionItemDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ReactionItemDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ReactionItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ReactionItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ReactionItemDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///A rectangle of a canvas, 0-1 of its width and height.
@@ -13843,15 +15004,73 @@ impl ::std::convert::From<RectRegion> for Region {
         Self::RectRegion(value)
     }
 }
-///start-end along a strip, 0-1 of its length.
+///start-end along a strip, 0-1 of its length. snap: cover takes every cell the range touches; nearest rounds both ends to the nearest cell, halves up, as the studio's built-in builders do (docs/architecture/pipeline.md, ADR-0038 D14).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct RelativeRegion {
     #[serde(default = "defaults::relative_region_end")]
     pub end: f64,
     pub kind: ::serde_json::Value,
+    ///Absent means cover.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub snap: ::std::option::Option<RelativeRegionSnap>,
     #[serde(default = "defaults::relative_region_start")]
     pub start: f64,
+}
+///Absent means cover.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum RelativeRegionSnap {
+    #[serde(rename = "cover")]
+    Cover,
+    #[serde(rename = "nearest")]
+    Nearest,
+}
+impl ::std::fmt::Display for RelativeRegionSnap {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Cover => f.write_str("cover"),
+            Self::Nearest => f.write_str("nearest"),
+        }
+    }
+}
+impl ::std::str::FromStr for RelativeRegionSnap {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "cover" => Ok(Self::Cover),
+            "nearest" => Ok(Self::Nearest),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for RelativeRegionSnap {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RelativeRegionSnap {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///What `folo reload` applied (docs/architecture/control-plane.md#settings-layering).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -14142,6 +15361,87 @@ impl ::std::convert::TryFrom<String> for Revision {
         value.parse()
     }
 }
+///The surfaces a user chose for a scene's roles in a zone.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RoleBinding {
+    ///Role: surface id.
+    #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
+    pub roles: ::std::collections::HashMap<::std::string::String, Ref>,
+    ///The scene's reference as resolved: author/pack:item, or a scene id of this document.
+    #[serde(default = "defaults::role_binding_scene")]
+    pub scene: RoleBindingScene,
+    #[serde(default = "defaults::role_binding_zone")]
+    pub zone: Ref,
+}
+impl ::std::default::Default for RoleBinding {
+    fn default() -> Self {
+        Self {
+            roles: Default::default(),
+            scene: defaults::role_binding_scene(),
+            zone: defaults::role_binding_zone(),
+        }
+    }
+}
+///The scene's reference as resolved: author/pack:item, or a scene id of this document.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct RoleBindingScene(::std::string::String);
+impl ::std::ops::Deref for RoleBindingScene {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<RoleBindingScene> for ::std::string::String {
+    fn from(value: RoleBindingScene) -> Self {
+        value.0
+    }
+}
+impl ::std::default::Default for RoleBindingScene {
+    fn default() -> Self {
+        RoleBindingScene("".to_string())
+    }
+}
+impl ::std::str::FromStr for RoleBindingScene {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for RoleBindingScene {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for RoleBindingScene {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for RoleBindingScene {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`RpcNotification`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -14254,11 +15554,21 @@ impl ::std::default::Default for Scene {
         }
     }
 }
+///`SceneApplied`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SceneApplied {
+    pub results: ::std::vec::Vec<ApplyResult>,
+    pub show: ShowDocument,
+}
 ///`SceneApplyRequest`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SceneApplyRequest {
-    ///Role: surface id, overriding the automatic match.
+    ///Merge into the zone's active scene, keeping what the user changed since it was applied (ADR-0038 D15).
+    #[serde(default)]
+    pub keep_changes: bool,
+    ///Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub roles: ::std::collections::HashMap<
         ::std::string::String,
@@ -14378,12 +15688,18 @@ impl<'de> ::serde::Deserialize<'de> for SceneApplyRequestZone {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SceneItem {
+    ///Shown in the gallery.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub description: ::std::option::Option<SceneItemDescription>,
     ///Role: the role to use when the zone has no surface for it.
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub fallbacks: ::std::collections::HashMap<
         ::std::string::String,
         SceneItemFallbacksValue,
     >,
+    ///Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub hints: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(default = "defaults::scene_item_id")]
     pub id: Id,
     ///The strip length its cells regions were made for, so they can be scaled to another; 0 when it has none.
@@ -14397,12 +15713,68 @@ pub struct SceneItem {
 impl ::std::default::Default for SceneItem {
     fn default() -> Self {
         Self {
+            description: Default::default(),
             fallbacks: Default::default(),
+            hints: Default::default(),
             id: defaults::scene_item_id(),
             led_count: Default::default(),
             scene: defaults::scene_item_scene(),
             schema_version: defaults::scene_item_schema_version(),
         }
+    }
+}
+///Shown in the gallery.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SceneItemDescription(::std::string::String);
+impl ::std::ops::Deref for SceneItemDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SceneItemDescription> for ::std::string::String {
+    fn from(value: SceneItemDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for SceneItemDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SceneItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for SceneItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SceneItemDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`SceneItemFallbacksValue`
@@ -15527,9 +16899,12 @@ pub struct ShowDocument {
     ///Zone id: scene id.
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub active: ::std::collections::HashMap<::std::string::String, Ref>,
-    ///What Reset all restores: a scene id, or a built-in id (fx:*, genre:*) resolved through the alias table.
+    ///Remembered role overrides per zone and scene (ADR-0038 D13).
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub bindings: ::std::vec::Vec<RoleBinding>,
+    ///What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).
     #[serde(default = "defaults::show_document_default_scene")]
-    pub default_scene: Ref,
+    pub default_scene: ShowDocumentDefaultScene,
     #[serde(default = "defaults::show_document_revision")]
     pub revision: Revision,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -15543,12 +16918,133 @@ impl ::std::default::Default for ShowDocument {
     fn default() -> Self {
         Self {
             active: Default::default(),
+            bindings: Default::default(),
             default_scene: defaults::show_document_default_scene(),
             revision: defaults::show_document_revision(),
             scenes: Default::default(),
             schema_version: defaults::show_document_schema_version(),
             server_id: defaults::show_document_server_id(),
         }
+    }
+}
+///What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ShowDocumentDefaultScene(::std::string::String);
+impl ::std::ops::Deref for ShowDocumentDefaultScene {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ShowDocumentDefaultScene> for ::std::string::String {
+    fn from(value: ShowDocumentDefaultScene) -> Self {
+        value.0
+    }
+}
+impl ::std::default::Default for ShowDocumentDefaultScene {
+    fn default() -> Self {
+        ShowDocumentDefaultScene("".to_string())
+    }
+}
+impl ::std::str::FromStr for ShowDocumentDefaultScene {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 130usize {
+            return Err("longer than 130 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ShowDocumentDefaultScene {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ShowDocumentDefaultScene {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ShowDocumentDefaultScene {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Reset all: the zones to reset; empty for every zone (ADR-0038 D21).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ShowResetRequest {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub zones: ::std::vec::Vec<ShowResetRequestZonesItem>,
+}
+///`ShowResetRequestZonesItem`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ShowResetRequestZonesItem(::std::string::String);
+impl ::std::ops::Deref for ShowResetRequestZonesItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ShowResetRequestZonesItem> for ::std::string::String {
+    fn from(value: ShowResetRequestZonesItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ShowResetRequestZonesItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ShowResetRequestZonesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ShowResetRequestZonesItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ShowResetRequestZonesItem {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///Header of a signal frame (FOLG), little-endian; count float32 values follow.
@@ -19340,6 +20836,12 @@ impl ::std::default::Default for ZoneReactive {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ZoneTemplateItem {
+    ///Shown in the gallery.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub description: ::std::option::Option<ZoneTemplateItemDescription>,
+    ///Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.
+    #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
+    pub hints: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     #[serde(default = "defaults::zone_template_item_id")]
     pub id: Id,
     #[serde(default = "defaults::zone_template_item_schema_version")]
@@ -19350,10 +20852,66 @@ pub struct ZoneTemplateItem {
 impl ::std::default::Default for ZoneTemplateItem {
     fn default() -> Self {
         Self {
+            description: Default::default(),
+            hints: Default::default(),
             id: defaults::zone_template_item_id(),
             schema_version: defaults::zone_template_item_schema_version(),
             zone: defaults::zone_template_item_zone(),
         }
+    }
+}
+///Shown in the gallery.
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ZoneTemplateItemDescription(::std::string::String);
+impl ::std::ops::Deref for ZoneTemplateItemDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ZoneTemplateItemDescription> for ::std::string::String {
+    fn from(value: ZoneTemplateItemDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ZoneTemplateItemDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 500usize {
+            return Err("longer than 500 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ZoneTemplateItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ZoneTemplateItemDescription {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ZoneTemplateItemDescription {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`ZoneType`
@@ -20001,6 +21559,15 @@ pub mod defaults {
     pub(super) fn orientation_yaw() -> f64 {
         0_f64
     }
+    pub(super) fn pack_category_description() -> super::PackCategoryDescription {
+        super::PackCategoryDescription("".to_string())
+    }
+    pub(super) fn pack_category_id() -> super::Id {
+        super::Id("".to_string())
+    }
+    pub(super) fn pack_category_name() -> super::Name {
+        super::Name("Category".to_string())
+    }
     pub(super) fn pack_manifest_contents() -> super::PackContents {
         super::PackContents {
             looks: vec![],
@@ -20195,6 +21762,12 @@ pub mod defaults {
     pub(super) fn relative_region_start() -> f64 {
         0_f64
     }
+    pub(super) fn role_binding_scene() -> super::RoleBindingScene {
+        super::RoleBindingScene("".to_string())
+    }
+    pub(super) fn role_binding_zone() -> super::Ref {
+        super::Ref("".to_string())
+    }
     pub(super) fn scene_id() -> super::Id {
         super::Id("".to_string())
     }
@@ -20289,8 +21862,8 @@ pub mod defaults {
     pub(super) fn secrets_document_server_id() -> super::ServerId {
         super::ServerId("".to_string())
     }
-    pub(super) fn show_document_default_scene() -> super::Ref {
-        super::Ref("".to_string())
+    pub(super) fn show_document_default_scene() -> super::ShowDocumentDefaultScene {
+        super::ShowDocumentDefaultScene("".to_string())
     }
     pub(super) fn show_document_revision() -> super::Revision {
         super::Revision(0_i64)
