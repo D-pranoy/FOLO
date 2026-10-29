@@ -53,7 +53,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/zones/{id}/activate`, `/deactivate`, `/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
+| `/zones/{id}/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
 | `/scenes/{id}/apply`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |

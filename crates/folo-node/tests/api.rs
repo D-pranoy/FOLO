@@ -18,7 +18,7 @@ use base64::engine::general_purpose::STANDARD;
 use folo_node::cli::{LocationArgs, RunArgs};
 use folo_protocol::generated::{
     EffectInfo, Info, InputList, LiveLevelsMessage, LiveStatusMessage, LogLines, MediaState, State,
-    SystemSettings, Zone,
+    SystemSettings, Zone, ZoneActivation,
 };
 use folo_supervisor::EngineCommand;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -723,6 +723,7 @@ async fn requests_reach_the_engine_and_the_live_channel_streams_it() {
     let inputs = node.get("/api/v1/sources/local/inputs").await.json();
     assert_eq!(inputs["default_output"], "signals:beat,spectrum levels:0");
     documents_written_are_announced(&node, &mut socket).await;
+    the_engine_renders_active_zones_only(&node, &zone_id).await;
     unreadable_messages_close_the_connection(&mut socket).await;
 
     // Once nobody watches, the engine isn't asked for them any more
@@ -736,6 +737,43 @@ async fn requests_reach_the_engine_and_the_live_channel_streams_it() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(node.stop().await, 0);
+}
+
+/// Waits until the engine was asked for `levels:` as `inputs.list` reports it.
+async fn asked_levels(node: &Running, levels: &str) {
+    let wanted = format!("signals:beat,spectrum levels:{levels}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let inputs = node.get("/api/v1/sources/local/inputs").await.json();
+        if inputs["default_output"] == wanted {
+            return;
+        }
+        assert!(Instant::now() < deadline, "not asked {wanted}: {inputs}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Deactivating the zone takes its surface from `config.apply`: the levels
+/// the engine is asked for follow the assigned surfaces.
+async fn the_engine_renders_active_zones_only(node: &Running, zone_id: &str) {
+    let off = node
+        .send_json(
+            "POST",
+            &format!("/api/v1/zones/{zone_id}/deactivate"),
+            &json!({}),
+        )
+        .await;
+    assert_eq!(off.json()["active"], false);
+    asked_levels(node, "").await;
+    let on = node
+        .send_json(
+            "POST",
+            &format!("/api/v1/zones/{zone_id}/activate"),
+            &json!({}),
+        )
+        .await;
+    assert_eq!(on.json()["active"], true);
+    asked_levels(node, "0").await;
 }
 
 /// Requests to the source go through its link.
@@ -856,7 +894,8 @@ async fn every_kind_of_data_arrives(socket: &mut Live, zone_id: &str) {
     assert_eq!(data["sources"]["local"]["beat"]["locked"], true);
     assert_eq!(
         data["zones"][zone_id],
-        json!({"active": false, "ambient": 0, "quiet_s": 0})
+        json!({"active": true, "ambient": 0, "quiet_s": 0}),
+        "a new zone is active"
     );
     let levels = levels.unwrap();
     conforms::<LiveLevelsMessage>(&levels, "a levels message");
@@ -896,4 +935,202 @@ async fn unreadable_messages_close_the_connection(socket: &mut Live) {
         }
     };
     assert_eq!(close.unwrap().code, CloseCode::Policy);
+}
+
+// ------------------------------------------------------------------ zone activation
+
+fn zone_on(name: &str, instance: &str, start: u64, count: u64) -> Value {
+    json!({"name": name, "targets": [{
+        "id": format!("target-{name}"), "kind": "line",
+        "provider": {"instance": instance, "address": {"start": start, "count": count}},
+    }]})
+}
+
+async fn add_zone(node: &Running, zone: &Value) -> String {
+    let created = node.send_json("POST", "/api/v1/zones", zone).await;
+    assert_eq!(created.status, 201);
+    created.json()["id"].as_str().unwrap().to_owned()
+}
+
+async fn zones_revision(node: &Running) -> u64 {
+    node.get("/api/v1/zones").await.json()["revision"]
+        .as_u64()
+        .unwrap()
+}
+
+async fn stored_active(node: &Running, id: &str) -> bool {
+    node.get(&format!("/api/v1/zones/{id}")).await.json()["active"]
+        .as_bool()
+        .unwrap()
+}
+
+/// `POST /zones/{id}/activate` or `/deactivate`, checked against `ZoneActivation`.
+async fn toggle(node: &Running, id: &str, verb: &str, body: &Value) -> Value {
+    let answer = node
+        .send_json("POST", &format!("/api/v1/zones/{id}/{verb}"), body)
+        .await;
+    assert_eq!(
+        answer.status,
+        200,
+        "{verb}: {}",
+        String::from_utf8_lossy(&answer.body)
+    );
+    let json = answer.json();
+    conforms::<ZoneActivation>(&json, "a zone activation");
+    assert_eq!(json["zone"], id);
+    json
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn zones_are_activated_with_conflicts_and_take_over() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let node = Running::start(&home, false).await;
+    // b shares LEDs with a: written after it, it comes up inactive and is refused nothing
+    let a = add_zone(&node, &zone_on("a", "wled", 0, 10)).await;
+    let b = add_zone(&node, &zone_on("b", "wled", 5, 10)).await;
+    let c = add_zone(&node, &zone_on("c", "other", 0, 10)).await;
+    assert!(stored_active(&node, &b).await, "GET gives the stored flag");
+
+    let revision = zones_revision(&node).await;
+    let nothing = json!({});
+    assert_eq!(
+        toggle(&node, &b, "activate", &nothing).await,
+        json!({"zone": b, "active": false, "conflicts": [a]}),
+        "a stored-active zone the check suppressed gets its holder as conflict"
+    );
+    assert_eq!(
+        toggle(&node, &a, "activate", &nothing).await,
+        json!({"zone": a, "active": true, "conflicts": []})
+    );
+    assert_eq!(
+        toggle(&node, &c, "activate", &nothing).await["active"],
+        true
+    );
+    assert_eq!(zones_revision(&node).await, revision, "nothing was written");
+
+    let taken = toggle(&node, &b, "activate", &json!({"take_over": true})).await;
+    assert_eq!(taken, json!({"zone": b, "active": true, "conflicts": []}));
+    assert!(
+        !stored_active(&node, &a).await,
+        "the loser is deactivated entirely"
+    );
+    assert!(
+        stored_active(&node, &c).await,
+        "zones without shared targets stay"
+    );
+    assert_eq!(zones_revision(&node).await, revision + 1);
+
+    // a is inactive and conflicts with b again
+    assert_eq!(
+        toggle(&node, &a, "activate", &nothing).await,
+        json!({"zone": a, "active": false, "conflicts": [b]})
+    );
+    let off = toggle(&node, &b, "deactivate", &nothing).await;
+    assert_eq!(off, json!({"zone": b, "active": false, "conflicts": []}));
+    assert_eq!(zones_revision(&node).await, revision + 2);
+    toggle(&node, &b, "deactivate", &nothing).await;
+    assert_eq!(zones_revision(&node).await, revision + 2, "already off");
+    assert_eq!(
+        toggle(&node, &a, "activate", &nothing).await["active"],
+        true
+    );
+    // An empty body is no take_over
+    let empty = node
+        .call(
+            "POST",
+            &format!("/api/v1/zones/{b}/activate"),
+            &[("Content-Type", "application/json")],
+            None,
+        )
+        .await;
+    assert_eq!(empty.json()["conflicts"], json!([a]));
+
+    // A zone the check suppressed takes its target over too, and the holder goes
+    let extra = add_zone(&node, &zone_on("e", "wled", 6, 2)).await;
+    let d = add_zone(&node, &zone_on("d", "wled", 0, 8)).await;
+    assert_eq!(
+        toggle(&node, &d, "activate", &nothing).await["conflicts"],
+        json!([a])
+    );
+    let taken = toggle(&node, &d, "activate", &json!({"take_over": true})).await;
+    assert_eq!(taken["active"], true);
+    assert!(!stored_active(&node, &a).await);
+    assert!(
+        !stored_active(&node, &extra).await,
+        "extra was suppressed, and goes too"
+    );
+    toggle(&node, &a, "activate", &json!({"take_over": true})).await;
+
+    for verb in ["activate", "deactivate"] {
+        let missing = node
+            .send_json("POST", &format!("/api/v1/zones/nope/{verb}"), &nothing)
+            .await;
+        assert_eq!(missing.status, 404, "{verb}");
+        assert_eq!(missing.code(), "not_found");
+    }
+    for bad in [
+        json!({"take_over": "yes"}),
+        json!({"other": true}),
+        json!([]),
+    ] {
+        let refused = node
+            .send_json("POST", &format!("/api/v1/zones/{a}/activate"), &bad)
+            .await;
+        assert_eq!(refused.status, 400, "{bad}");
+    }
+    assert_eq!(node.stop().await, 0);
+    let saved: Value =
+        serde_json::from_slice(&std::fs::read(home.0.join("zones.json")).unwrap()).unwrap();
+    assert_eq!(
+        saved["zones"][0]["active"], true,
+        "stored when the node stopped"
+    );
+}
+
+/// Reads live messages until a `status` satisfies `wanted`.
+async fn status_until(socket: &mut Live, wanted: impl Fn(&Value) -> bool) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        assert!(Instant::now() < deadline, "no such status");
+        if let Message::Text(text) = next(socket).await {
+            let message: Value = serde_json::from_str(&text).unwrap();
+            if message["type"] == "status" && wanted(&message["data"]) {
+                conforms::<LiveStatusMessage>(&message, "a status message");
+                return message;
+            }
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_live_channel_reports_the_effective_activation() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let node = Running::start(&home, false).await;
+    let a = add_zone(&node, &zone_on("a", "wled", 0, 10)).await;
+    let b = add_zone(&node, &zone_on("b", "wled", 5, 10)).await;
+    let url = format!("ws://127.0.0.1:{}/api/v1/live", node.port);
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    let topics = json!({"subscribe": ["status", format!("zone:{b}")]});
+    socket
+        .send(Message::Text(topics.to_string().into()))
+        .await
+        .unwrap();
+
+    // b's stored flag is true, but a holds the target
+    let (ka, kb) = (a.clone(), b.clone());
+    status_until(&mut socket, |d| {
+        d["zones"][&ka]["active"] == true && d["zones"][&kb]["active"] == false
+    })
+    .await;
+    assert!(stored_active(&node, &b).await);
+
+    toggle(&node, &a, "deactivate", &json!({})).await;
+    let (ka, kb) = (a.clone(), b.clone());
+    status_until(&mut socket, |d| {
+        d["zones"][&ka]["active"] == false && d["zones"][&kb]["active"] == true
+    })
+    .await;
+    assert_eq!(node.stop().await, 0);
 }
