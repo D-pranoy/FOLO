@@ -1,6 +1,6 @@
 # M6 Screen
 
-Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; the backends, the bar detector, the link and the Screen effect follow)
+Status: Accepted · Implementation: Partial (step 7 done: the engine's screen input, `CanvasEffect`, the Screen effect, the render trigger and the per-surface screen activity; the capture crates and the node's side are not started)
 
 ## RB-14: Display capture and Screen effect
 
@@ -13,7 +13,6 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - `folo-capture-core`: a `CaptureBackend` trait (list screens, start, frames, stop), the errors, the `FOLC` frame codec, the colour and downscale reference, and the synthetic and replay backends for tests
    - `folo-capture-windows` and `folo-capture-linux` for the backends, and `folo-capture`, the binary (`run`, `screens --json`, `--backend`)
    - `unsafe` code only in the backend crates' FFI modules (ADR-0037 D19)
-   - done so far: `folo-capture-core` (the types, the trait, the codec, the colour and sizing reference, the frame pacer, the synthetic and replay backends) and the `folo-capture` binary with `run`, `screens --json` and `--backend`; `run` stops at the link client, which comes with the node's side
 2. **Windows backend:**
    - Desktop Duplication through `windows-rs`: `DuplicateOutput1` with BGRA8 and R16G16B16A16_FLOAT; a device on the output's adapter
    - Windows.Graphics.Capture fallback: cursor off, free-threaded frame pool, borderless with consent on build 20348+
