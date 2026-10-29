@@ -1,6 +1,6 @@
 # M5 Devices
 
-Status: Accepted · Implementation: Partial (RB-12 steps 1–8 built on fakes; step 9 and RB-13 not started)
+Status: Accepted · Implementation: Partial (RB-13 steps 1–6, 9 and 10)
 
 ## RB-12: WLED provider
 
@@ -30,6 +30,7 @@ Status: Accepted · Implementation: Partial (RB-12 steps 1–8 built on fakes; s
 
 **Goal:** Hue entertainment streaming, managed configurations, zone sync and basic administration.
 **Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)).
+**Status:** steps 1–6, 9 and 10 are done in `crates/folo-provider-hue` (see the [implementation notes](../integrations/hue.md#implementation-notes)); steps 7 and 8, the sync tests of step 10, and step 11 remain.
 
 1. **Fake bridge first:**
    - a REST double: `/api/config`, `/api` pairing (link-button states), `/auth/v1`, CLIP v2 resources and entertainment configuration CRUD, the event stream
