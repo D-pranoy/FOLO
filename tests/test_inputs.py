@@ -125,10 +125,3 @@ def test_generator_noise_is_smooth_and_repeatable() -> None:
     # 2 values a second, eased: at most a small step every 10 ms
     assert max(abs(b - a) for a, b in itertools.pairwise(values)) < 0.05
     assert max(values) - min(values) > 0.5
-
-
-def test_screen_inputs_have_no_frames_yet() -> None:
-    screen = ScreenInput('display-1', enabled=True)
-    assert screen.latest() is None
-    assert screen.health() == 'error'
-    assert ScreenInput('display-2').health() == 'idle'

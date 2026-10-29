@@ -1,0 +1,21 @@
+[package]
+name = "folo-compositor"
+description = "The controller's compositor: source priority, activity, crossfades, staleness and the zone's ambient light (RB-08 step 3)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-protocol = { path = "../folo-protocol" }
+
+[dev-dependencies]
+png = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }

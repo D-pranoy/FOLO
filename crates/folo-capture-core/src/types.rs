@@ -2,6 +2,8 @@
 //! flags, bars and pictures of its frames. The JSON shapes are those of
 //! specs/schema/source-link.json and api.json (a test checks them).
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::CaptureError;
@@ -257,7 +259,11 @@ impl Bars {
 
 /// What a backend delivers: a downscaled picture, before the pacer gives it
 /// a sequence number and a time.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Debug` prints the metadata and the length of the pixels, never the pixels:
+/// raw frames reach no log or status (ADR-0037 D9), and a stray `{:?}` mustn't
+/// change that.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Picture {
     /// The screen's position in the agent's `screens.list` answer.
     pub screen_index: u16,
@@ -269,11 +275,35 @@ pub struct Picture {
     pub pixels: Vec<u8>,
 }
 
+impl fmt::Debug for Picture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Picture")
+            .field("screen_index", &self.screen_index)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("flags", &self.flags)
+            .field("bars", &self.bars)
+            .field("pixel_bytes", &self.pixels.len())
+            .finish()
+    }
+}
+
 /// A screen frame as it travels (docs/specs/source-link.md#screen-frames).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Its `Debug` hides the pixels, as [`Picture`]'s does.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ScreenFrame {
     pub sequence: u32,
     /// Microseconds on the operating system's monotonic clock.
     pub timestamp_us: u64,
     pub picture: Picture,
+}
+
+impl fmt::Debug for ScreenFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScreenFrame")
+            .field("sequence", &self.sequence)
+            .field("timestamp_us", &self.timestamp_us)
+            .field("picture", &self.picture)
+            .finish()
+    }
 }
