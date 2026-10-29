@@ -506,7 +506,7 @@ async fn the_node_and_its_catalog(node: &Running) {
 
     let effects = node.get("/api/v1/effects").await.json();
     conforms::<Vec<EffectInfo>>(&effects, "/effects");
-    assert_eq!(effects.as_array().unwrap().len(), 5);
+    assert_eq!(effects.as_array().unwrap().len(), 6);
     let state = node.get("/api/v1/state").await.json();
     conforms::<State>(&state, "/state");
     conforms::<SystemSettings>(&node.get("/api/v1/system").await.json(), "/system");

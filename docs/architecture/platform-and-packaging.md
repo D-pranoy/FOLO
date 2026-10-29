@@ -37,7 +37,7 @@ Services start the node with `--service`, which picks the service folders ([fold
 - **Linux:**
   - `folo.service` is a **systemd user unit**: it runs the node with a local source and can capture audio from the user's PipeWire.
   - `folo-controller.service` is a system unit for headless controllers, running as user `folo` with data in `/var/lib/folo`.
-  - The capture agent is a user unit named `app-<app-id>-capture.service`, `PartOf=` and `After=graphical-session.target`.
+  - The capture agent is a user unit named `app-<app-id>-capture.service`, `PartOf=` and `After=graphical-session.target`. Reserved with service mode: the node starts the agent itself until RB-19 and RB-20 decide how a unit gets the node's launch token ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D2).
 - **Default for desktops is user mode** (start at sign-in, if enabled). Service mode suits headless controllers and audio-only sources, because **screen capture needs a signed-in session** ([display capture](../integrations/display-capture.md#where-capture-runs)).
 
 ## Artifacts per release
