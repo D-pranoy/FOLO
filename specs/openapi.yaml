@@ -270,7 +270,7 @@ paths:
         in: path
         required: true
         description: A basic administration action of the provider (ADR-0014).
-        schema: {type: string, maxLength: 64}
+        schema: {type: string, minLength: 1, maxLength: 64}
     get:
       tags: [providers]
       operationId: getProviderAdmin
@@ -758,6 +758,15 @@ paths:
       responses:
         '101': {description: Switching to the WebSocket protocol.}
         default: {$ref: '#/components/responses/Error'}
+  /capture-link:
+    get:
+      tags: [websockets]
+      operationId: captureLink
+      summary: The node's own capture agent, loopback only (specs/asyncapi.yaml, channel captureLink); proven by its launch token
+      security: []
+      responses:
+        '101': {description: Switching to the WebSocket protocol.}
+        default: {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     bearer:
@@ -774,13 +783,13 @@ components:
       name: id
       in: path
       required: true
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     Node:
       name: node
       in: path
       required: true
       description: A node id.
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     IfMatch:
       name: If-Match
       in: header
