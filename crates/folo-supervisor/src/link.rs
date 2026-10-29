@@ -152,6 +152,9 @@ fn check_hello(shared: &Shared, first: &str, loopback: bool) -> Result<&'static 
         updates: state.received.updates,
         ..Received::default()
     };
+    state.apply_id = None;
+    drop(state);
+    shared.link_changed();
     Ok(version)
 }
 
@@ -193,6 +196,11 @@ async fn session<S: LinkSocket>(
                     let revision = shared.revision.fetch_add(1, Ordering::Relaxed) + 1;
                     params["revision"] = json!(revision);
                     let request = rpc(next_id, "config.apply", &params);
+                    {
+                        let mut state = shared.lock();
+                        state.apply_pending = false;
+                        state.apply_id = Some(next_id);
+                    }
                     next_id += 1;
                     if let Some(ended) = send(socket, Message::Binary(request)).await {
                         return ended;
@@ -275,12 +283,21 @@ fn receive(shared: &Shared, message: &Message, pending: &mut Pending) {
             if let Some(index) = bytes.get(index_at..index_at + 2) {
                 let index = u16::from_le_bytes([index[0], index[1]]);
                 let mut state = shared.lock();
+                // Until the engine answers the newest `config.apply`, a surface frame may be
+                // numbered for the surfaces before it (ADR-0036 D6)
+                if kind == TYPE_SURFACE && (state.apply_pending || state.apply_id.is_some()) {
+                    return;
+                }
                 let update = state.received.next();
                 let value = Arc::new(bytes[1..].to_vec());
                 state
                     .received
                     .frames
                     .insert((kind, index), Stamped { update, value });
+                drop(state);
+                if kind == TYPE_SURFACE {
+                    shared.arrivals.send_modify(|n| *n += 1);
+                }
             }
         }
         other => log::debug!("ignored a message of type {other:?}"),
@@ -320,7 +337,15 @@ fn receive_rpc(shared: &Shared, mut rpc: Value, pending: &mut Pending) {
         }
         return;
     }
-    let waiting = rpc["id"].as_u64().and_then(|id| pending.remove(&id));
+    let id = rpc["id"].as_u64();
+    {
+        // the answer to the newest `config.apply`, an error too: frames count again
+        let mut state = shared.lock();
+        if id.is_some() && state.apply_id == id {
+            state.apply_id = None;
+        }
+    }
+    let waiting = id.and_then(|id| pending.remove(&id));
     if let Some(error) = rpc.get("error") {
         let error = RpcError {
             code: error["code"].as_i64().unwrap_or(0),
@@ -468,6 +493,56 @@ mod tests {
         let mut bytes = vec![TYPE_RPC];
         bytes.extend_from_slice(body.to_string().as_bytes());
         Message::Binary(bytes)
+    }
+
+    /// A surface frame (type byte, `FOLS` header) for surface `index`.
+    fn surface_frame(index: u16) -> Message {
+        let mut bytes = vec![TYPE_SURFACE];
+        bytes.extend_from_slice(b"FOLS");
+        bytes.extend_from_slice(&[1, 0, 0, 0]);
+        bytes.extend_from_slice(&index.to_le_bytes());
+        bytes.extend_from_slice(&[0; 24]);
+        Message::Binary(bytes)
+    }
+
+    /// Surface frames count again only once the engine answered the newest `config.apply`
+    /// (ADR-0036 D6), and each one taken, like each link made or ended, moves `arrivals`.
+    #[tokio::test]
+    async fn surface_frames_wait_for_the_answer_to_the_configuration() {
+        let config = json!({"inputs": {}, "surfaces": [], "scenes": [], "publish": {"surfaces": [], "signals": []}});
+        let shared = expecting("secret", Some(config));
+        let mut arrivals = shared.arrivals.subscribe();
+        let links = shared.links.subscribe();
+        let (node, mut engine) = pipe();
+        let server = {
+            let shared = Arc::clone(&shared);
+            tokio::spawn(async move { serve(&shared, node, true).await })
+        };
+        engine.outgoing.send(hello("secret")).unwrap();
+        welcome_of(engine.incoming.recv().await);
+        let apply = rpc_of(engine.incoming.recv().await);
+        assert_eq!(*links.borrow(), 1, "linked");
+        arrivals.borrow_and_update();
+
+        let frames = |shared: &Shared| shared.lock().received.frames.len();
+        engine.outgoing.send(surface_frame(0)).unwrap();
+        engine.outgoing.send(status()).unwrap();
+        tokio::task::yield_now().await;
+        while !shared.lock().received.notifications.contains_key("status") {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(frames(&shared), 0, "before the answer");
+        assert!(!arrivals.has_changed().unwrap());
+
+        let answer = json!({"jsonrpc": "2.0", "id": apply["id"], "result": {}});
+        engine.outgoing.send(from_engine(&answer)).unwrap();
+        engine.outgoing.send(surface_frame(0)).unwrap();
+        arrivals.changed().await.unwrap();
+        assert_eq!(frames(&shared), 1, "after the answer");
+
+        drop(engine);
+        server.await.unwrap();
+        assert_eq!(*links.borrow(), 2, "the link ended");
     }
 
     #[tokio::test]

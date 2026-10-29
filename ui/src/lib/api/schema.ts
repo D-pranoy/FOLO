@@ -880,6 +880,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/capture-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The node's own capture agent, loopback only (specs/asyncapi.yaml, channel captureLink); proven by its launch token */
+        get: operations["captureLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2025,6 +2042,16 @@ export interface components {
             /** @default [] */
             targets: components["schemas"]["MacroTarget"][];
         };
+        ScreenMargins: {
+            /** @default 0 */
+            top: number;
+            /** @default 0 */
+            bottom: number;
+            /** @default 0 */
+            left: number;
+            /** @default 0 */
+            right: number;
+        };
         Palette: components["schemas"]["Color"][];
         Scene: {
             /** @default  */
@@ -2221,6 +2248,50 @@ export interface components {
                 TrailParams: {
                     /** @default 300 */
                     fade: number;
+                };
+                /** @description The screen effect: what the capture agent's frames show, cropped, sampled onto the layer's region of a canvas, coloured and smoothed. On a strip it draws nothing. */
+                ScreenParams: {
+                    /**
+                     * @description area: the whole picture. edge: the picture's border, spread inward.
+                     * @default area
+                     * @enum {unknown}
+                     */
+                    mode: "area" | "edge";
+                    /**
+                     * @description How deep the border reaches into the picture in edge mode, as a share of its width and height.
+                     * @default 0.15
+                     */
+                    edge_depth: number;
+                    /**
+                     * @description The shares of the picture to leave out at each side, after the black bars.
+                     * @default {}
+                     */
+                    margins: components["schemas"]["ScreenMargins"];
+                    /** @default 1 */
+                    brightness: number;
+                    /** @default 1 */
+                    saturation: number;
+                    /**
+                     * @description The time constant of the smoothing, ms; 0 shows each frame as it is.
+                     * @default 150
+                     */
+                    smoothing: number;
+                    /**
+                     * @description follow: leave out the black bars the capture agent found. ignore: use the whole picture.
+                     * @default follow
+                     * @enum {unknown}
+                     */
+                    bars: "follow" | "ignore";
+                };
+                ScreenMargins: {
+                    /** @default 0 */
+                    top: number;
+                    /** @default 0 */
+                    bottom: number;
+                    /** @default 0 */
+                    left: number;
+                    /** @default 0 */
+                    right: number;
                 };
                 /** @description The audio-visualizer effect's parameters: today's segment fields, unchanged. threshold and ceiling show the widest range here; the thresholds rule applies the limits of the trigger. */
                 AudioVisualizerParams: {
@@ -2475,6 +2546,26 @@ export interface components {
              */
             enabled: boolean;
         };
+        /** @description How the capture agent finds the black bars (letterbox and pillarbox) around the picture. */
+        BlackBars: {
+            /**
+             * @description auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.
+             * @default auto
+             * @enum {unknown}
+             */
+            preset: "auto" | "off" | "21:9" | "4:3";
+            /**
+             * @description default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.
+             * @default default
+             * @enum {unknown}
+             */
+            mode: "default" | "letterbox" | "osd";
+            /**
+             * @description How dark a pixel counts as black, as a share of full scale.
+             * @default 0.05
+             */
+            threshold: number;
+        };
         ScreenInput: {
             /**
              * @description The selected screen.
@@ -2483,6 +2574,14 @@ export interface components {
             id: string;
             /** @default false */
             enabled: boolean;
+            /** @default {} */
+            black_bars: components["schemas"]["BlackBars"];
+            /**
+             * @description video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars.
+             * @default video
+             * @enum {unknown}
+             */
+            profile: "video" | "game";
         };
         SourceInputs: {
             /** @default {} */
@@ -2592,6 +2691,34 @@ export interface components {
                     id: string;
                     /** @default false */
                     enabled: boolean;
+                    /** @default {} */
+                    black_bars: components["schemas"]["BlackBars"];
+                    /**
+                     * @description video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars.
+                     * @default video
+                     * @enum {unknown}
+                     */
+                    profile: "video" | "game";
+                };
+                /** @description How the capture agent finds the black bars (letterbox and pillarbox) around the picture. */
+                BlackBars: {
+                    /**
+                     * @description auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.
+                     * @default auto
+                     * @enum {unknown}
+                     */
+                    preset: "auto" | "off" | "21:9" | "4:3";
+                    /**
+                     * @description default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.
+                     * @default default
+                     * @enum {unknown}
+                     */
+                    mode: "default" | "letterbox" | "osd";
+                    /**
+                     * @description How dark a pixel counts as black, as a share of full scale.
+                     * @default 0.05
+                     */
+                    threshold: number;
                 };
             };
         };
@@ -2709,7 +2836,9 @@ export interface components {
         Screen: {
             id: string;
             name: string;
+            /** @description In pixels; 0 while it isn't known (the Linux portal entry, before the user has chosen a screen). */
             width: number;
+            /** @description In pixels; 0 while it isn't known. */
             height: number;
             primary: boolean;
         };
@@ -4516,6 +4645,25 @@ export interface operations {
         };
     };
     sourceLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the WebSocket protocol. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    captureLink: {
         parameters: {
             query?: never;
             header?: never;

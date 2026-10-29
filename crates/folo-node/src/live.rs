@@ -13,6 +13,7 @@ use axum::extract::State;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
+use folo_controller::ZoneLive;
 use folo_store::Doc;
 use folo_supervisor::config::{LOCAL_SOURCE, Wanted};
 use folo_supervisor::{Received, WorkerState};
@@ -22,6 +23,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::node::Node;
 use crate::server::not_a_websocket;
+use crate::zones;
 
 /// Updates per second per connection.
 const RATE_HZ: u64 = 30;
@@ -301,7 +303,27 @@ impl Client {
             node.supervisor
                 .received(|received| self.engine_data(&config, received, &mut out));
         }
+        self.target_frames(node, &mut out);
         out
+    }
+
+    /// The `target:<id>` frames: the targets' projected colours, or their test patterns
+    /// (ADR-0036 D19), whether or not an engine is linked.
+    fn target_frames(&mut self, node: &Node, out: &mut Vec<Message>) {
+        node.output.published(|published| {
+            for (text, (topic, index)) in &self.topics {
+                let (Topic::Target(id), Some(index)) = (topic, index) else {
+                    continue;
+                };
+                let Some(frame) = published.targets.get(id) else {
+                    continue;
+                };
+                let key = (text.clone(), 0);
+                if self.sent.insert(key, frame.update) != Some(frame.update) {
+                    out.push(reindexed(&frame.value, SURFACE_INDEX_AT, *index));
+                }
+            }
+        });
     }
 
     /// `levels` messages and frames from the local engine.
@@ -351,7 +373,7 @@ impl Client {
                         }
                     }
                 }
-                // Targets' colours come with the adapter chain (RB-08)
+                // Targets' colours come from the output (`target_frames`)
                 _ => {}
             }
         }
@@ -366,17 +388,26 @@ impl Client {
         let mut providers = Map::new();
         let mut any = all;
         let known = known_sources(node);
-        let zone_ids = ids(&node.store.get(Doc::Zones), "zones");
+        let zones_doc = node.store.get(Doc::Zones);
+        let zone_ids = ids(&zones_doc, "zones");
+        // The effective state, not the stored flag (ADR-0036 D3)
+        let active = zones::check(&zones_doc);
+        let reactive = node.output.published(|p| p.zones.clone());
+        let zone_live = |id: &str| zone_live(active.is_active(id), reactive.get(id));
         if all {
             for id in &known {
                 sources.insert(id.clone(), json!({"state": source_state(node, id)}));
             }
             for id in &zone_ids {
-                zones.insert(id.clone(), zone_live());
+                zones.insert(id.clone(), zone_live(id));
             }
-            // Providers run with their interface (RB-08)
             for id in ids(&node.store.get(Doc::Providers), "providers") {
-                providers.insert(id, json!({"state": "off"}));
+                let status = node.output.provider_status(&id);
+                let mut live = json!({"state": status.state.live()});
+                if let Some(message) = status.message {
+                    live["message"] = json!(message.chars().take(500).collect::<String>());
+                }
+                providers.insert(id, live);
             }
         }
         for (topic, _) in self.topics.values() {
@@ -384,7 +415,7 @@ impl Client {
                 Topic::Zone(id) => {
                     any = true;
                     if zone_ids.contains(id) {
-                        zones.insert(id.clone(), zone_live());
+                        zones.insert(id.clone(), zone_live(id));
                     }
                 }
                 Topic::Input(id) | Topic::Beat(id) | Topic::Media(id) => {
@@ -411,9 +442,15 @@ impl Client {
     }
 }
 
-/// A zone's live state before the compositor (RB-08).
-fn zone_live() -> Value {
-    json!({"active": false, "ambient": 0, "quiet_s": 0})
+/// A zone's live state: whether it is effectively active, and its reactive state as the output
+/// last stepped it (an inactive zone has no ambient light and counts no silence).
+fn zone_live(active: bool, reactive: Option<&ZoneLive>) -> Value {
+    match reactive.filter(|r| active && r.active) {
+        Some(r) => {
+            json!({"active": true, "ambient": r.ambient.clamp(0.0, 1.0), "quiet_s": r.quiet_s.max(0.0)})
+        }
+        None => json!({"active": active, "ambient": 0, "quiet_s": 0}),
+    }
 }
 
 /// The ids of a list document's items.

@@ -19,7 +19,7 @@ Decided in [ADR-0024](../decisions/ADR-0024-testing-strategy-and-device-safety.m
 ## Demo mode
 
 `folo run --demo` starts a controller with:
-- a synthetic audio input (deterministic music-like signal) and a synthetic screen input (replayed frames)
+- a synthetic audio input (deterministic music-like signal) and a synthetic screen input (replayed frames, played by the capture agent's synthetic and replay backends)
 - fake providers
 - a seeded configuration
 

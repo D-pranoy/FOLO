@@ -18,11 +18,12 @@ negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", 
 
 # Endpoints before their run books answer 501
 # (docs/specs/client-api.md#before-their-run-books): the routes server.rs
-# gives `later`, and nothing else
+# gives `later`, and nothing else; and the administration of an instance
+# whose kind has no implementation yet (docs/specs/client-api.md#providers)
 [[operations]]
 include-operation-id = [
-  "activateZone", "deactivateZone", "identifyTarget", "testZone",
-  "discoverProviders", "getProviderAdmin", "postProviderAdmin", "pairHueBridge",
+  "activateZone", "deactivateZone",
+  "getProviderAdmin", "postProviderAdmin", "pairHueBridge",
   "applyScene", "getPacks", "getPack", "removePack", "exportPack",
   "getBackup",
   "getClients", "issueClient", "getClient", "revokeClient",

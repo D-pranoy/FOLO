@@ -95,7 +95,14 @@ mod tests {
         let ids: Vec<&str> = effects.iter().filter_map(|e| e["id"].as_str()).collect();
         assert_eq!(
             ids,
-            ["audio-visualizer", "brightness", "mirror", "blur", "trail"]
+            [
+                "audio-visualizer",
+                "brightness",
+                "mirror",
+                "blur",
+                "trail",
+                "screen"
+            ]
         );
         for effect in &effects {
             assert_eq!(refs(&effect["params_schema"]), 0, "{}", effect["id"]);

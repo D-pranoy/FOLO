@@ -20,6 +20,7 @@ from folo_source.core import now_us
 from folo_source.inputs.audio.input import MAX_DT, AudioInput, AudioPacket
 from folo_source.inputs.listing import list_inputs
 from folo_source.inputs.media.input import MediaInput
+from folo_source.inputs.screen import ScreenInput
 from folo_source.publish import link as source_link
 from folo_source.publish.link import LocalLink, RpcError
 from folo_source.runtime import lifecycle
@@ -58,9 +59,14 @@ class SourceEngine:
         self.media = MediaInput(
             lambda: self._inputs['media']['enabled'], lambda: self._inputs['audio']
         )
-        self.link = LocalLink(url, token, self.handle, on_end)
+        self.screen = ScreenInput('', on_frame=self._screen_frame)
+        self.link = LocalLink(url, token, self.handle, on_end, on_screen=self.screen.push)
         self.executor = Executor(
-            self.audio.analyzer, lifecycle.random_generator(seed), self.media, self.link.send_frame
+            self.audio.analyzer,
+            lifecycle.random_generator(seed),
+            self.media,
+            self.link.send_frame,
+            self.screen,
         )
         self.state = 'starting'
         self.running = False
@@ -68,6 +74,7 @@ class SourceEngine:
         self._lock = threading.Lock()  # config.apply against rendering
         self._wake = threading.Condition()
         self._pending: list[AudioPacket] = []
+        self._screen_new = False  # a screen frame came since the last step
         self._inputs_started = False
         self._sent: dict[str, float] = {}  # when each notification last went out
         self._last: dict[str, Any] = {}  # what it said, for the ones sent on change
@@ -107,6 +114,12 @@ class SourceEngine:
                 del self._pending[:-MAX_PENDING]
             self._wake.notify()
 
+    def _screen_frame(self) -> None:
+        """A new screen frame, from the link's thread: worth a step while audio is idle."""
+        with self._wake:
+            self._screen_new = True
+            self._wake.notify()
+
     # ------------------------------------------------------------ the node's requests
 
     def handle(self, method: str, params: Mapping[str, Any]) -> Any:
@@ -133,6 +146,7 @@ class SourceEngine:
             raise RpcError(source_link.INVALID_PARAMS, str(error)) from error
         with self._lock:
             self._inputs = clamped['inputs']
+            self._apply_screen(clamped['inputs'])
             self.executor.apply(clamped)
         if not self._inputs_started:
             self._inputs_started = True
@@ -141,6 +155,12 @@ class SourceEngine:
         self.state = 'running'
         log.info('applied configuration %d', self.executor.revision)
         return {}
+
+    def _apply_screen(self, inputs: Mapping[str, Any]) -> None:
+        """The first enabled screen input of the source, or none (one in v1)."""
+        screens = cast(list[dict[str, Any]], inputs.get('screens', []))
+        enabled = [screen for screen in screens if screen.get('enabled')]
+        self.screen.configure(str(enabled[0].get('id', '')) if enabled else '', bool(enabled))
 
     def _media_control(self, params: Mapping[str, Any]) -> dict[str, Any]:
         action = params.get('action')
@@ -168,15 +188,22 @@ class SourceEngine:
         so a slow frame skips frames instead of queueing them.
         """
         last = time.perf_counter()
+        last_audio = -1e9  # the last time packets came
         while self.running:
             with self._wake:
-                if not self._pending and self.running:
+                if not self._pending and not self._screen_new and self.running:
                     self._wake.wait(1.0 / IDLE_FPS)
                 batch, self._pending = self._pending, []
+                screen_new, self._screen_new = self._screen_new, False
                 self._skipped += max(0, len(batch) - 1)
             now = time.perf_counter()
             steps = [Step(p.spectrum, p.frames, p.dt) for p in batch]
-            if not steps and now - last >= IDLE_AFTER:
+            if steps:
+                last_audio = now
+            elif screen_new and self.executor.screen_wanted and now - last_audio >= IDLE_AFTER:
+                # Audio is idle: a screen frame starts a step (ADR-0037 D11)
+                steps = [Step.silence(min(MAX_DT, now - last))]
+            elif now - last >= IDLE_AFTER:
                 steps = [Step.silence(min(MAX_DT, now - last))]
             if steps:
                 self._render(steps)
@@ -232,6 +259,8 @@ class SourceEngine:
         if self.executor.configured and (changed or self._due('activity', ACTIVITY_EVERY, now)):
             self._last['active'] = activity['active']
             self.link.notify('activity', activity)
+        if self.executor.configured:
+            self._notify_screen_activity(now)
         if self._due('input', INPUT_EVERY, now):
             self.link.notify('input', self.audio.status())
         media = self.media.status()
@@ -242,12 +271,23 @@ class SourceEngine:
         if self._due('metrics', METRICS_EVERY, now):
             self.link.notify('metrics', self._metrics(now - since))
 
+    def _notify_screen_activity(self, now: float) -> None:
+        """Each surface with a Screen layer has an activity of its own (ADR-0037 D12)."""
+        for params in self.executor.screen_activity(now_us()):
+            key = f'activity:{params["surface"]}'
+            if params['active'] != self._last.get(key) or self._due(key, ACTIVITY_EVERY, now):
+                self._last[key] = params['active']
+                self._sent[key] = now
+                self.link.notify('activity', params, part=params['surface'])
+
     def _status(self) -> dict[str, Any]:
         """The status notification (source-link.json's StatusParams)."""
         inputs: dict[str, str] = {}
         errors: list[str] = []
         if self._inputs_started:
             inputs = {'audio': self.audio.health(), 'media': self.media.health()}
+            if self.screen.enabled:
+                inputs['screen'] = self.screen.health()
             if inputs['audio'] == 'error':
                 errors.append(self.audio.capture.message)
             if inputs['media'] == 'error' and self._inputs['media']['enabled']:

@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher with the spectrum signal and layer levels, the local link and the executor)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher with the spectrum signal and layer levels, the local link and the executor; the controller's stages: intake, the compositor, the ambient light, projection, the adapters and the provider senders, stepped by the node's output task)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -22,7 +22,7 @@ The first half runs in a **source** (the effect engine and capture agent). The s
 |---|---|
 | Audio | See [Audio inputs](#audio-inputs) below. Captured in about 10 ms packets and analysed with 4096- and 2048-point Hann-windowed FFTs, as today ([current system](current-system.md)). |
 | Media session | Now playing: title, artist, album art, cover colours, play state; player controls. Windows media sessions or Linux MPRIS ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). On Linux, art is read when the player names a local file (`file://`); art a player only has on the web isn't fetched. |
-| Screen | One selected screen per source in v1, captured on demand by the capture agent ([display capture](../integrations/display-capture.md)) |
+| Screen | One selected screen per source in v1, captured on demand by the capture agent ([display capture](../integrations/display-capture.md)). Its small frames reach the engine through the node, in their own message type ([source link](../specs/source-link.md#screen-frames)); they are never published. |
 | Generator | Time, LFO, noise; for idle and ambient effects |
 | Local ingest | Signals or frames pushed by local programs over loopback ([source link](../specs/source-link.md#local-ingest)) |
 
@@ -60,7 +60,7 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 - **Built-in effects:**
   - **Audio visualizers:** the existing modes fill, pulse, spectrum, shift, scroll, drops, scan, wipe, flow and fire. Each layer has the existing segment semantics: band, trigger (level, hits or beat), beats per flash, threshold, ceiling, gain, curve, attack, release, idle glow, direction, speed, size, peak hold and palette.
   - **Album colours:** when the zone enables them, each layer's palette is replaced by colours from the album art (strongest for lows, then mids, then highs), recomputed only when the cover changes.
-  - **Screen:** turns a captured frame into a canvas, with colour, saturation, smoothing and video/game profiles.
+  - **Screen:** a canvas effect. It turns a captured frame into a picture for its layer's rectangle of a canvas: the black bars and margins cut away, sampled by area or from the picture's edges, with colour, saturation and smoothing ([display capture](../integrations/display-capture.md#the-screen-effect)). The video/game profile sets how the capture agent finds black bars.
   - **Post-processing:** brightness and saturation, mirror, blur, trail. These layers change what is below them in the stack, inside their region, instead of drawing a line; their blend mode doesn't apply. Their parameters are in the [configuration model](../specs/config-model.md#entities-summary).
     - `brightness`: moves each channel toward the cell's luma (`0.2126 R + 0.7152 G + 0.0722 B`) or away from it by `saturation` (0 grey, 1 unchanged), multiplies by `brightness` and clips to 0–255.
     - `mirror`: copies the half of the region that `keep` names, reversed, onto the other half. It works along a strip, or along a canvas's columns (its rows when the layer's `axis` is `linear_y`). A middle cell stays as it is.
@@ -73,6 +73,7 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
     - `radial`: the distance from the rectangle's centre, 1 at its corners; `L` is half its diagonal, rounded.
     - `angular`: the angle around the centre, clockwise from the side of row 0; `L` is its perimeter.
   - On a strip, the line is the layer's region itself.
+- **Canvas effects** (the Screen effect) are a third kind, beside effects that draw a line and post-processing effects. They draw a 2D picture of rows × columns for their layer's rectangle of a canvas, and on a strip surface they draw nothing; projection maps canvases onto strips. Effect factories get a handle to the engine's inputs, which the Screen effect uses to read the newest screen frame ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D10).
 - Effects run in-process in the effect engine. An out-of-process host is reserved for future plugins.
 
 ## Surfaces and layer stacks
@@ -113,16 +114,17 @@ The effect engine's executor renders the surfaces `config.apply` assigns and pub
 - **Double-buffered surfaces:** a step renders into new frames and swaps them in as a whole, so the publisher never reads a half-rendered surface.
 - **Timing:** each step times every surface and every effect in it (an effect draws all its layers of a surface in one go). The metrics notification carries the mean step time, and a step over the budget logs its slowest effect.
 - **Budget:** rendering runs on a thread of its own. Packets that arrive while a frame renders become one step: each still reaches the beat tracker and the activity, and only the newest is rendered, with their time added up (at most 0.1 s). A slow frame therefore skips frames instead of queueing them.
-- **Idle rendering:** after 0.1 s without an audio packet the executor renders silence at 30 fps, so releases, moving modes and the controller's ambient light keep time.
+- **Idle rendering:** after 0.1 s without an audio packet the executor renders silence at 30 fps, so releases, moving modes and the controller's ambient light keep time. While audio is idle, the arrival of a screen frame also starts a step, so Screen layers render at the capture rate; while audio plays, they render with the audio steps, with the newest frame ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D11).
 - **Beat tracker:** it runs while an enabled layer uses the `beat` trigger or the `beat` signal is published; a new song from the media input makes it find the tempo afresh. Each beat offset among the assigned surfaces has its tracker.
 - **Activity:** the audio is active while its loudest bin, without the input gain, reaches −70 dB. `quiet_s` adds up the seconds since it last was, as the ambient light counts them. It describes the whole source, so the notification leaves out `surface`.
+  - **Screen activity:** each surface with an enabled Screen layer gets an `activity` notification of its own, with its `surface` and without `level_db`. It is active while the newest screen frame that is neither `held` nor `protected` is less than 0.5 s old, and `quiet_s` counts the seconds since it last was. A surface that also has enabled audio layers is active when either input is ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D12). On the secure desktop or for protected content the screen goes inactive, and the controller's ambient light crossfades in.
 - **Layer state** (smoothing, moving modes, trails) is kept per surface index across `config.apply` calls.
 
 ## Controller stages
 
 Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR-0036](../decisions/ADR-0036-controller-output.md). The controller's output core is one `step(now_us)` that takes the time as an argument. The node runs it when a frame arrives and at least every 1/60 s, so the crossfade, the ambient fades and the delay line keep time without frames, and tests drive it with a clock of their own.
 
-1. **Intake:** the newest frame per source surface wins; a late or duplicate sequence number is dropped. A compressed (LZ4) frame is dropped with a log line until RB-16 brings remote sources ([source link](../specs/source-link.md#surface-frames)). At each `config.apply` the controller drops every frame it holds, because the surfaces are numbered afresh, and takes frames again from the engine's answer on.
+1. **Intake:** the newest frame per source surface wins; a late or duplicate sequence number is dropped. A compressed (LZ4) frame is dropped with a log line until RB-16 brings remote sources ([source link](../specs/source-link.md#surface-frames)). At each `config.apply` the controller drops every frame it holds by index, because the surfaces are numbered afresh, and takes frames again from the engine's answer on. Frames the compositor already took are held by surface id, which the renumbering doesn't change, so they stay until newer ones replace them or they go stale. When a source's link is made or ends, the compositor forgets everything that source sent.
 2. **Compositor:** per surface, a priority list of sources.
    - For switching, a source is active when it reports activity, for example audio above the silence threshold within the last 2 s. A source that sends no frame for 500 ms counts as inactive. (The zone's silence below uses the activity notification as it is, without this hold.)
    - The highest-priority active source wins, with a 300 ms crossfade on change.
@@ -136,6 +138,7 @@ Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR
      - A zone is **quiet** while none of the sources feeding it reports `active` in its latest `activity` notification, which is instantaneous: the loudest bin, without gain, at or above −70 dB now. The controller counts `quiet_s` on its own clock and ignores the sources' own `quiet_s`.
      - It is **paused** when at least one linked source of the zone has a media session (state `playing`, `paused` or `stopped`) and all of those report `paused`. A zone fed only by sources without a session, such as a game or a line-in, is never paused.
      - A zone with no source at all is quiet from the moment it starts, so its ambient light shows.
+     - A zone that becomes active starts reactive, with its silence counted from then on, and its targets' delay lines start empty, so frames from before it went off don't come out.
    - **The ambient light** is a colour × level, solid or breathing (30–100% over 8 s). It fades in over 1.5 s (eased) and back out over 0.15 s, so the first beat after a pause still shows.
    - **Where it is blended:** into each of the zone's composited surfaces, before projection. The ambient colour is `colour × level × master` of that surface (times the breathing factor, 0.3 to 1, for `breathe`), and the composite, which already carries `master`, is mixed towards it by the fade. That equals the current engine's `mix(segments, ambient) × master`, whose frames the golden tests compare within ±1. The result is truncated to `rgb8`. A fade of 0 leaves the frame untouched, byte for byte.
    - It replaces the earlier "idle scene or black" fallback, and it shows even when no source is connected.
@@ -154,7 +157,7 @@ Configurations migrated from the current studio map to:
 
 **What must match:**
 - **Reactive output:** the bytes sent to Hyperion **must equal** the current engine's output for the same audio.
-- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
+- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). Every frame is compared at ±1 on the controller's microsecond clock. A frame where the current engine's float sum of silence is within 1 µs of a switch threshold (the 0.3 s pause, `idle_after`), and the fade that follows it up to the frame after that fade settles, is compared one frame shifted: within ±1 of its input blended with the current engine's light of one step earlier, the same step or one step later. On such a tie the current engine switches or not on float rounding (it reads 0.3 at one and 0.9999999999999999 at another, both exact in microseconds), so a clock can land a step off it. The tie frames are worked out from the golden inputs' own float sums, not listed by hand, and the light's maths is held to ±1 on every frame when stepped in the current engine's seconds. (Decision to confirm.)
 
 Golden-frame tests enforce both ([testing policy](../process/testing-policy.md)).
 

@@ -26,7 +26,9 @@ pub mod testing;
 
 pub use capabilities::effective_capabilities;
 pub use error::{AdminError, ProviderError};
-pub use registry::{CreateError, Registry, not_implemented_message, runbook};
+pub use registry::{
+    CreateError, DISCOVER_TIMEOUT, Registry, instance_of, not_implemented_message, runbook,
+};
 pub use sender::{Backoff, SenderConfig, SenderHandle, SenderTarget, spawn_sender};
 pub use traits::{AdminMethod, ElementOutput, Provider, ProviderKind, RasterOutput};
 pub use types::{

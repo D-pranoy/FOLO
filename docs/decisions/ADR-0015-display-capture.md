@@ -1,6 +1,6 @@
 # ADR-0015: Display capture
 
-Status: Accepted
+Status: Accepted (D5, D6 and D9 amended by [ADR-0037](ADR-0037-display-capture-agent.md))
 Date: 2026-10-13
 
 ## Context
