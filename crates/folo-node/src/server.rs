@@ -83,8 +83,8 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/zones/{id}"),
             get(api::zone).put(api::put_zone).delete(api::delete_zone),
         )
-        .route(&v1("/zones/{id}/activate"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/deactivate"), later_post("RB-08"))
+        .route(&v1("/zones/{id}/activate"), post(api::activate_zone))
+        .route(&v1("/zones/{id}/deactivate"), post(api::deactivate_zone))
         .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
         .route(&v1("/zones/{id}/test"), later_post("RB-08"))
         .route(&v1("/show"), get(api::show).put(api::put_show))
@@ -578,7 +578,7 @@ mod tests {
     async fn later_subsystems_answer_501_with_their_run_book() {
         let request = Request::builder()
             .method(Method::POST)
-            .uri("/api/v1/zones/desk/activate")
+            .uri("/api/v1/zones/desk/identify")
             .header(header::HOST, "localhost")
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from("{}"))

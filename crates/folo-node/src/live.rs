@@ -22,6 +22,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::node::Node;
 use crate::server::not_a_websocket;
+use crate::zones;
 
 /// Updates per second per connection.
 const RATE_HZ: u64 = 30;
@@ -366,13 +367,16 @@ impl Client {
         let mut providers = Map::new();
         let mut any = all;
         let known = known_sources(node);
-        let zone_ids = ids(&node.store.get(Doc::Zones), "zones");
+        let zones_doc = node.store.get(Doc::Zones);
+        let zone_ids = ids(&zones_doc, "zones");
+        // The effective state, not the stored flag (ADR-0036 D3)
+        let active = zones::check(&zones_doc);
         if all {
             for id in &known {
                 sources.insert(id.clone(), json!({"state": source_state(node, id)}));
             }
             for id in &zone_ids {
-                zones.insert(id.clone(), zone_live());
+                zones.insert(id.clone(), zone_live(active.is_active(id)));
             }
             // Providers run with their interface (RB-08)
             for id in ids(&node.store.get(Doc::Providers), "providers") {
@@ -384,7 +388,7 @@ impl Client {
                 Topic::Zone(id) => {
                     any = true;
                     if zone_ids.contains(id) {
-                        zones.insert(id.clone(), zone_live());
+                        zones.insert(id.clone(), zone_live(active.is_active(id)));
                     }
                 }
                 Topic::Input(id) | Topic::Beat(id) | Topic::Media(id) => {
@@ -411,9 +415,10 @@ impl Client {
     }
 }
 
-/// A zone's live state before the compositor (RB-08).
-fn zone_live() -> Value {
-    json!({"active": false, "ambient": 0, "quiet_s": 0})
+/// A zone's live state before the compositor (RB-08): whether it is
+/// effectively active, and no ambient light yet.
+fn zone_live(active: bool) -> Value {
+    json!({"active": active, "ambient": 0, "quiet_s": 0})
 }
 
 /// The ids of a list document's items.

@@ -15,7 +15,7 @@ RB-08 builds the controller half of the pipeline: surfaces are composed per zone
   - where a zone's origin is, where line and grid elements sit, what the kernels compute, how several mappings combine, and what a new zone gets by default
   - what each adapter stage computes, and the exact rule of the flash limiter
   - what `target:<id>` frames carry, the test patterns, and the controller's clock
-- **What the code has today.** The node answers `activate`, `deactivate`, `identify`, `test`, `discover` and `admin` with `501`, reports every zone inactive and every provider `off`, and the supervisor keeps the newest raw frame per surface without waking anyone when one arrives ([control plane](../architecture/control-plane.md#supervision)).
+- **What the code has today.** The node answers `identify`, `test`, `discover` and `admin` with `501` (`activate` and `deactivate` work since RB-08 step 5, and the live channel reports each zone's effective state), reports every provider `off`, and the supervisor keeps the newest raw frame per surface without waking anyone when one arrives ([control plane](../architecture/control-plane.md#supervision)).
 
 ## Decision
 
