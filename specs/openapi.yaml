@@ -270,7 +270,7 @@ paths:
         in: path
         required: true
         description: A basic administration action of the provider (ADR-0014).
-        schema: {type: string, maxLength: 64}
+        schema: {type: string, minLength: 1, maxLength: 64}
     get:
       tags: [providers]
       operationId: getProviderAdmin
@@ -783,13 +783,13 @@ components:
       name: id
       in: path
       required: true
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     Node:
       name: node
       in: path
       required: true
       description: A node id.
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     IfMatch:
       name: If-Match
       in: header
