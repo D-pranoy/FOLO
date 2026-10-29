@@ -922,6 +922,19 @@ class NodeUpdate(BaseModel):
     approved: bool
 
 
+class OnOff(BaseModel):
+    """
+    How on/off targets switch: a threshold with hysteresis and a minimum interval between changes.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
+    hysteresis: Annotated[float, Field(ge=0.0, le=1.0)] = 0.1
+    min_interval_ms: Annotated[float, Field(ge=0.0, le=60000.0)] = 1000
+
+
 class Orientation(BaseModel):
     """
     Degrees.
@@ -1211,6 +1224,18 @@ class Ref(RootModel[str]):
         str,
         Field(description='The id of another entity; empty for none.', max_length=64),
     ]
+
+
+class ReferenceSize(BaseModel):
+    """
+    The reference object's width and height, metres (a TV's screen).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    width: Annotated[float, Field(ge=0.01, le=1000.0)] = 1.2
+    height: Annotated[float, Field(ge=0.01, le=1000.0)] = 0.68
 
 
 class RelativeRegion(BaseModel):
@@ -2012,6 +2037,15 @@ class Calibration(BaseModel):
     brightness_max: Annotated[float, Field(ge=0.0, le=1.0)] = 1
     color_order: Literal['rgb', 'rbg', 'grb', 'gbr', 'brg', 'bgr'] = 'rgb'
     latency_ms: Annotated[float, Field(ge=0.0, le=5000.0)] = 0
+    white: Annotated[
+        Literal['off', 'accurate', 'brighter'],
+        Field(description='How RGBW and RGB+CCT targets get their white channel.'),
+    ] = 'accurate'
+    onoff: Annotated[OnOff, Field(validate_default=True)] = {
+        'threshold': 0.5,
+        'hysteresis': 0.1,
+        'min_interval_ms': 1000,
+    }
 
 
 class CaptureStatusParams(BaseModel):
@@ -2580,6 +2614,10 @@ class Reference(BaseModel):
         'yaw': 0,
         'pitch': 0,
         'roll': 0,
+    }
+    size: Annotated[ReferenceSize, Field(validate_default=True)] = {
+        'width': 1.2,
+        'height': 0.68,
     }
 
 
@@ -3247,6 +3285,8 @@ class Target(BaseModel):
         'brightness_max': 1,
         'color_order': 'rgb',
         'latency_ms': 0,
+        'white': 'accurate',
+        'onoff': {'threshold': 0.5, 'hysteresis': 0.1, 'min_interval_ms': 1000},
     }
 
 
@@ -3268,6 +3308,7 @@ class Zone(BaseModel):
         'kind': 'none',
         'position': {'x': 0, 'y': 0, 'z': 0},
         'orientation': {'yaw': 0, 'pitch': 0, 'roll': 0},
+        'size': {'width': 1.2, 'height': 0.68},
     }
     targets: Annotated[list[Target], Field(max_length=256, validate_default=True)] = []
     surfaces: Annotated[list[Surface], Field(max_length=64, validate_default=True)] = []
@@ -3291,6 +3332,12 @@ class Zone(BaseModel):
     }
     beat_offset_ms: Annotated[int, Field(ge=-200, le=200)] = 0
     album_colors: bool = False
+    active: Annotated[
+        bool,
+        Field(
+            description='Whether the zone drives its targets. At most one active zone drives a target (docs/architecture/spatial-model.md#zone-activation-rules).'
+        ),
+    ] = True
 
 
 class ZoneTemplateItem(BaseModel):
@@ -3325,6 +3372,7 @@ class ZoneTemplateItem(BaseModel):
             'kind': 'none',
             'position': {'x': 0, 'y': 0, 'z': 0},
             'orientation': {'yaw': 0, 'pitch': 0, 'roll': 0},
+            'size': {'width': 1.2, 'height': 0.68},
         },
         'targets': [],
         'surfaces': [],
@@ -3341,6 +3389,7 @@ class ZoneTemplateItem(BaseModel):
         },
         'beat_offset_ms': 0,
         'album_colors': False,
+        'active': True,
     }
 
 
