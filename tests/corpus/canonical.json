@@ -154,6 +154,48 @@
       "json": "1.0e+0",
       "canonical": "1",
       "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    {
+      "node_bits": "42ec76179d1412c4",
+      "json": "250348223111318.125",
+      "canonical": "250348223111318.12",
+      "sha256": "ae74bf5ec0df61ff49f05bbb76decf24247a3647e3e8230d9c6290db3c791bef"
+    },
+    {
+      "node_bits": "c319ecde14d967b5",
+      "json": "-1824328248613357.25",
+      "canonical": "-1824328248613357.2",
+      "sha256": "cf46e3a70c9036273328dd1ca9612aabca34e83cf2fa574ff0ef625e57b6c4ef"
+    },
+    {
+      "node_bits": "4310addd4c496921",
+      "json": "1173691401656904.25",
+      "canonical": "1173691401656904.2",
+      "sha256": "1cbdb2946bb568ca7b3b5e4cdbe088215f1f5620d4a4f1f896c689dab4304f2d"
+    },
+    {
+      "node_bits": "431a0a5eb7c4616d",
+      "json": "1832437830195291.25",
+      "canonical": "1832437830195291.2",
+      "sha256": "9ecaf21c00c441669fbf586d78959cb2134d6394d0b3b9ab3004e9ceb5cb224b"
+    },
+    {
+      "node_bits": "c2e658d156f611c4",
+      "json": "-196565800562830.125",
+      "canonical": "-196565800562830.12",
+      "sha256": "23545738c5eed40d074c6f96aadc33afbd9ccef83f486f866ec0306fec178730"
+    },
+    {
+      "node_bits": "c315497245f53719",
+      "json": "-1497932414930374.25",
+      "canonical": "-1497932414930374.2",
+      "sha256": "8b73060e625b14f3383fbaa8c8ed3cc21232ea762628bb7b6662e185a079981c"
+    },
+    {
+      "node_bits": "c2e3ebe21e52e3c4",
+      "json": "-175230655043358.125",
+      "canonical": "-175230655043358.12",
+      "sha256": "e54fcc465deac825cbb7805e8b3f33b7cd84911172472765eee52a175c561836"
     }
   ],
   "files": [
@@ -481,5 +523,10 @@
       "path": "packs/folo/genres/scenes/trap.json",
       "sha256": "f8d2bf8066ce682e25113b89c8685cc00bca424eceddf457b60bd61cecc661a3"
     }
-  ]
+  ],
+  "node_number_oracle": {
+    "engine": "Node.js",
+    "version": "v22.23.4",
+    "operation": "Buffer.readDoubleBE().toString()"
+  }
 }

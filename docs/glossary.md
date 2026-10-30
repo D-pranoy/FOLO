@@ -8,6 +8,7 @@ Status: Accepted
 | **Controller** | A node in the controller role. It owns zones, targets, providers, scenes and the library, manages sources, projects surfaces onto targets, and serves the API and UI. It is the only component that listens on the network. |
 | **Source** | A node in the source role, together with its source workers. It runs inputs and effects and publishes surfaces to its controller over an outbound link. A controller can also run a local source alongside itself. |
 | **Source worker** | A process supervised by a node that does source work: the effect engine (`folo-source`) and the display capture agent (`folo-capture`). |
+| **Capture agent** | `folo-capture`: the Rust process in the signed-in user's session that captures one screen on demand and sends small screen frames to its node over the capture link ([ADR-0037](decisions/ADR-0037-display-capture-agent.md)). |
 | **Input** | Something a source reads: an audio device, a screen, a generator, or a local ingest stream. |
 | **Effect** | A transformation from inputs to a surface layer, with declared parameters. Example: an audio visualizer, or the Screen effect. |
 | **Layer** | One effect instance on a surface, with its parameters, region and blend mode. A surface's layers form a layer stack. |

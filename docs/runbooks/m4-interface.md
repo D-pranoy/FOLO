@@ -45,6 +45,8 @@ Status: Accepted · Implementation: Not started
    - placement map: drag, draw, grids, height snaps, imported positions
    - the live position test pattern (after confirmation); identify and sweeps; quick fixes
 10. **Wizards:** first run for controller, source and client; the add-WLED, pair-Hue, add-source, create-zone, add-device and enable-screen-sync tasks. One decision per screen; skippable and resumable.
+    - **Screen sync** ([RB-14](m6-screen.md)): pick the screen, the operating system's consent step, a black-bar preview drawn from the reported bars over the zone's surface, and start at sign-in. The screen's state comes from the source's `screen` status, which carries no pixels.
+    - **Protected content:** a banner on the zone when the status says `protected`; the Windows privacy-setting hint when the status gives a `settings_uri`.
 11. **Responsive and touch:**
     - breakpoints at 600 and 1024 px; bottom navigation and glass bottom sheets on phones
     - 48 dp targets; no hover-only controls; previews while pressed or active; long-press menus; pinch and pan; steppers

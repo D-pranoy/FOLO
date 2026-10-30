@@ -54,7 +54,19 @@
       "type": "object",
       "properties": {
         "id": {"description": "The selected screen.", "type": "string", "maxLength": 128, "default": ""},
-        "enabled": {"type": "boolean", "default": false}
+        "enabled": {"type": "boolean", "default": false},
+        "black_bars": {"$ref": "#/$defs/BlackBars", "default": {}},
+        "profile": {"description": "video: films and shows. game: ignores the screen's edges (HUDs) and adopts changes faster. It sets how the capture agent finds black bars.", "enum": ["video", "game"], "default": "video"}
+      },
+      "additionalProperties": false
+    },
+    "BlackBars": {
+      "description": "How the capture agent finds the black bars (letterbox and pillarbox) around the picture.",
+      "type": "object",
+      "properties": {
+        "preset": {"description": "auto: detect them. off: none. 21:9 and 4:3: the bars of a picture of that shape, forced.", "enum": ["auto", "off", "21:9", "4:3"], "default": "auto"},
+        "mode": {"description": "default: every side. letterbox: top and bottom only, ignoring subtitles. osd: finds the horizontal bars first, to look past overlays.", "enum": ["default", "letterbox", "osd"], "default": "default"},
+        "threshold": {"description": "How dark a pixel counts as black, as a share of full scale.", "type": "number", "minimum": 0.01, "maximum": 0.5, "default": 0.05}
       },
       "additionalProperties": false
     }

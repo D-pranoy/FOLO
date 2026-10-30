@@ -10,9 +10,11 @@ use std::time::{Duration, SystemTime};
 
 use folo_identity::{Identity, fingerprint};
 use folo_library::Library;
+use folo_provider::Registry;
 use folo_settings::{Launch, Layered, changes};
 use folo_store::{Doc, Store};
-use folo_supervisor::config::local_config;
+use folo_supervisor::capture::{CaptureCommand, CaptureSink, CaptureSupervisor};
+use folo_supervisor::config::{capture_request, local_config};
 use folo_supervisor::{EngineCommand, LogSink, Supervisor};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -21,7 +23,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, live, lock, logs, server};
+use crate::{import, live, lock, logs, output, providers, server, zones};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -42,10 +44,16 @@ pub struct Node {
     settings: Mutex<Layered>,
     pub store: Store,
     pub supervisor: Supervisor,
+    /// The display capture agent (RB-14, ADR-0037).
+    pub capture: CaptureSupervisor,
     /// The content library: built-in, installed and local packs (RB-09).
     pub library: Arc<Library>,
     /// The live channel's connections.
     pub live: live::Hub,
+    /// The controller's output: the zones' targets, the provider senders (RB-08).
+    pub output: output::Output,
+    /// What the node keeps of the providers' credentials (`secrets.json`).
+    pub secrets: Arc<providers::SecretsFile>,
 }
 
 impl Node {
@@ -71,8 +79,9 @@ impl Node {
     /// its controller sends one (RB-16).
     fn engine_config(&self) -> Option<Value> {
         (self.role == "controller").then(|| {
+            // The engine gets the effective activation, not the stored flags
             local_config(
-                &self.store.get(Doc::Zones),
+                &zones::with_effective(&self.store.get(Doc::Zones)),
                 &self.store.get(Doc::Show),
                 &self.store.get(Doc::Sources),
                 self.live.wanted(),
@@ -80,10 +89,34 @@ impl Node {
         })
     }
 
+    /// Logs the zones the activation check suppressed: the check that runs
+    /// on every load and write of the zones (ADR-0036 D3).
+    pub fn check_zones(&self) {
+        for (zone, holder) in zones::check(&self.store.get(Doc::Zones)).suppressed {
+            log::warn!("zone {zone} is inactive: zone {holder} drives a target it shares");
+        }
+    }
+
     /// Sends the engine its configuration again when it changed: after a
     /// document it comes from changed, or what live clients watch.
     pub fn refresh_engine(&self) {
         self.supervisor.set_config(self.engine_config());
+        self.capture.set_wanted(self.capture_wanted());
+    }
+
+    /// What the capture agent should capture (ADR-0037 D3): something only
+    /// while the node's own engine runs, which draws the Screen effect from
+    /// the agent's frames, in the controller role (a source gets its
+    /// configuration from its controller with RB-16).
+    fn capture_wanted(&self) -> Option<Value> {
+        if self.role != "controller" || !self.engine_runs() {
+            return None;
+        }
+        capture_request(
+            &self.store.get(Doc::Zones),
+            &self.store.get(Doc::Show),
+            &self.store.get(Doc::Sources),
+        )
     }
 
     /// `folo reload` (ADR-0034 D7): reads `node.toml` and the documents
@@ -126,8 +159,11 @@ impl Node {
         if found.applied.contains(&"local_source.enabled") {
             self.supervisor.set_wanted(self.engine_wanted(&fresh));
         }
-        if !documents.is_empty() {
-            self.supervisor.set_config(self.engine_config());
+        if documents.contains(&Doc::Zones) {
+            self.check_zones();
+        }
+        if !documents.is_empty() || found.applied.contains(&"local_source.enabled") {
+            self.refresh_engine();
         }
         let mut applied: Vec<String> = found.applied.iter().map(|s| (*s).to_owned()).collect();
         applied.extend(documents.iter().map(|d| d.file().to_owned()));
@@ -163,6 +199,15 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         args: Vec::new(),
     };
     let supervisor = Supervisor::start(engine, String::new(), Arc::new(EngineLog), false);
+    let secrets = providers::SecretsFile::in_dir(dir, "abcd1234");
+    let capture = CaptureSupervisor::start(
+        CaptureCommand::find(dir),
+        String::new(),
+        Arc::new(CaptureLog::new(Arc::clone(&secrets))),
+        supervisor.screen_frames(),
+        None,
+        None,
+    );
     Arc::new(Node {
         started: SystemTime::now(),
         place,
@@ -174,8 +219,11 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         settings: Mutex::new(layered),
         store: Store::open(dir).expect("the test's data folder opens"),
         supervisor,
+        capture,
         library: Arc::new(Library::open(dir.join("library"), library_version())),
         live: live::Hub::default(),
+        output: output::Output::new(Registry::new()),
+        secrets,
     })
 }
 
@@ -209,6 +257,58 @@ struct EngineLog;
 impl LogSink for EngineLog {
     fn engine_line(&self, line: &str) {
         logs::engine_line(line);
+    }
+}
+
+/// The capture agent's output goes into the node's log, and the restore
+/// token it returns into `secrets.json` (ADR-0037 D14).
+struct CaptureLog {
+    secrets: Arc<providers::SecretsFile>,
+    /// The newest token, and one write of `secrets.json` at a time: a write
+    /// that runs late still stores the newest.
+    newest: Arc<Mutex<Option<String>>>,
+}
+
+impl CaptureLog {
+    fn new(secrets: Arc<providers::SecretsFile>) -> Self {
+        Self {
+            secrets,
+            newest: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn store(secrets: &providers::SecretsFile, token: &str) {
+        let stored = secrets.update(|secrets| {
+            secrets["capture"] = json!({"restore_token": token});
+        });
+        // The token is never in the message (ADR-0037 D9, D14)
+        match stored {
+            Ok(()) => log::debug!("kept the capture agent's new restore token"),
+            Err(error) => log::error!("secrets.json can't take the restore token: {error}"),
+        }
+    }
+}
+
+impl CaptureSink for CaptureLog {
+    fn agent_line(&self, line: &str) {
+        logs::capture_line(line);
+    }
+
+    fn restore_token(&self, token: &str) {
+        *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(token.to_owned());
+        let (secrets, newest) = (Arc::clone(&self.secrets), Arc::clone(&self.newest));
+        // A file write with a sync, off the link's task
+        let write = move || {
+            let mut newest = newest.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(token) = newest.take() {
+                Self::store(&secrets, &token);
+            }
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::spawn_blocking(write);
+        } else {
+            write();
+        }
     }
 }
 
@@ -265,6 +365,41 @@ pub async fn run_with(
     engine: Option<EngineCommand>,
     stop: impl Future<Output = ()> + Send,
 ) -> u8 {
+    run_with_workers(location, args, engine, None, stop).await
+}
+
+/// [`run_with`] with the provider kinds in `registry`, or the built-in ones (Hyperion, WLED and
+/// Hue, [`providers::built_in`]) when there is none; tests register a recording provider.
+pub async fn run_with_providers(
+    location: &LocationArgs,
+    args: &RunArgs,
+    engine: Option<EngineCommand>,
+    registry: Registry,
+    stop: impl Future<Output = ()> + Send,
+) -> u8 {
+    run_inner(location, args, engine, None, Some(registry), stop).await
+}
+
+/// [`run_with`], and the capture agent started by `capture` instead of
+/// `folo-capture`.
+pub async fn run_with_workers(
+    location: &LocationArgs,
+    args: &RunArgs,
+    engine: Option<EngineCommand>,
+    capture: Option<CaptureCommand>,
+    stop: impl Future<Output = ()> + Send,
+) -> u8 {
+    run_inner(location, args, engine, capture, None, stop).await
+}
+
+async fn run_inner(
+    location: &LocationArgs,
+    args: &RunArgs,
+    engine: Option<EngineCommand>,
+    capture: Option<CaptureCommand>,
+    registry: Option<Registry>,
+    stop: impl Future<Output = ()> + Send,
+) -> u8 {
     let launch = if args.managed {
         Launch::Managed
     } else {
@@ -277,7 +412,7 @@ pub async fn run_with(
         eprintln!("--managed takes no other flags (ADR-0034 D2)");
         return EXIT_USAGE;
     }
-    match start(location, flags, launch, engine).await {
+    match start(location, flags, launch, engine, registry, capture).await {
         Ok((node, listeners, _lock)) => serve_until(node, listeners, stop).await,
         Err(failure) => {
             if log::max_level() == log::LevelFilter::Off {
@@ -298,6 +433,8 @@ async fn start(
     flags: Vec<(&'static str, String)>,
     launch: Launch,
     engine: Option<EngineCommand>,
+    registry: Option<Registry>,
+    capture: Option<CaptureCommand>,
 ) -> Result<(Arc<Node>, Vec<TcpListener>, lock::HomeLock), Failure> {
     let place = locate(location, &flags, launch)?;
     let folders = &place.folders;
@@ -338,6 +475,8 @@ async fn start(
     }
     let store = Store::open(&folders.data).map_err(|e| Failure::new(EXIT_FAILED, e.to_string()))?;
     let identity = ensure_identity(&store)?;
+    let secrets = providers::SecretsFile::of(&store);
+    let registry = registry.unwrap_or_else(|| providers::built_in(&secrets));
     let role = place.layered.json["role"]
         .as_str()
         .unwrap_or("controller")
@@ -346,6 +485,23 @@ async fn start(
     let url = format!("ws://127.0.0.1:{}/api/v1/source-link", listen.port());
     let wanted = role == "source" || place.layered.settings.local_source.enabled;
     let supervisor = Supervisor::start(engine, url, Arc::new(EngineLog), wanted);
+    let capture = capture.unwrap_or_else(|| CaptureCommand::find(&place.exe_dir));
+    let capture_url = format!("ws://127.0.0.1:{}/api/v1/capture-link", listen.port());
+    let restore_token = ensure_secrets(&store)?["capture"]["restore_token"]
+        .as_str()
+        .map(str::to_owned);
+    // The agent runs in the user's session (ADR-0037 D3): a service has none
+    let no_session = place
+        .service
+        .then(|| "the node runs as a service, outside the user's session; the desktop app starts the capture agent".to_owned());
+    let capture = CaptureSupervisor::start(
+        capture,
+        capture_url,
+        Arc::new(CaptureLog::new(Arc::clone(&secrets))),
+        supervisor.screen_frames(),
+        restore_token,
+        no_session,
+    );
     let node = Arc::new(Node {
         started: SystemTime::now(),
         id: identity.node_id(),
@@ -361,9 +517,13 @@ async fn start(
         place,
         store,
         supervisor,
+        capture,
         live: live::Hub::default(),
+        output: output::Output::new(registry),
+        secrets,
     });
-    node.supervisor.set_config(node.engine_config());
+    node.check_zones();
+    node.refresh_engine();
     log::info!(
         "node {} ({}) listening on {listen}",
         fingerprint(&node.id),
@@ -373,7 +533,8 @@ async fn start(
 }
 
 /// The node's identity from `secrets.json`, made on the first run. Keys
-/// that don't fit together stop the node rather than changing its id.
+/// that don't fit together stop the node rather than changing its id. It runs before anything
+/// else writes `secrets.json` (`providers::SecretsFile` is made after it).
 fn ensure_identity(store: &Store) -> Result<Identity, Failure> {
     let failed = |message: String| Failure::new(EXIT_FAILED, message);
     let dir = store.dir();
@@ -397,6 +558,11 @@ fn ensure_identity(store: &Store) -> Result<Identity, Failure> {
         fingerprint(&identity.node_id())
     );
     Ok(identity)
+}
+
+/// `secrets.json` as the node last wrote it.
+fn ensure_secrets(store: &Store) -> Result<Value, Failure> {
+    folo_store::read_secrets(store.dir()).map_err(|e| Failure::new(EXIT_FAILED, e.to_string()))
 }
 
 /// Binds the node's port: loopback only while remote access is off
@@ -438,13 +604,15 @@ async fn bind(layered: &Layered) -> Result<(Vec<TcpListener>, SocketAddr), Failu
     Ok((listeners, addresses[0]))
 }
 
-/// Serves until `stop`, then stops the engine, the server and the store.
+/// Serves until `stop`, then stops the output, the engine, the server and the store.
 async fn serve_until(
     node: Arc<Node>,
     listeners: Vec<TcpListener>,
     stop: impl Future<Output = ()> + Send,
 ) -> u8 {
     let (halt, halted) = tokio::sync::watch::channel(false);
+    let (output_halt, output_halted) = tokio::sync::watch::channel(false);
+    let output_task = tokio::spawn(output::Output::run(Arc::clone(&node), output_halted));
     let mut servers = tokio::task::JoinSet::new();
     for listener in listeners {
         let mut halted = halted.clone();
@@ -461,7 +629,12 @@ async fn serve_until(
         }
     }
     node.live.stop();
-    node.supervisor.shutdown().await;
+    // The output stops stepping, then its senders release their targets while the engine stops
+    let _ = output_halt.send(true);
+    let _ = output_task.await;
+    // The agent first: no frames are left to forward to a stopping engine
+    node.capture.shutdown().await;
+    tokio::join!(node.supervisor.shutdown(), node.output.shutdown());
     let _ = halt.send(true);
     if tokio::time::timeout(SERVER_STOP, async {
         while servers.join_next().await.is_some() {}
@@ -525,4 +698,57 @@ fn accept_ctrl_c() {
     // SAFETY: without a handler, SetConsoleCtrlHandler only sets whether
     // this process ignores Ctrl+C.
     let _ = unsafe { windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0) };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn capture_token_waits_for_a_provider_transaction_and_both_survive() {
+        let dir =
+            std::env::temp_dir().join(format!("folo-shared-secrets-{}", folo_store::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let secrets = providers::SecretsFile::in_dir(&dir, "abcd1234");
+        let capture = CaptureLog::new(Arc::clone(&secrets));
+        let updates = secrets.observe_updates();
+        let (read, after_read) = mpsc::channel();
+        let (commit, before_commit) = mpsc::channel();
+        let timeout = Duration::from_secs(5);
+
+        std::thread::scope(|threads| {
+            let provider_secrets = Arc::clone(&secrets);
+            let provider = threads.spawn(move || {
+                provider_secrets.update(|document| {
+                    document["providers"]["hue"] = json!({"app_key": "test-app-key"});
+                    document["pinned_certificates"]["ecb5fafffe000001"] = json!("07".repeat(32));
+                    // Hold the read-modify-write transaction open until capture tries to update.
+                    read.send(()).unwrap();
+                    before_commit.recv_timeout(timeout * 2).unwrap();
+                })
+            });
+            updates.recv_timeout(timeout).unwrap();
+            after_read.recv_timeout(timeout).unwrap();
+            let token = threads.spawn(|| capture.restore_token("test-restore-token"));
+            // This event is before the shared lock: capture has attempted its transaction,
+            // while the provider still holds the document it read. No sleeps or races.
+            let attempted = updates.recv_timeout(timeout);
+            commit.send(()).unwrap();
+            provider.join().unwrap().unwrap();
+            token.join().unwrap();
+            attempted.expect("capture must use the shared secrets transaction");
+        });
+
+        let stored = folo_store::read_secrets(&dir).unwrap();
+        assert_eq!(stored["providers"]["hue"]["app_key"], "test-app-key");
+        assert_eq!(
+            stored["pinned_certificates"]["ecb5fafffe000001"],
+            "07".repeat(32)
+        );
+        assert_eq!(stored["capture"]["restore_token"], "test-restore-token");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

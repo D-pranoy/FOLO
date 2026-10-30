@@ -40,7 +40,12 @@ MANIFEST = 'folo-pack.json'
 ROLE = 'strip.main'
 EFFECT = {'id': 'audio-visualizer', 'version': '1.0.0'}
 VERSION = '1.0.0'
-LICENSE = 'MIT'
+PACK_LICENSES = {
+    'folo/core': 'MIT',
+    'folo/genres': 'MIT',
+    # folo/effects returns to MIT once the clean-room rewrite gate clears.
+    'folo/effects': 'GPL-3.0',
+}
 AUTHORS = ['FOLO contributors']
 COMPATIBLE = '>=1.0 <2'
 PREFIXES = {'fx:': 'folo/effects', 'genre:': 'folo/genres'}
@@ -208,7 +213,7 @@ def manifest(pack_id: str, contents: Json, files: Json, categories: list[Json] |
         'folo': COMPATIBLE,
         'name': name,
         'description': description,
-        'license': LICENSE,
+        'license': PACK_LICENSES[pack_id],
         'authors': AUTHORS,
         'tags': tags,
         'contents': contents,

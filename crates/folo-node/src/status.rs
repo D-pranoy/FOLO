@@ -9,6 +9,7 @@ use std::path::Path;
 use folo_identity::{Identity, fingerprint};
 use folo_settings::{Launch, Override};
 use folo_store::Doc;
+use folo_supervisor::capture::WORKER as CAPTURE_WORKER;
 use folo_supervisor::{WORKER, WorkerStatus};
 use serde_json::{Map, Value, json};
 
@@ -25,8 +26,11 @@ struct Parts<'a> {
     listen: (String, u16),
     overrides: &'a [Override],
     providers: &'a Value,
+    /// A provider instance's `ProviderStatus.state` while the node runs; `stopped` otherwise.
+    provider_state: Option<&'a dyn Fn(&str) -> Value>,
     sources: &'a Value,
     worker: Option<WorkerStatus>,
+    capture: Option<WorkerStatus>,
 }
 
 fn build(parts: &Parts<'_>) -> Value {
@@ -42,17 +46,25 @@ fn build(parts: &Parts<'_>) -> Value {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|p| json!({"id": p["id"], "kind": p["kind"], "enabled": p["enabled"], "state": "stopped"}))
+        .map(|p| {
+            let id = p["id"].as_str().unwrap_or_default();
+            let state = parts
+                .provider_state
+                .map_or(json!("stopped"), |state| state(id));
+            json!({"id": p["id"], "kind": p["kind"], "enabled": p["enabled"], "state": state})
+        })
         .collect();
     let paired = parts.sources["sources"]
         .as_array()
         .map_or(0, |s| s.iter().filter(|s| s["id"] != "local").count());
     let mut workers = Map::new();
-    if let Some(worker) = parts.worker {
-        workers.insert(
-            WORKER.into(),
-            json!({"state": worker.state.name(), "pid": worker.pid, "restarts": worker.restarts}),
-        );
+    for (name, worker) in [(WORKER, parts.worker), (CAPTURE_WORKER, parts.capture)] {
+        if let Some(worker) = worker {
+            workers.insert(
+                name.into(),
+                json!({"state": worker.state.name(), "pid": worker.pid, "restarts": worker.restarts}),
+            );
+        }
     }
     json!({
         "running": parts.running,
@@ -78,6 +90,7 @@ pub fn of_running(node: &Node) -> Value {
     let settings = node.settings();
     let providers = node.store.get(Doc::Providers);
     let sources = node.store.get(Doc::Sources);
+    let state = |id: &str| json!(node.output.provider_status(id).state.api());
     build(&Parts {
         running: true,
         id: &node.id,
@@ -86,8 +99,10 @@ pub fn of_running(node: &Node) -> Value {
         listen: (node.listen.ip().to_string(), node.listen.port()),
         overrides: &settings.overrides,
         providers: &providers,
+        provider_state: Some(&state),
         sources: &sources,
         worker: Some(node.supervisor.status()),
+        capture: Some(node.capture.status()),
     })
 }
 
@@ -116,8 +131,10 @@ fn of_files(place: &Place) -> Value {
         listen: (address, port),
         overrides: &place.layered.overrides,
         providers: &read(Doc::Providers),
+        provider_state: None,
         sources: &read(Doc::Sources),
         worker: None,
+        capture: None,
     })
 }
 
@@ -244,17 +261,19 @@ fn human(status: &Value) -> String {
         "launch",
         format!("{}, {} folders", text("launch"), text("mode")),
     );
-    if let Some(worker) = status["workers"].get(WORKER) {
-        line(
-            &mut out,
-            "engine",
-            format!(
-                "{} (process {}, {} restarts)",
-                worker["state"].as_str().unwrap_or_default(),
-                worker["pid"],
-                worker["restarts"]
-            ),
-        );
+    for (name, label) in [(WORKER, "engine"), (CAPTURE_WORKER, "capture")] {
+        if let Some(worker) = status["workers"].get(name) {
+            line(
+                &mut out,
+                label,
+                format!(
+                    "{} (process {}, {} restarts)",
+                    worker["state"].as_str().unwrap_or_default(),
+                    worker["pid"],
+                    worker["restarts"]
+                ),
+            );
+        }
     }
     for o in status["overrides"].as_array().into_iter().flatten() {
         line(
