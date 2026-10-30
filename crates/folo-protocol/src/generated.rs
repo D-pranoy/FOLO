@@ -15571,10 +15571,64 @@ pub struct SceneApplyRequest {
     ///Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub roles: ::std::collections::HashMap<
-        ::std::string::String,
+        SceneApplyRequestRolesKey,
         SceneApplyRequestRolesValue,
     >,
     pub zone: SceneApplyRequestZone,
+}
+///`SceneApplyRequestRolesKey`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SceneApplyRequestRolesKey(::std::string::String);
+impl ::std::ops::Deref for SceneApplyRequestRolesKey {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SceneApplyRequestRolesKey> for ::std::string::String {
+    fn from(value: SceneApplyRequestRolesKey) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for SceneApplyRequestRolesKey {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SceneApplyRequestRolesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for SceneApplyRequestRolesKey {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SceneApplyRequestRolesKey {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`SceneApplyRequestRolesValue`
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

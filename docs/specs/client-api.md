@@ -44,7 +44,7 @@ The zones, show, providers and sources documents are read and written through th
 - A list that already holds as many items as its schema allows refuses another with 409 `list_full`.
 - `PUT /zones/{id}`, `PUT /providers/{id}` and `PUT /sources/{id}` replace the item with that id, which keeps the id in the path. There is none: 404 `not_found`.
 - `DELETE /zones/{id}` and `DELETE /providers/{id}` remove it (204), or answer 404 `not_found`.
-- **`If-Match`** names the revision of the document the item is in, as `12` or `"12"`. When the document has moved on, the write is refused with 412 `revision_mismatch` and the current revision in `details.revision`.
+- **`If-Match`** names the revision of the document the item is in, as `12` or `"12"`, at most 32 characters (a longer one matches no revision). When the document has moved on, the write is refused with 412 `revision_mismatch` and the current revision in `details.revision`.
 - A body that isn't JSON gets 400 `bad_body`; one with a [structural error](config-model.md#clamping-rules) gets 422 `structural_error`.
 - Each write gives the document its next revision and sends `config_changed` on the [live channel](#live-websocket). When zones, the show or the sources change, the node sends its engine the new configuration ([control plane](../architecture/control-plane.md#supervision)).
 
@@ -54,7 +54,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/scenes/{ref}/apply`; `/show/reset`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
+| `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
 | `DELETE /sources/{id}`; `/sources/invites`; `/sources/join-requests/...`; `/ingest/surfaces` | [RB-16](../runbooks/m7-network.md#rb-16-source-pairing-and-link) |
@@ -155,8 +155,8 @@ Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D11 to D21.
   - **A pack item** is copied into the zone's active scene in place when no other zone has that scene active, else into a new scene that becomes the zone's active one. Its roles are bound to the zone's surfaces as [ADR-0038](../decisions/ADR-0038-content-library.md) D12 says, and it carries `provenance {pack, version, item, hash}`.
   - `roles` names a surface for a role and remembers it for this scene and zone (`bindings` in the show); `""` returns the role to automatic.
   - `keep_changes: true` merges the scene into the zone's active scene, keeping what the user changed since it was applied.
-  - The answer is 200 with a `SceneApplied`: the show as written and, for the zone, the scene it now has active, where each role went and the roles skipped. Errors: 404 `not_found` (the scene or the zone; `details.what`); 409 `list_full` (256 scenes); 409 `no_base` (`keep_changes` on a scene with no base to merge against); 412 `revision_mismatch` with `If-Match`.
-- **`POST /show/reset`** with `{zones}` (empty, or an empty body: every zone) applies the show's `default_scene` to each zone, as an apply without `roles`, and sets the `master` of the zone's surfaces to 1 and their `background` to `#000000`. An empty `default_scene`, or one that names nothing, applies `folo/core:default`. The answer is a `SceneApplied` with one result per zone; a zone that doesn't exist gets 404 `not_found` and nothing changes.
+  - The answer is 200 with a `SceneApplied`: the show as written and, for the zone, the scene it now has active, where each role went and the roles skipped. Errors: 400 `bad_body` (a field that isn't in the request, a wrong type, a `roles` surface the zone doesn't have, or `roles` or `keep_changes` on a scene of the show); 404 `not_found` (the scene or the zone; `details.what`); 409 `list_full` (256 scenes, or 256 `bindings`); 409 `no_base` (`keep_changes` on a scene with no base to merge against); 409 `no_surface` (no role of the scene could be bound to a surface of the zone, `details.zone` and `details.skipped`: nothing is written); 412 `revision_mismatch` with `If-Match`.
+- **`POST /show/reset`** with `{zones}` (empty, or an empty body: every zone) applies the show's `default_scene` to each zone, as an apply without `roles`, and sets the `master` of the zone's surfaces to 1 and their `background` to `#000000`. An empty `default_scene`, or one that names nothing, applies `folo/core:default`. The answer is a `SceneApplied` with one result per zone; a zone that doesn't exist gets 404 `not_found`, and a zone where the default scene binds no role is left unchanged: its result has empty `roles` and the roles it skipped in `skipped`. When no zone binds, the answer is 409 `no_surface` and nothing changes.
 - Both write the show once (`If-Match` names its revision), and Reset all then `zones.json` when a surface changed, with `config_changed` and the new configuration to the engine, as any [document](#documents) write.
 
 ### Backup and restore

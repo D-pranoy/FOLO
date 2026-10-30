@@ -5,10 +5,16 @@
 //
 //   node scripts/export_builtins.mjs [--led-counts 30,61,144] [--out FILE]
 //   node scripts/export_builtins.mjs --trace [--out FILE]
+//   node scripts/export_builtins.mjs --scale [--out FILE]
 //
 // Without --out the JSON goes to stdout. Segment ids are numbered instead
 // of random, so the same studio.js always gives the same output. The golden
 // frames (scripts/make_golden.py) and the content library (RB-09) read it.
+//
+// --scale records what the studio's scaleSegments() answers (RB-09 code
+// change 4, ADR-0038 D14 and D20): for segments of strips of several lengths,
+// the start and end it gives on every length of TRACE_LENGTHS. It is
+// tests/corpus/scale_segments.json, which the node's scaling is checked against.
 //
 // --trace records what the built-in packs are made of instead (RB-09,
 // ADR-0038 D18): for each built-in and segment, the fractions the builder
@@ -29,7 +35,7 @@ const TRACE_LENGTHS = [
 ];
 
 function parseArgs(argv) {
-  const args = { ledCounts: DEFAULT_LED_COUNTS, out: null, trace: false };
+  const args = { ledCounts: DEFAULT_LED_COUNTS, out: null, trace: false, scale: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--led-counts') {
       args.ledCounts = argv[++i].split(',').map((s) => {
@@ -39,6 +45,8 @@ function parseArgs(argv) {
       });
     } else if (argv[i] === '--trace') {
       args.trace = true;
+    } else if (argv[i] === '--scale') {
+      args.scale = true;
     } else if (argv[i] === '--out') {
       args.out = argv[++i];
     } else {
@@ -113,7 +121,7 @@ function loadStudio(path) {
     throw new Error(`${path} no longer ends with "init();": update scripts/export_builtins.mjs`);
   }
   const code = traceFractions(source).replace(start,
-    '\nglobalThis.__builtins = { GENRE_PRESETS, EFFECTS, LEDFX_EFFECTS, layoutRanges, effectId,'
+    '\nglobalThis.__builtins = { GENRE_PRESETS, EFFECTS, LEDFX_EFFECTS, layoutRanges, effectId, scaleSegments,'
     + ' PRESETS, REACTIVE, CATEGORIES, fractions: __fractions };\n');
   const context = {
     console,
@@ -211,10 +219,46 @@ function trace(builtins, sha256) {
   };
 }
 
+// The lengths a scene's cells are made for, in the scale corpus
+const SCALE_FROM = [1, 2, 3, 7, 30, 61, 100, 144, 150, 255, 300, 1000, 2000];
+
+// Segments of a strip of `from` cells: all of it, its ends, and its thirds
+function scaleSegmentsOf(from) {
+  const third = Math.max(1, Math.ceil(from / 3));
+  const twoThirds = Math.max(1, Math.ceil((2 * from) / 3));
+  const spans = [[0, from - 1], [0, 0], [from - 1, from - 1], [0, third - 1],
+    [Math.min(third, from - 1), twoThirds - 1], [Math.min(twoThirds, from - 1), from - 1]];
+  const valid = spans.filter(([start, end]) => start <= end && end <= from - 1);
+  return [...new Map(valid.map((span) => [span.join(), span])).values()];
+}
+
+function scaleCorpus(scaleSegments) {
+  const rows = [];
+  for (const from of SCALE_FROM) {
+    for (const [start, end] of scaleSegmentsOf(from)) {
+      for (const to of TRACE_LENGTHS) {
+        const [scaled] = scaleSegments([{ start, end }], from, to);
+        rows.push([from, to, start, end, scaled.start, scaled.end]);
+      }
+    }
+  }
+  return {
+    source: 'web/studio.js scaleSegments()',
+    columns: ['from', 'to', 'start', 'end', 'scaled_start', 'scaled_end'],
+    rows,
+  };
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const path = fileURLToPath(new URL('../web/studio.js', import.meta.url));
   const { builtins, sha256 } = loadStudio(path);
+  if (args.scale) {
+    const text = `${JSON.stringify(scaleCorpus(builtins.scaleSegments)).replace(/\],\[/g, '],\n[')}\n`;
+    if (args.out) writeFileSync(args.out, text);
+    else process.stdout.write(text);
+    return;
+  }
   if (args.trace) {
     const text = `${JSON.stringify(trace(builtins, sha256), null, 1)}\n`;
     if (args.out) writeFileSync(args.out, text);

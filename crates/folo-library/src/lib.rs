@@ -4,17 +4,22 @@
 //! item hash over canonical JSON (RFC 8785).
 
 pub mod archive;
+pub mod bind;
 pub mod builtin;
 pub mod canonical;
 pub mod compat;
+pub mod copy;
 pub mod disk;
 mod edit;
 pub mod error;
 mod library;
 pub mod limits;
+pub mod merge;
 pub mod names;
 pub mod pack;
+pub mod reference;
+pub mod scale;
 
 pub use error::LibraryError;
-pub use library::{Library, LibraryEvent, MY_PRESETS, State};
+pub use library::{Library, LibraryEvent, MY_PRESETS, SceneItem, State};
 pub use names::ItemType;

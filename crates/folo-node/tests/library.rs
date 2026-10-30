@@ -879,17 +879,6 @@ async fn local_items(node: &Node) {
         )
         .await;
     assert_eq!(gone.status, 404);
-
-    // Applying is a later change
-    let apply = node
-        .call(
-            "POST",
-            "/api/v1/scenes/folo%2Fgenres%3Aedm/apply",
-            Some("application/json"),
-            b"{}".to_vec(),
-        )
-        .await;
-    assert_eq!(apply.status, 501);
 }
 
 async fn events(node: &Node) {

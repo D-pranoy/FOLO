@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints
 from typing_extensions import TypeAliasType
 
 
@@ -1530,7 +1530,7 @@ class SceneApplyRequest(BaseModel):
         extra='forbid',
     )
     zone: Annotated[str, Field(max_length=64)]
-    roles: Annotated[dict[str, RolesAdditionalProperty], Field(description='Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).')] = {
+    roles: Annotated[dict[Annotated[str, StringConstraints(max_length=64)], RolesAdditionalProperty], Field(description='Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).', max_length=64)] = {
 
     }
     keep_changes: Annotated[

@@ -20,7 +20,7 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::node::Node;
-use crate::{api, library_api, live, ui};
+use crate::{api, apply_api, library_api, live, ui};
 
 /// The client API's body limit (docs/specs/client-api.md#conventions).
 const BODY_LIMIT: usize = 1024 * 1024;
@@ -125,8 +125,8 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/zones/{id}/identify"), post(api::identify_zone))
         .route(&v1("/zones/{id}/test"), post(api::test_zone))
         .route(&v1("/show"), get(api::show).put(api::put_show))
-        .route(&v1("/show/reset"), later_post("RB-09"))
-        .route(&v1("/scenes/{ref}/apply"), later_post("RB-09"))
+        .route(&v1("/show/reset"), post(apply_api::reset))
+        .route(&v1("/scenes/{ref}/apply"), post(apply_api::apply))
         .route(&v1("/effects"), get(api::effects))
         .route(
             &v1("/providers"),
@@ -700,16 +700,15 @@ mod tests {
     #[tokio::test]
     async fn later_subsystems_answer_501_with_their_run_book() {
         let request = Request::builder()
-            .method(Method::POST)
-            .uri("/api/v1/scenes/desk/apply")
+            .method(Method::GET)
+            .uri("/api/v1/updates")
             .header(header::HOST, "localhost")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from("{}"))
+            .body(Body::empty())
             .unwrap();
         let (status, _, body) = ask("", "127.0.0.1:50000", request).await;
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         assert_eq!(body["error"]["code"], "not_implemented");
-        assert_eq!(body["error"]["details"]["runbook"], "RB-09");
+        assert_eq!(body["error"]["details"]["runbook"], "RB-17");
     }
 
     #[test]
