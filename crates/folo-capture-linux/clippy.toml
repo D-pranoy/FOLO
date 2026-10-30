@@ -1,0 +1,2 @@
+# Names this crate's documentation uses without backticks.
+doc-valid-idents = ["PipeWire", "ScreenCast", "DMA-BUF", "PulseAudio", ".."]

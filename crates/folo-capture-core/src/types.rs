@@ -76,7 +76,7 @@ pub enum Profile {
 }
 
 /// `capture.start`'s params (source-link.json's `CaptureStartParams`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CaptureRequest {
     pub screen: String,
@@ -88,6 +88,24 @@ pub struct CaptureRequest {
     pub profile: Profile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restore_token: Option<String>,
+}
+
+// The restore token stays out of any log line or panic message.
+impl std::fmt::Debug for CaptureRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CaptureRequest")
+            .field("screen", &self.screen)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("rate_hz", &self.rate_hz)
+            .field("black_bars", &self.black_bars)
+            .field("profile", &self.profile)
+            .field(
+                "restore_token",
+                &self.restore_token.as_ref().map(|_| "<hidden>"),
+            )
+            .finish()
+    }
 }
 
 impl CaptureRequest {
@@ -147,7 +165,7 @@ pub struct BarFractions {
 }
 
 /// `capture.status`'s params (source-link.json's `CaptureStatusParams`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CaptureStatus {
     pub state: CaptureState,
@@ -163,6 +181,27 @@ pub struct CaptureStatus {
     pub message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings_uri: Option<String>,
+}
+
+// The restore token stays out of any log line or panic message.
+impl fmt::Debug for CaptureStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CaptureStatus")
+            .field("state", &self.state)
+            .field("backend", &self.backend)
+            .field("screen", &self.screen)
+            .field("fps", &self.fps)
+            .field("hdr", &self.hdr)
+            .field("protected", &self.protected)
+            .field("bars", &self.bars)
+            .field(
+                "restore_token",
+                &self.restore_token.as_ref().map(|_| "<hidden>"),
+            )
+            .field("message", &self.message)
+            .field("settings_uri", &self.settings_uri)
+            .finish()
+    }
 }
 
 impl CaptureStatus {

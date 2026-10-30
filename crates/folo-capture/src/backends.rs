@@ -56,16 +56,16 @@ impl BackendChoice {
     /// # Errors
     ///
     /// [`CaptureError::Unavailable`] for a backend that isn't built for this
-    /// platform (the Windows ones on other systems, the Linux one until its
-    /// crate arrives), and [`CaptureError::Failed`] for a replay file that
-    /// can't be used.
+    /// platform (the Windows ones on other systems, the portal on systems other
+    /// than Linux or without the `portal` feature), and [`CaptureError::Failed`]
+    /// for a replay file that can't be used.
     pub fn open(&self) -> Result<Box<dyn CaptureBackend>, CaptureError> {
         match self {
             Self::Auto => Self::open_platform(),
             Self::Dda => Self::open_windows(&[BackendKind::Dda]),
             Self::Wgc => Self::open_windows(&[BackendKind::Wgc]),
             Self::Gdi => Self::open_windows(&[BackendKind::Gdi]),
-            Self::Portal => Self::not_built("portal"),
+            Self::Portal => Self::open_portal(),
             Self::Synthetic => Ok(Box::new(SyntheticBackend::new(Pattern::Gradient))),
             Self::Replay(path) => Ok(Box::new(ReplayBackend::open(path)?)),
         }
@@ -80,6 +80,10 @@ impl BackendChoice {
         if matches!(self, Self::Auto | Self::Dda | Self::Wgc | Self::Gdi) {
             return Box::new(folo_capture_windows::clock::QpcClock::new());
         }
+        #[cfg(target_os = "linux")]
+        if matches!(self, Self::Auto | Self::Portal) {
+            return Box::new(folo_capture_linux::MonotonicClock);
+        }
         Box::new(ProcessClock::new())
     }
 
@@ -89,11 +93,13 @@ impl BackendChoice {
         )))
     }
 
-    /// `auto`: Desktop Duplication, then Windows.Graphics.Capture, then GDI on Windows. The
-    /// Linux backend has its own crate, which comes later.
+    /// `auto`: Desktop Duplication, then Windows.Graphics.Capture, then GDI on
+    /// Windows; the portal on Linux.
     fn open_platform() -> Result<Box<dyn CaptureBackend>, CaptureError> {
         if cfg!(windows) {
             Self::open_windows(&BackendKind::auto_order())
+        } else if cfg!(target_os = "linux") {
+            Self::open_portal()
         } else {
             Self::not_built("platform")
         }
@@ -110,6 +116,27 @@ impl BackendChoice {
     #[cfg(not(windows))]
     fn open_windows(order: &[BackendKind]) -> Result<Box<dyn CaptureBackend>, CaptureError> {
         Self::not_built(order.first().map_or("windows", |kind| kind.name()))
+    }
+
+    #[cfg(all(target_os = "linux", feature = "portal"))]
+    #[allow(clippy::unnecessary_wraps)] // the other versions can fail
+    fn open_portal() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        Ok(Box::new(folo_capture_linux::PortalBackend::new()))
+    }
+
+    #[cfg(all(target_os = "linux", not(feature = "portal")))]
+    fn open_portal() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        Err(CaptureError::Unavailable(
+            "the portal backend isn't built into this binary: it needs PipeWire 1.0's development files, then cargo's --features portal"
+                .to_owned(),
+        ))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn open_portal() -> Result<Box<dyn CaptureBackend>, CaptureError> {
+        Err(CaptureError::Unavailable(
+            "the portal backend is for Linux".to_owned(),
+        ))
     }
 }
 
@@ -144,14 +171,16 @@ mod tests {
 
     #[test]
     fn the_unbuilt_backends_say_so_and_the_others_open() {
-        // Opening a Windows backend touches nothing of the system: it captures on `start`.
+        // Opening a Windows backend or the portal touches nothing of the
+        // system: they capture on `start`.
         let windows = cfg!(windows);
+        let portal = cfg!(all(target_os = "linux", feature = "portal"));
         for (choice, built) in [
-            (BackendChoice::Auto, windows),
+            (BackendChoice::Auto, windows || portal),
             (BackendChoice::Dda, windows),
             (BackendChoice::Wgc, windows),
             (BackendChoice::Gdi, windows),
-            (BackendChoice::Portal, false),
+            (BackendChoice::Portal, portal),
         ] {
             let opened = choice.open();
             if built {
@@ -176,6 +205,14 @@ mod tests {
             (BackendChoice::Gdi, "gdi"),
         ] {
             assert_eq!(choice.open().unwrap().name(), name, "{choice:?}");
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "portal"))]
+    #[test]
+    fn the_portal_is_the_backend_on_linux_and_auto_picks_it() {
+        for choice in [BackendChoice::Portal, BackendChoice::Auto] {
+            assert_eq!(choice.open().unwrap().name(), "portal", "{choice:?}");
         }
     }
 
@@ -208,6 +245,20 @@ mod tests {
             assert!(
                 stamp.abs_diff(counter) < 1_000_000,
                 "{choice:?}: {stamp} against {counter}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_portal_stamps_with_the_monotonic_clock() {
+        for choice in [BackendChoice::Auto, BackendChoice::Portal] {
+            let monotonic = folo_capture_linux::MonotonicClock.now_us();
+            let stamp = choice.clock().now_us();
+            // A process clock would start near 0; CLOCK_MONOTONIC has run since the system started
+            assert!(
+                stamp.abs_diff(monotonic) < 1_000_000,
+                "{choice:?}: {stamp} against {monotonic}"
             );
         }
     }

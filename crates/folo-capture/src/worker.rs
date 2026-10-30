@@ -7,7 +7,10 @@
 //! `capture.start` and again after `capture.stop` (D3). While the backend
 //! can't capture (its [`CaptureBackend::status`] says `paused`), the state is
 //! `paused`, the last picture goes out again with `held`, and the status
-//! carries the backend's message and settings page (D13).
+//! carries the backend's message and settings page (D13). A backend that
+//! reports its own state ([`CaptureBackend::report`]: the portal waiting for
+//! consent) sets the status's, and the restore token it hands over stays in
+//! the status until the capture ends (D14).
 
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
@@ -205,19 +208,47 @@ impl Agent {
                 return None;
             }
         }
+        // A backend with more to say than its pictures reports it (D3, D14):
+        // the portal waits for consent, fails, and hands over restore tokens
+        let mut report = self.backend.report();
+        if let Some(failed) = &report
+            && failed.state == CaptureState::Error
+        {
+            let why = failed.message.clone();
+            self.fail(&CaptureError::Failed(
+                why.unwrap_or_else(|| "the capture failed".to_owned()),
+            ));
+            return None;
+        }
+        if let Some(token) = report
+            .as_mut()
+            .and_then(|report| report.restore_token.take())
+        {
+            // It stays in the status until the capture ends, so a status that
+            // newer ones replace before the link sends it can't lose it; the
+            // node keeps one copy (D14)
+            self.status.restore_token = Some(token);
+        }
         // While the backend can't capture, the repeats of the last picture
         // carry `held` and the status says why (D13)
         let backend = self.backend.status();
         let held = backend.paused || capture.picture_held;
         capture.pacer.set_held(held);
+        // `off` comes only from the agent itself, before a start and after a stop
+        let reported = report
+            .as_ref()
+            .map(|report| report.state)
+            .filter(|state| *state != CaptureState::Off);
         self.status.state = if held {
             CaptureState::Paused
+        } else if let Some(state) = reported {
+            state
         } else if capture.pictured {
             CaptureState::Capturing
         } else {
             CaptureState::Starting
         };
-        self.status.message = backend.message;
+        self.status.message = report.and_then(|report| report.message).or(backend.message);
         self.status.settings_uri = backend.settings_uri;
         let now = self.clock.now_us();
         let frame = capture.pacer.poll(now)?;
@@ -360,7 +391,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
-    use folo_capture_core::backend::BackendStatus;
+    use folo_capture_core::backend::{BackendReport, BackendStatus};
     use folo_capture_core::clock::ProcessClock;
     use folo_capture_core::replay::{self, ReplayBackend};
     use folo_capture_core::synthetic::{Pattern, SyntheticBackend};
@@ -383,11 +414,13 @@ mod tests {
         )
     }
 
-    /// What [`FakeBackend`] gives: the pictures to come, and its status.
+    /// What [`FakeBackend`] gives: the pictures to come, its status, and its
+    /// report, whose restore token it hands over once.
     #[derive(Default)]
     struct Script {
         pictures: VecDeque<Picture>,
         status: BackendStatus,
+        report: Option<BackendReport>,
     }
 
     /// A backend the test drives: pictures come when the script has them, and
@@ -425,6 +458,24 @@ mod tests {
 
         fn status(&self) -> BackendStatus {
             self.0.lock().unwrap().status.clone()
+        }
+
+        fn report(&mut self) -> Option<BackendReport> {
+            let mut script = self.0.lock().unwrap();
+            let report = script.report.clone();
+            if let Some(kept) = &mut script.report {
+                kept.restore_token = None;
+            }
+            report
+        }
+    }
+
+    fn reported(state: CaptureState, message: Option<&str>, token: Option<&str>) -> BackendReport {
+        BackendReport {
+            state,
+            message: message.map(str::to_owned),
+            restore_token: token.map(str::to_owned),
+            fps: 0.0,
         }
     }
 
@@ -735,5 +786,92 @@ mod tests {
         // A stop leaves nothing of it
         agent.stop();
         assert_eq!(agent.status(), &CaptureStatus::off());
+    }
+
+    #[test]
+    fn the_state_and_message_a_backend_reports_reach_the_status() {
+        let (mut agent, script, time) = scripted();
+        script.lock().unwrap().report = Some(reported(
+            CaptureState::WaitingConsent,
+            Some("the desktop asks which screen to share"),
+            None,
+        ));
+        assert!(agent.step(Duration::ZERO).is_none());
+        assert_eq!(agent.status().state, CaptureState::WaitingConsent);
+        assert_eq!(
+            agent.status().message.as_deref(),
+            Some("the desktop asks which screen to share")
+        );
+
+        {
+            let mut script = script.lock().unwrap();
+            script.report = Some(reported(CaptureState::Capturing, None, None));
+            script.pictures.push_back(picture());
+        }
+        assert!(agent.step(Duration::ZERO).is_some());
+        assert_eq!(agent.status().state, CaptureState::Capturing);
+        assert_eq!(agent.status().message, None);
+
+        // `off` is the agent's own word: a backend's is passed over while capturing
+        script.lock().unwrap().report = Some(reported(CaptureState::Off, None, None));
+        time.store(5_100_000, Ordering::SeqCst);
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().state, CaptureState::Capturing);
+
+        // An error ends the capture with the backend's reason
+        script.lock().unwrap().report = Some(reported(
+            CaptureState::Error,
+            Some("the desktop ended the share"),
+            None,
+        ));
+        assert!(agent.step(Duration::ZERO).is_none());
+        assert!(!agent.capturing());
+        assert_eq!(agent.status().state, CaptureState::Error);
+        assert_eq!(
+            agent.status().message.as_deref(),
+            Some("the desktop ended the share")
+        );
+    }
+
+    #[test]
+    fn a_restore_token_stays_in_the_status_until_the_capture_ends() {
+        let (mut agent, script, time) = scripted();
+        script.lock().unwrap().report =
+            Some(reported(CaptureState::Capturing, None, Some("token-1")));
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().restore_token.as_deref(), Some("token-1"));
+        // The backend handed it over once; the status keeps it for the link
+        assert_eq!(
+            script
+                .lock()
+                .unwrap()
+                .report
+                .as_ref()
+                .unwrap()
+                .restore_token,
+            None
+        );
+        time.store(6_000_000, Ordering::SeqCst);
+        agent.step(Duration::ZERO);
+        let sent = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(sent["restore_token"], "token-1");
+
+        // A newer token replaces it, and a change in place keeps it
+        script.lock().unwrap().report =
+            Some(reported(CaptureState::Capturing, None, Some("token-2")));
+        agent.step(Duration::ZERO);
+        let mut bigger = start_params("fake-0");
+        bigger["width"] = json!(128);
+        bigger["height"] = json!(72);
+        agent.call("capture.start", bigger).unwrap();
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().restore_token.as_deref(), Some("token-2"));
+
+        // A stop ends it, and a new capture has none until the backend hands one over
+        agent.call("capture.stop", json!({})).unwrap();
+        assert_eq!(agent.status().restore_token, None);
+        agent.call("capture.start", start_params("fake-0")).unwrap();
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().restore_token, None);
     }
 }
