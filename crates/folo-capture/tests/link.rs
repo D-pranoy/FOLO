@@ -293,7 +293,12 @@ async fn a_message_over_the_limit_drops_the_link_and_the_agent_comes_back() {
 #[tokio::test]
 async fn a_node_that_stops_reading_gets_the_newest_frame_not_all_of_them() {
     let node = FakeNode::bind().await;
-    let agent = run_agent(node.environment(), fast());
+    // Sends held up by the pause below must not time out: this node is slow, not lost
+    let timing = Timing {
+        send: Duration::from_secs(10),
+        ..fast()
+    };
+    let agent = run_agent(node.environment(), timing);
     let mut link = node.accept().await;
     link.welcomed().await;
     // The largest frames at the highest rate: more than the sockets hold
