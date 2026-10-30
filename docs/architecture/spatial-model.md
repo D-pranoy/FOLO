@@ -1,6 +1,6 @@
 # Spatial model, zones and projection
 
-Status: Accepted · Implementation: Partial (activation, element positions, kernels, gather plans and mappings, run per zone by the node's output; not yet the defaults per zone type or the Hue conversion)
+Status: Accepted · Implementation: Partial (activation, defaults on creation, element positions, kernels, gather plans and mappings, run per zone by the node's output; not yet the Hue conversion)
 
 Decided in [ADR-0006](../decisions/ADR-0006-spatial-model-zones-and-projection.md) and, for activation, defaults and the details of projection, [ADR-0036](../decisions/ADR-0036-controller-output.md).
 
@@ -76,12 +76,18 @@ Zone types create default surfaces with **roles**, which scenes bind to ([conten
 
 ### Defaults
 
-Defaults are applied only when a zone is created through the API or a target is added to one, **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
+Defaults are applied only when a zone is created through the API (a target added to an existing zone is not covered yet: the API has no such call apart from replacing the zone, and replacing never applies defaults), **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
 - `canvas.room`: 64 × 36 cells on the floor plane, covering the room, with **row 0 on the +y side**: the plane's origin is the corner at `(−x/2, +y/2, 0)`, with `u` along +x and `v` along −y.
 - `canvas.screen` (zones of type `screen` whose reference is a TV): 64 × 36 cells on the TV's plane, which comes from the reference object. At orientation 0 the TV faces the room: its centre is `reference.position`, its screen's normal points towards −y, and a viewer looking along +y sees +x to the right. Its rectangle has the origin corner at the top left as the viewer sees it, `(−w/2, 0, +h/2)` from the centre, with `u = (w, 0, 0)` and `v = (0, 0, −h)`, `w` and `h` being the reference's `size`. `orientation` then turns the rectangle about its centre: `yaw` about +z (counter-clockwise seen from above), then `pitch` about the TV's own x axis, then `roll` about its own y axis, in degrees. A zone whose reference isn't a TV has no `canvas.screen`. The default `reference.position` is `(0, 0, 0)`, the centre of the floor.
 - `strip.<target>`: one strip surface per line target, with the target's element count as its resolution.
 - One default mapping for each new target: a manual 1:1 mapping from its `strip.<target>` surface for a line target. For any other target, a plane mapping from `canvas.screen` in a `screen` zone with a TV (area kernel, edge `clamp`, so lights beside the screen sample its nearest edge), and from `canvas.room` otherwise.
 - A new surface lists the source `local`.
+
+The node applies them in `POST /zones`, to each of `surfaces` and `mappings` the client left out of the body (an empty list counts as sent), after clamping. Edits (`PUT`), loading and migration never do. Choices the text above doesn't fix:
+- Surface and mapping ids are generated like any missing id. The roles are what scenes bind to.
+- The `canvas.room` plane is as wide and deep as the zone's `bounds` (`u = (x, 0, 0)`, `v = (0, −y, 0)`); the `canvas.screen` plane is the TV's rectangle turned by `Rz(yaw) · Rx(pitch) · Ry(roll)`, right-handed, about its centre.
+- A `strip.<target>` is unplaced (`placement` `none`), and a line target's manual mapping covers all its elements (`geometry.count`).
+- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the line targets past it unmapped. A `strip.<id>` role that would pass 64 characters is shortened: the start of the id and a hash of the whole id (FNV-1a, 8 hex digits) after a `-`, so it is deterministic and unique within the zone, with a warning in the log naming the zone and target. A `display` target no mapping. A `null` counts as left out. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
 
 ## Mappings and projection
 
