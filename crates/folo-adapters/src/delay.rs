@@ -35,6 +35,12 @@ impl DelayLine {
         }
     }
 
+    /// Empties the line: it starts again with the next frame, as a new one does.
+    pub(crate) fn clear(&mut self) {
+        self.frames.clear();
+        self.latest_us = 0;
+    }
+
     /// Whether the line passes frames on as they come.
     pub(crate) fn is_none(&self) -> bool {
         self.delay_us == 0

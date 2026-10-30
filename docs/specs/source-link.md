@@ -34,7 +34,7 @@ A node's own effect engine uses the same endpoint on loopback, `ws://127.0.0.1:<
 The display capture agent `folo-capture` has a loopback endpoint of its own, `ws://127.0.0.1:<port>/api/v1/capture-link`, without Noise ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D1 to D3). Only a node's own agent uses it, and nothing on it ever goes to another machine. Like `/source-link` it needs no key, and the node applies the Host, Origin and client-address checks before the upgrade ([security](../architecture/security.md#rules)), so a web page can't open it; a client on another machine gets `403 loopback_only`, even with remote access on, and a request that isn't a WebSocket upgrade gets `400 websocket_required`.
 - **Launch:** the node starts the agent with the link's URL and a random 256-bit launch token (base64url) in its environment, `FOLO_CAPTURE_LINK` and `FOLO_CAPTURE_TOKEN`, never on its command line.
 - **Handshake:** the subprotocol is `folo.capture.v1`. The first message each way is JSON in a WebSocket text message. The agent sends `{version: ["1"], agent: {version, platform}, token}`; the node checks the token (in constant time) before it tests whether an agent is already connected, accepts one agent connection at a time, closes any other and answers `{version: "1", result: "ok" | "rejected"}`. A response other than `ok` ends the agent with status 1. (The node answers `rejected` only to a connection that isn't its agent, so it starts no new one for it.)
-- **Limits:** the first message must arrive within 5 s, and no message may exceed 400,000 bytes. The engine's decoder checks every screen frame it gets (magic, version, pixel format, flags with none but bits 0 to 2 set, size, length `36 + 3 × width × height`, bars; the reserved fields are not checked) and drops one that fails, logging the reason without any pixels, at most once in 10 s.
+- **Limits:** the first message must arrive within 5 s, and no message may exceed 400,000 bytes. The engine's decoder checks every screen frame it gets (magic, version, pixel format, flags, size, length `36 + 3 × width × height`, bars) and drops one that fails, logging the reason without any pixels.
 - **Messages:** each WebSocket binary message after that starts with a type byte, `0x01` for JSON-RPC 2.0 or `0x04` for a [screen frame](#screen-frames).
 - **Heartbeat:** the agent sends `capture.status` at least once a second; after 5 s without any message the node treats it as hung and restarts it.
 - **Losing the node:** the agent reconnects with the backoff above, and exits after 30 s without its node.
@@ -88,7 +88,7 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 | Method | Purpose |
 |---|---|
 | `config.apply {revision, inputs, surfaces, scenes, publish}` | The full source configuration. Each assigned surface carries its zone's `beat_offset_ms` and `album_colors`, which its layers use. `publish` holds the requested resolution, rate and compression per surface, the signals to send with their signal index, and the surfaces whose layers' levels to send (`levels`). |
-| `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | Content distribution |
+| `packs.install {id, version, url \| inline, sha256}`, `packs.remove {id}` | [Content distribution](#content-distribution); not sent in v1 |
 | `inputs.list` | The inputs available on the source (outputs, inputs, apps playing audio, screens, media session), with capabilities |
 | `media.control {action}` | `play_pause`, `next` or `previous` on the shown media session |
 | `media.art {art_id}` | Returns the album art image (base64) for clients |
@@ -96,6 +96,12 @@ A source answers a method it doesn't implement with the JSON-RPC error `-32601` 
 | `update.check`, `update.approve {version}`, `update.cancel` | Owner only |
 | `logs.tail {lines, follow}` | Diagnostics |
 | `restart {component}` | Restart a worker or the node |
+
+### Content distribution
+
+Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D22. In v1 the controller sends no packs: an applied scene is a complete copy and reaches the source in `config.apply`. A source that doesn't implement the methods answers `-32601`. When content a source must hold arrives ([content](../architecture/content.md#later)), they work like this:
+- **`packs.install`:** `inline` carries the pack's canonical `.folopack` in base64, and `sha256` its pack hash ([pack format](pack-format.md#validation)). `url` is reserved and not sent. The source checks the hash before anything else and answers `-32000` with the message `hash_mismatch` when it differs. It then validates the pack as the controller's library does, keeps it in its own `library/<author>/<name>/`, replacing any version it had, and answers `{}`.
+- **`packs.remove`:** removes the pack and answers `{}`, also when the source doesn't have it.
 
 ### Source → controller (notifications)
 

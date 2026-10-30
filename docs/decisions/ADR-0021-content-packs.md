@@ -1,6 +1,6 @@
 # ADR-0021: Content packs
 
-Status: Accepted
+Status: Accepted (D3's distribution to sources amended for v1 by [ADR-0038](ADR-0038-content-library.md))
 Date: 2026-10-13
 
 ## Context

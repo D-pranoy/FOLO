@@ -1,6 +1,6 @@
 # Pipeline
 
-Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher with the spectrum signal and layer levels, the local link and the executor)
+Status: Accepted · Implementation: Partial (the effect engine's core types, inputs on Windows and Linux, the beat signal, the audio-visualizer and post-processing effects, surfaces, the publisher with the spectrum signal and layer levels, the local link and the executor; the controller's stages: intake, the compositor, the ambient light, projection, the adapters and the provider senders, stepped by the node's output task)
 
 `inputs → effects → surfaces ⟶ compositor → projection → adapters → providers`
 
@@ -82,7 +82,9 @@ On Linux the engine uses the PulseAudio client library, which PipeWire's PulseAu
 - Its layers form an ordered stack. The default blend is **max**, which reproduces today's behaviour; other blend modes are available per layer.
 - A layer covers a **region** of the surface: a cell range on a strip, a rectangle on a canvas. On a strip of `N` cells:
   - `cells`: `start` to `end`, both included, as today's segments.
-  - `relative`: cells `⌊start × N⌋` to `⌈end × N⌉ − 1`, at least one.
+  - `relative`: by its `snap` ([ADR-0038](../decisions/ADR-0038-content-library.md) D14):
+    - `cover` (the default): cells `⌊start × N⌋` to `⌈end × N⌉ − 1`, at least one.
+    - `nearest`: cells `min(R(start × N), N − 1)` to `min(max(first, R(end × N) − 1), N − 1)`, where `R(x)` rounds to the nearest integer, halves up (`⌊x⌋ + 1` when `x − ⌊x⌋ ≥ 0.5`, else `⌊x⌋`), as the studio's built-in builders place segments. The built-in scenes use it.
   - `rect`: as `relative` from `x` to `x + width`.
   - On a `W × H` canvas, a `rect` covers columns `⌊x × W⌋` to `⌈(x + width) × W⌉ − 1` and rows likewise, at least one of each. `cells` and `relative` regions select columns, over every row.
   - A region is clipped to the surface. A layer whose region is empty draws nothing.
@@ -124,7 +126,7 @@ The effect engine's executor renders the surfaces `config.apply` assigns and pub
 
 Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR-0036](../decisions/ADR-0036-controller-output.md). The controller's output core is one `step(now_us)` that takes the time as an argument. The node runs it when a frame arrives and at least every 1/60 s, so the crossfade, the ambient fades and the delay line keep time without frames, and tests drive it with a clock of their own.
 
-1. **Intake:** the newest frame per source surface wins; a late or duplicate sequence number is dropped. A compressed (LZ4) frame is dropped with a log line until RB-16 brings remote sources ([source link](../specs/source-link.md#surface-frames)). At each `config.apply` the controller drops every frame it holds, because the surfaces are numbered afresh, and takes frames again from the engine's answer on.
+1. **Intake:** the newest frame per source surface wins; a late or duplicate sequence number is dropped. A compressed (LZ4) frame is dropped with a log line until RB-16 brings remote sources ([source link](../specs/source-link.md#surface-frames)). At each `config.apply` the controller drops every frame it holds by index, because the surfaces are numbered afresh, and takes frames again from the engine's answer on. Frames the compositor already took are held by surface id, which the renumbering doesn't change, so they stay until newer ones replace them or they go stale. When a source's link is made or ends, the compositor forgets everything that source sent.
 2. **Compositor:** per surface, a priority list of sources.
    - For switching, a source is active when it reports activity, for example audio above the silence threshold within the last 2 s. A source that sends no frame for 500 ms counts as inactive. (The zone's silence below uses the activity notification as it is, without this hold.)
    - The highest-priority active source wins, with a 300 ms crossfade on change.
@@ -138,6 +140,7 @@ Decided in [ADR-0005](../decisions/ADR-0005-pipeline-and-data-model.md) and [ADR
      - A zone is **quiet** while none of the sources feeding it reports `active` in its latest `activity` notification, which is instantaneous: the loudest bin, without gain, at or above −70 dB now. The controller counts `quiet_s` on its own clock and ignores the sources' own `quiet_s`.
      - It is **paused** when at least one linked source of the zone has a media session (state `playing`, `paused` or `stopped`) and all of those report `paused`. A zone fed only by sources without a session, such as a game or a line-in, is never paused.
      - A zone with no source at all is quiet from the moment it starts, so its ambient light shows.
+     - A zone that becomes active starts reactive, with its silence counted from then on, and its targets' delay lines start empty, so frames from before it went off don't come out.
    - **The ambient light** is a colour × level, solid or breathing (30–100% over 8 s). It fades in over 1.5 s (eased) and back out over 0.15 s, so the first beat after a pause still shows.
    - **Where it is blended:** into each of the zone's composited surfaces, before projection. The ambient colour is `colour × level × master` of that surface (times the breathing factor, 0.3 to 1, for `breathe`), and the composite, which already carries `master`, is mixed towards it by the fade. That equals the current engine's `mix(segments, ambient) × master`, whose frames the golden tests compare within ±1. The result is truncated to `rgb8`. A fade of 0 leaves the frame untouched, byte for byte.
    - It replaces the earlier "idle scene or black" fallback, and it shows even when no source is connected.
@@ -156,7 +159,7 @@ Configurations migrated from the current studio map to:
 
 **What must match:**
 - **Reactive output:** the bytes sent to Hyperion **must equal** the current engine's output for the same audio.
-- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)).
+- **Ambient light:** frames during ambient-light fades and breathing, now computed by the controller, must match within ±1 per channel ([ADR-0028](../decisions/ADR-0028-studio-features-carried-into-the-rebuild.md)). Every frame is compared at ±1 on the controller's microsecond clock. A frame where the current engine's float sum of silence is within 1 µs of a switch threshold (the 0.3 s pause, `idle_after`), and the fade that follows it up to the frame after that fade settles, is compared one frame shifted: within ±1 of its input blended with the current engine's light of one step earlier, the same step or one step later. On such a tie the current engine switches or not on float rounding (it reads 0.3 at one and 0.9999999999999999 at another, both exact in microseconds), so a clock can land a step off it. The tie frames are worked out from the golden inputs' own float sums, not listed by hand, and the light's maths is held to ±1 on every frame when stepped in the current engine's seconds. (Decision to confirm.)
 
 Golden-frame tests enforce both ([testing policy](../process/testing-policy.md)).
 

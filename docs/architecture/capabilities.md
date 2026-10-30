@@ -1,6 +1,6 @@
 # Capabilities, adapters and the flash limiter
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (the adapter chain and the flash limiter, run per target by the node's output; whether the limiter works on real lights is a device check)
 
 Decided in [ADR-0007](../decisions/ADR-0007-capabilities-adapters-and-flash-limiter.md). [ADR-0036](../decisions/ADR-0036-controller-output.md) supersedes the order of stages in ADR-0007 D2 and fixes what each stage computes.
 
@@ -74,6 +74,8 @@ Decided in [ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md), wh
 - **A per-zone setting, off by default.** Switched on, it is applied after rendering and limits large luminance transitions to at most **3 flashes per second**, following WCAG 2.3.1 ("three flashes or below threshold").
 - It applies to all content, including third-party packs and screen sync.
 - **Warnings:** FOLO shows a photosensitive epilepsy warning on the first run, beside each zone's switch while it's off, and in Settings, which can turn it on for all zones. Built-in effects that flash quickly carry a "Flashing" badge ([user interface](ui.md#photosensitivity)).
+
+**The limiter's history outlives changes of settings.** A target's chain is kept when the configuration changes but leaves the target's calibration, capabilities, element count, delay and its zone's limiter setting as they were. When any of them changes, the new chain takes over the old one's history: each element's run and the flashes in its window. A zone that takes a target (the same id) over from another zone takes its history too. So no edit or hand-over can let a fourth flash through. Two targets with different ids on overlapping addresses keep separate histories; the activation check keeps them out of two active zones at once, and a test pattern on one is refused while the other is driven.
 
 ### Algorithm
 

@@ -102,7 +102,7 @@ Recovery: `folo pair reset` or the local UI. You must be at the machine; it can'
 
 ## Folders
 
-Each node has a home folder holding `node.toml`, and a data folder holding the documents, `secrets.json` and `library/`. The node takes the first launch below that applies ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D1, following [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md) D2):
+Each node has a home folder holding `node.toml`, and a data folder holding the documents, `secrets.json`, `library/` (installed and local packs), `applied/` (the bases of applied scenes) and, during a restore, `restore/` ([ADR-0038](../decisions/ADR-0038-content-library.md) D1, D11, D27). The node takes the first launch below that applies ([ADR-0034](../decisions/ADR-0034-the-node-process.md) D1, following [ADR-0010](../decisions/ADR-0010-settings-persistence-and-migration.md) D2):
 
 | Launch | Home | Data, by default | Logs |
 |---|---|---|---|
@@ -146,7 +146,7 @@ A usage error exits with status 2. Until their run books land, `token`, `pair` a
   - **Stopping:** the node sends `restart {component: engine}`, which ends the engine with status 0, and kills it if it hasn't exited after 5 s.
 - **The engine's configuration** is the `config.apply` the node builds from its documents. It sends it after the handshake, and again when a document it comes from changes or a zone is activated or deactivated:
   - `inputs`: the inputs of the source `local` in `sources.json`, or the defaults when there is none
-  - `surfaces`: the surfaces in that source's `surfaces`, in that order, indexed from 0, **of effectively active zones only**: a zone that is inactive ([activation](spatial-model.md#zone-activation-rules)) has no surface assigned and nothing rendered, so a client can't preview it ([ADR-0036](../decisions/ADR-0036-controller-output.md) D6). Activating or deactivating a zone renumbers the later surfaces: the controller drops the frames it holds at each `config.apply`, and the engine sends none under the old numbering after answering it. Each carries its zone's `beat_offset_ms` and `album_colors`, its role, and its zone's active scene in `show.json`.
+  - `surfaces`: the surfaces in that source's `surfaces`, in that order, indexed from 0, **of effectively active zones only**: a zone that is inactive ([activation](spatial-model.md#zone-activation-rules)) has no surface assigned and nothing rendered, so a client can't preview it ([ADR-0036](../decisions/ADR-0036-controller-output.md) D6). Activating or deactivating a zone renumbers the later surfaces: the node drops the engine's frames it holds by index when the surfaces move, takes no surface frame from then until the engine answers the newest `config.apply` (an error answer counts), and the engine sends none under the old numbering after answering it. Each carries its zone's `beat_offset_ms` and `album_colors`, its role, and its zone's active scene in `show.json`.
   - `scenes`: the scenes those surfaces render
   - `publish`: each surface at its resolution (canvases at most 128 × 72), at 60 Hz, as `rgb8` and without LZ4 on loopback; the `spectrum` and `beat` signals and the surfaces' `levels`, while a live client subscribes to them ([client API](../specs/client-api.md#topics-and-delivery))
   - `revision`: the count of configurations the node has sent since it started

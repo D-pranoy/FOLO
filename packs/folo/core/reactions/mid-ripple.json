@@ -1,0 +1,28 @@
+{
+  "id": "mid-ripple",
+  "schema_version": 2,
+  "description": "Each LED dances to its own slice of the mids.",
+  "hints": {
+    "group": "Mids",
+    "tempo": "Medium",
+    "anim": "eq",
+    "dur": 0.8
+  },
+  "name": "Mid ripple",
+  "params": {
+    "freq_lo": 200,
+    "freq_hi": 2000,
+    "threshold": -55,
+    "ceiling": -28,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "spectrum",
+    "direction": "center",
+    "attack": 15,
+    "release": 250,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0,
+    "peak": false
+  }
+}

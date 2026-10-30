@@ -1,0 +1,201 @@
+{
+  "id": "folo/core",
+  "version": "1.0.0",
+  "folo": ">=1.0 <2",
+  "name": "FOLO core",
+  "description": "The palettes, reactions and default scene every FOLO setup starts from.",
+  "license": "MIT",
+  "authors": [
+    "FOLO contributors"
+  ],
+  "tags": [
+    "core"
+  ],
+  "requires": {},
+  "contents": {
+    "palettes": [
+      "deep-night",
+      "abyss",
+      "neon-pink",
+      "violet",
+      "synthwave",
+      "ocean",
+      "fire",
+      "rainbow",
+      "white"
+    ],
+    "reactions": [
+      "kick-punch",
+      "bass-strobe",
+      "heartbeat",
+      "sub-swell",
+      "bass-meter",
+      "snare-snap",
+      "vocal-glow",
+      "mid-ripple",
+      "guitar-wave",
+      "slow-breathe",
+      "hi-hat-sparkle",
+      "cymbal-flash",
+      "air-twinkle",
+      "shimmer",
+      "beat-flash",
+      "vu-meter",
+      "spectrum-bars",
+      "mirror-spectrum",
+      "color-drift",
+      "calm-ambient",
+      "beat-pulse",
+      "bass-on-the-beat",
+      "half-beat-strobe",
+      "every-other-beat",
+      "bar-swell"
+    ],
+    "looks": [],
+    "scenes": [
+      "default"
+    ],
+    "zone_templates": []
+  },
+  "files": {
+    "palettes/abyss.json": "4e5d24eac5c9c36fefa9df24d043425393159860951a9a69e274cc1ad20619ca",
+    "palettes/deep-night.json": "9f3e0ae7c3264128fca581d7b4ba55ce0610bdf0f2dafe9af45b1a1ca05a75f2",
+    "palettes/fire.json": "6b0ab77e2ce3ee404f2372af5f3874e85a5d4d648fcde1eb7ce04ec381d4c8bc",
+    "palettes/neon-pink.json": "64182ffcd6b87fd4f0ccd1850a7490c54a335457e41efaf8f9c9961ce0e7f544",
+    "palettes/ocean.json": "1843667c00906148b4fd7d20c508fc53c5180f071ccbe717df615cfb3a7e030d",
+    "palettes/rainbow.json": "f71be10103e5373f51e8ad87ec2cd225405607fb9f0b89329625ef7145436e09",
+    "palettes/synthwave.json": "8c9dc853a62767edcffc3951cd415af36e606f41125ed2691c50989e76f11c90",
+    "palettes/violet.json": "80927fa7149e388243b2f4ad1cf7e71eddbe7a6a576e440205ebdf0a15a035c0",
+    "palettes/white.json": "4a8c8539cbcfdd1fbdbeb887e1f470d51eae8d7925a3d1a6f449852d6c8f3b00",
+    "reactions/air-twinkle.json": "49c68c7a8b2e943bd70e187a09c705ae794e3b082128d85d9c16f5161242928a",
+    "reactions/bar-swell.json": "871a54a998c1e4283df7388985e4310b506879a933bf506b25bb5e1839016d7d",
+    "reactions/bass-meter.json": "bd5df8baee33c55a6de7804372e664baca5f14f623fd4fe27a0d723ee29a6002",
+    "reactions/bass-on-the-beat.json": "0b59330012fbbe0cfce75273ad8dd41d8b2f77f5a5fe3df87a9dd747496be66f",
+    "reactions/bass-strobe.json": "2d3327d491d76e3f896e89a0ca975a1b2e1dad1b73f213c63d2e61093a01b95c",
+    "reactions/beat-flash.json": "c15442b316a7b8ecb682944a38484b41705dd74cf69e90e43b3f2ee9aabf885a",
+    "reactions/beat-pulse.json": "0101d4ffa0cd0cbbf9bbd77fe285f93e03dbec3af45288fdfeccdc99c0c69841",
+    "reactions/calm-ambient.json": "0d4735c6b0ba52ad147aee97b48ac4326c3857eda9f231d8ef5d5f0d6b815ad4",
+    "reactions/color-drift.json": "850dc4a083edcf7fe746b25166a0ccdf99c569aba958aedd9d5e673c282b2744",
+    "reactions/cymbal-flash.json": "e77bef296a3377461f7df47e89c8f8cb836dad6e1adfbdba3eaa8c864e18303a",
+    "reactions/every-other-beat.json": "f93299938704fbe676b30ae26ab75cf079b7ed3e3a1181345294a0ff7cc803a5",
+    "reactions/guitar-wave.json": "1384128766bf0bad2c9ee09f4f533945a7803b00b3415c8b251c763ed54b8af6",
+    "reactions/half-beat-strobe.json": "b3b8fb04be3212696324ade2826fdec5cc28b099af05f66664593e37196386ef",
+    "reactions/heartbeat.json": "f77d5fa9677d56759c7b257f766e02f70328f8268a1f7bcee671e54a2eb7a92f",
+    "reactions/hi-hat-sparkle.json": "8d088da6097b4c4cc4e14516867e1fbf1dd8158da1876ce5d85cc53c8f4f9403",
+    "reactions/kick-punch.json": "e091e3cc36c0fc194509469dc5659beb8a6434cfc35a04b0e522ecccba510783",
+    "reactions/mid-ripple.json": "698c212fb58b205e53f28d0a9c2369bb4bf1a82c5519cb8933548602f5f1d431",
+    "reactions/mirror-spectrum.json": "ff9b3372301553a7fae5c085d2f6178b94790157cafcf1e5b063b9c10b221db4",
+    "reactions/shimmer.json": "d4bb6d7e004004f5b54d5eecf1b4699a3372323b61de6ef6dbed1a6a9e9e420e",
+    "reactions/slow-breathe.json": "441278a212d4b215cba5e48291aaa7c13dc49ac24901ea6df73aa05d67c440ca",
+    "reactions/snare-snap.json": "e85a7cfe75f2d5145040ebd2e8fbb921247793e2b1b5c28eee15ef691b560996",
+    "reactions/spectrum-bars.json": "acc92154e06ca57abaef42b7f92a844f465d387a6a4f67de1e709f7a158790fd",
+    "reactions/sub-swell.json": "d45a48ccbda4087f7a69b9cafe0b2014352c209959dab4e50d531200c9746e5f",
+    "reactions/vocal-glow.json": "88ea0d0d307184d863920102a1eba44a63680f1ea1cb08ef6f729362e4fae364",
+    "reactions/vu-meter.json": "c7ceaa09bdf0d7d8f7e3089aecc8971261e15f200c925a39db07a8e1a5895548",
+    "scenes/default.json": "3de00b2c7087dac97a1d1a4e5acca6a0e4cd7fc5c6a30547f53b0390188156da"
+  },
+  "previews": {},
+  "categories": [
+    {
+      "id": "mine",
+      "name": "My presets",
+      "description": "Your saved setups, including the default.",
+      "items": []
+    },
+    {
+      "id": "ledfx",
+      "name": "LedFx",
+      "description": "Audio reactive effects ported from LedFx, in Deep Night colors.",
+      "items": [
+        "folo/effects:ledfx-energy",
+        "folo/effects:ledfx-scroll",
+        "folo/effects:ledfx-wavelength",
+        "folo/effects:ledfx-power",
+        "folo/effects:ledfx-rain",
+        "folo/effects:ledfx-spotlight",
+        "folo/effects:ledfx-scan",
+        "folo/effects:ledfx-scan-multi",
+        "folo/effects:ledfx-strobe",
+        "folo/effects:ledfx-blade-power",
+        "folo/effects:ledfx-bar",
+        "folo/effects:ledfx-multicolor-bar",
+        "folo/effects:ledfx-bands",
+        "folo/effects:ledfx-equalizer",
+        "folo/effects:ledfx-blocks",
+        "folo/effects:ledfx-fire",
+        "folo/effects:ledfx-lava-lamp",
+        "folo/effects:ledfx-marching"
+      ]
+    },
+    {
+      "id": "electronic",
+      "name": "Electronic",
+      "description": "EDM, house, techno, drum & bass and dubstep.",
+      "items": [
+        "folo/genres:edm",
+        "folo/genres:techno",
+        "folo/genres:dnb",
+        "folo/genres:dubstep",
+        "folo/effects:beat-sync",
+        "folo/effects:alternating-flicker",
+        "folo/effects:strobe-sparkle",
+        "folo/effects:bass-burst",
+        "folo/effects:collide"
+      ]
+    },
+    {
+      "id": "hiphop",
+      "name": "Hip-hop & R&B",
+      "description": "Trap, hip-hop, R&B and soul.",
+      "items": [
+        "folo/genres:trap",
+        "folo/genres:hiphop",
+        "folo/genres:rnb",
+        "folo/effects:half-time-pulse"
+      ]
+    },
+    {
+      "id": "poprock",
+      "name": "Pop & Rock",
+      "description": "Pop, rock and metal.",
+      "items": [
+        "folo/genres:pop",
+        "folo/genres:rock",
+        "folo/genres:metal"
+      ]
+    },
+    {
+      "id": "jazzclassical",
+      "name": "Jazz & Classical",
+      "description": "Jazz, acoustic and orchestral.",
+      "items": [
+        "folo/genres:jazz",
+        "folo/genres:classical"
+      ]
+    },
+    {
+      "id": "chill",
+      "name": "Chill & Ambient",
+      "description": "Lo-fi, ambient and calm background glows.",
+      "items": [
+        "folo/genres:lofi",
+        "folo/genres:ambient",
+        "folo/effects:starfield",
+        "folo/effects:color-drift",
+        "folo/effects:breathing",
+        "folo/effects:ambient-zones"
+      ]
+    },
+    {
+      "id": "visualizers",
+      "name": "Visualizers",
+      "description": "Meters and spectrum displays for any music.",
+      "items": [
+        "folo/effects:mirror-spectrum",
+        "folo/effects:vu-meter",
+        "folo/effects:equalizer-bands",
+        "folo/effects:bass-vs-treble"
+      ]
+    }
+  ]
+}

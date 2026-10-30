@@ -1,0 +1,10 @@
+{
+  "id": "violet",
+  "schema_version": 2,
+  "name": "Violet",
+  "colors": [
+    "#800080",
+    "#8F00FF",
+    "#4B0082"
+  ]
+}

@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
+Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done)
 
 ## RB-06: Node core
 
@@ -85,56 +85,83 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
      - solid or breathe (30–100% over 8 s)
      - fade in 1.5 s eased, fade out 0.15 s
      - blended into the composited surface before projection, as `colour × level × master`; a fade of 0 leaves the frame byte-exact; the result is truncated
-     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when at least one linked source has a media session and all of those are paused
-   - golden tests against the current engine's ambient frames (within ±1 per channel)
+     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when every linked player that has a media session is paused
+   - golden tests against the current engine's ambient frames (within ±1 per channel on the controller's clock; the frames where the current engine's float silence ties a threshold, and the fade after them, are compared one frame shifted, [parity mode](../architecture/pipeline.md#parity-mode))
 4. **Adapter chain** per [capabilities](../architecture/capabilities.md#adapter-chain-per-target-in-order), in the order resolution → colour model → calibration → latency → flash limiter:
    - resolution (fitting to `address.count`), colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, the latency delay line
    - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)), by the [algorithm](../architecture/capabilities.md#algorithm)
    - the rate belongs to step 6's sender
 5. **Zone activation and test patterns:**
-   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation))
-   - the engine's `config.apply` assigns the surfaces of active zones only
-   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns))
+   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation)) (done: `folo-node`'s `zones` module and the two endpoints)
+   - the engine's `config.apply` assigns the surfaces of active zones only (done: the node passes the effective flags; the live channel reports them)
+   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns)) (done: `folo-controller`'s patterns, the node's two endpoints)
    - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults))
 6. **Provider interface** ([providers](../architecture/providers.md)):
    - discover, describe (targets with capabilities), connect (the control connection), start (realtime output for a target), send, wire key (what the sender compares), release (per target), status, admin
    - `ElementOutput` now; `RasterOutput` reserved
    - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
    - a recording provider for tests
-   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...`
+   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...` (done: `folo-node`'s `output` module; the node takes a registry, which has no kind until RB-10)
 7. **Tests:**
    - geometry unit tests
    - projection golden images (frames stacked into PNGs in `tests/golden/projection/`, written when `FOLO_BLESS=1` is set)
    - ambient inputs from `scripts/make_golden.py --only ambient`, checked against the **existing** `tests/golden/renderer/ambient-*.png` frames; no existing golden is regenerated
    - adapter unit tests, flash limiter tests
-   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames
+   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames (done: `crates/folo-controller/tests/parity.rs`, through a sender to a recording provider too, and with the migrated configurations)
 
 **Done when:** golden images and adapter tests are green, and parity-path frames equal the engine's output.
 
 ## RB-09: Content library
 
 **Goal:** packs, roles and the built-in library as data.
-**Depends on:** RB-02, RB-08.
+**Depends on:** RB-02, RB-08 (zones and their surfaces, which the documents already hold).
+**Decided in:** [ADR-0038](../decisions/ADR-0038-content-library.md), with the [pack format](../specs/pack-format.md), [content](../architecture/content.md) and the [client API](../specs/client-api.md#library). The contract changes (`snap`, `Provenance.hash`, `bindings`, item `description` and `hints`, manifest `categories`, the library's routes and schemas, client API 1.4.0) land with that ADR, the new routes answering `501`; the steps below implement them.
 
-1. **Library service:**
-   - install, list, remove and export `.folopack` files ([pack format](../specs/pack-format.md))
-   - validation with clamping; size limits; provenance on applied items
-2. **Role binding:** automatic matching by capability, size and tags; remembered overrides; fallbacks (strip roles on `canvas.room` through `linear_x`).
-3. **Built-ins:**
-   - convert the RB-01 export into `folo-core`, `folo-genres` and `folo-effects`
-   - stable ids
-   - an alias table for `fx:*` and `genre:*`
-   - check equivalence against the JS builders at several LED counts
-4. **Reset all** runs on the controller with the default scene.
-5. **Distribution:** compute the packs each source needs; push them over the source link, checked by hash.
-6. **Clean-room rewrite gate:** record the LedFx-inspired items that must be rewritten before the first public binary release ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)). Write their behaviour specifications in `docs/specs/effects/` without reference to LedFx code, and reimplement them from those specifications. Golden tests then pin the new behaviour.
-7. **Backup and restore:** `/system/backup` and `/system/restore`, holding the configuration and the library's packs, secrets excluded ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D2).
+1. **Library service** (a `folo-library` crate, used by the node):
+   - built-in packs embedded from `packs/folo/`; installed and local packs in `library/<author>/<name>/`, read and validated at start, failing folders skipped with an error (D1 to D3); the library's limits
+   - install with structural validation, limits, compatibility, conflicts and `replace`; clamping into the canonical form, written through a staging folder (D4 to D8)
+   - list, manifest, remove (`protected_pack`, `required_by`), deterministic export and the pack hash (D9)
+   - item reads and the gallery listing (`/library/items`); item writes and removals in `local/*` packs, with the 60-scene limit of `local/my-presets` (D10); previews served sandboxed
+   - `event {kind: library}` on the live channel
+2. **Role binding and applying** (D11 to D16):
+   - references, the alias table and bare ids (D19)
+   - binding by override, role, kind, size and `min_elements`, then fallbacks; skipped roles reported
+   - remembered overrides in the show's `bindings`
+   - scaling of `cells` regions by `led_count`
+   - a show scene only made active; a pack item's copy written in place or as a new scene, with provenance and its item hash; the base in `applied/`, named by the hash of the scene id, removed with its scene
+   - `keep_changes`: the three-way merge, and `409 no_base`
+3. **Built-ins as data** (D17 to D20):
+   - `export_builtins.mjs --trace` and `scripts/build_packs.py generate | check`, writing `packs/folo/core`, `genres` and `effects` and `packs/aliases.json`; the check, and `FOLO_NODE_TESTS=1 uv run pytest tests/test_builtin_packs.py`, in CI's contract job
+   - stable ids; descriptions and hints; the categories in `folo/core`
+   - equivalence: the built-in golden frames byte for byte at 30, 61 and 144 LEDs; the layers at every length from 1 to 64 and at 100, 144, 255, 256, 300, 512, 1000, 1024, 1999 and 2000; reactions and palettes; `scaleSegments()` scaling (with code change 4, which writes the scaling)
+4. **Reset all** on the controller: `POST /show/reset` with the default scene, else `folo/core:default`; master 1 and a black background (D21).
+5. **Distribution:** none in v1 (D22). A source answers `packs.install` and `packs.remove` with `-32601` until content that needs them arrives.
+6. **Clean-room rewrite gate** (D23, D24):
+   - the list in the [effect specifications](../specs/effects/README.md#the-clean-room-rewrite-gate) and `tests/test_clean_room_gate.py`, with `FOLO_RELEASE_GATE=1` in every publishing workflow
+   - a behaviour specification for each of the 24 items, then its rewrite from the specification alone in an isolated checkout, with its goldens regenerated; both must be done before any public binary, `edge` images included ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md))
+7. **Backup and restore:** `/system/backup` and `/system/restore` (D25 to D27): the four documents, the installed and local packs and the bases; secrets, client keys and `node.toml` excluded; checked as a whole (paths, sizes counted on decompressed bytes, folders matching ids), then replaced through `restore/` and its marker.
+
+**Code changes,** in order; each is one pull request a separate session can implement from the documents:
+
+| # | Change | Steps | Needs |
+|---|---|---|---|
+| 1 | The engine's `snap: nearest` on `relative` regions, in `surfaces/renderer.py`, with unit tests | 3 (part) | |
+| 2 | Built-in packs: the exporter's trace, `build_packs.py`, the committed packs and alias table, the CI check, the equivalence tests, and `tests/test_clean_room_gate.py` | 3, 6 (the test) | 1 |
+| 3 | The library service and its routes: load, install, list, manifest, remove, export, items, previews, the gallery, live events; RFC 8785 canonical JSON and item hashes in Python and Rust; the JSON rule's exemption for `application/zip` in the node's middleware | 1 | 2 |
+| 4 | Applying and Reset all: references and aliases, binding, bindings, scaling, provenance, bases, `keep_changes`, `/scenes/{ref}/apply`, `/show/reset` | 2, 4 | 3 |
+| 5 | Backup and restore | 7 | 3 |
+| 6 | The gate step in every publishing workflow, written with `docker.yml` and `release.yml` in [RB-22 and RB-23](m8-release.md) | 6 | 2 |
+| 7 | One specification pull request per item, or a few items at a time, by a writer who keeps the clean-room rule | 6 | 2 |
+| 8 | One rewrite pull request per item, by an implementer given only its specification | 6 | 7 |
+
+Changes 7 and 8 block every public binary, not the rest of the rebuild.
 
 **Done when:** the API serves every built-in from packs, equivalence tests pass, and the rewrite gate is tracked.
 
 ## RB-10: Hyperion provider
 
 **Goal:** Hyperion on the provider interface, with parity and basic administration.
+**Status:** steps 1 to 5 are implemented: the provider in `crates/folo-provider-hyperion` ([how it is built](../integrations/hyperion.md#how-it-is-built)), registered by the node, and the parity test `crates/folo-node/tests/hyperion_parity.rs`. Layout watching in step 3 is not wired to the store yet. Step 6, live verification, is a person's.
 **Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)); step 5 below also needs the rest of RB-08, the controller's output.
 
 1. **Fake first:** a Hyperion JSON server in tests that records frames and answers `serverinfo`, `clear`, `sourceselect` and `componentstate`.
@@ -145,7 +172,7 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done)
    - clear on stop; reconnect with backoff
 3. **Describe:** line targets from `serverinfo` LED rectangles on the zone's TV plane; layout watching with proportional mapping scaling.
 4. **Administration:** instances, priorities with clear, component toggles, automatic source selection, brightness, token support ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)).
-5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio.
+5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio. Done: the migrations `builtin` and `default` run through the node's real output path (the engine's frames, compositor, projection, adapters, the sender and `HyperionKind`) with the legacy origin "Audio Effects" set on the instance (the default origin is "FOLO"), and the `color` lines are those of `tests/golden/hyperion/parity.json`, which the legacy `JsonClient` wrote for sampled frames of the renderer goldens (`--only hyperion`). The migration's target `strip` drives Hyperion instance 0 ([target ids](../integrations/hyperion.md#how-it-is-built)).
 6. **Live verification** per the [testing policy](../process/testing-policy.md).
 
 **Done when:** the end-to-end parity test is green and live verification has passed.

@@ -1,0 +1,144 @@
+{
+  "id": "default",
+  "schema_version": 2,
+  "description": "Bass, mids and highs over thirds of the strip.",
+  "hints": {},
+  "scene": {
+    "id": "default",
+    "name": "Default",
+    "tags": [],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Bass",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 25.0,
+            "freq_hi": 160.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -15.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 10.0,
+            "release": 250.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": true,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.3333333333333333,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Mids",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 160.0,
+            "freq_hi": 2000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -55.0,
+            "ceiling": -25.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 20.0,
+            "release": 300.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.3333333333333333,
+            "end": 0.6666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Highs",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 2000.0,
+            "freq_hi": 16000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -72.0,
+            "ceiling": -40.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.6666666666666666,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

@@ -1,0 +1,28 @@
+{
+  "id": "calm-ambient",
+  "schema_version": 2,
+  "description": "Barely moving glow for background listening.",
+  "hints": {
+    "group": "Full range",
+    "tempo": "Slow",
+    "anim": "breathe",
+    "dur": 6
+  },
+  "name": "Calm ambient",
+  "params": {
+    "freq_lo": 20,
+    "freq_hi": 8000,
+    "threshold": -50,
+    "ceiling": -15,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 1200,
+    "release": 4000,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0.35,
+    "peak": false
+  }
+}

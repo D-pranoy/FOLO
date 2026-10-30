@@ -102,6 +102,45 @@
    },
    "additionalProperties": false
   },
+  "ApplyResult": {
+   "description": "What an apply did in one zone.",
+   "type": "object",
+   "properties": {
+    "zone": {
+     "type": "string",
+     "maxLength": 64
+    },
+    "scene": {
+     "description": "The id of the scene the zone now has active.",
+     "type": "string",
+     "maxLength": 64
+    },
+    "roles": {
+     "description": "Each bound role of the applied scene: the surface it went to.",
+     "type": "object",
+     "additionalProperties": {
+      "type": "string",
+      "maxLength": 64
+     }
+    },
+    "skipped": {
+     "description": "Roles no surface of the zone could take.",
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "maxItems": 64
+    }
+   },
+   "required": [
+    "zone",
+    "scene",
+    "roles",
+    "skipped"
+   ],
+   "additionalProperties": false
+  },
   "AssignedSurface": {
    "type": "object",
    "properties": {
@@ -450,6 +489,47 @@
    },
    "required": [
     "state"
+   ],
+   "additionalProperties": false
+  },
+  "BackupManifest": {
+   "description": "folo-backup.json, the manifest of a backup archive (ADR-0038 D25).",
+   "type": "object",
+   "properties": {
+    "format": {
+     "description": "1; a newer format is refused with 422 incompatible.",
+     "type": "integer",
+     "minimum": 1
+    },
+    "created": {
+     "description": "Unix seconds.",
+     "type": "integer",
+     "minimum": 0
+    },
+    "node_version": {
+     "type": "string",
+     "maxLength": 32
+    },
+    "schema_version": {
+     "description": "The documents' schema_version; a newer one than the node reads is refused with 422 incompatible.",
+     "type": "integer",
+     "minimum": 2
+    },
+    "files": {
+     "description": "path: SHA-256 (hex) of every other file in the archive.",
+     "type": "object",
+     "additionalProperties": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    }
+   },
+   "required": [
+    "format",
+    "created",
+    "node_version",
+    "schema_version",
+    "files"
    ],
    "additionalProperties": false
   },
@@ -1559,8 +1639,9 @@
      "maxLength": 64
     },
     "id": {
+     "description": "The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).",
      "type": "string",
-     "maxLength": 64
+     "maxLength": 65
     },
     "state": {
      "type": "string",
@@ -2102,6 +2183,16 @@
    ],
    "additionalProperties": false
   },
+  "ItemType": {
+   "description": "A pack item type, as its folder is named.",
+   "enum": [
+    "palettes",
+    "reactions",
+    "looks",
+    "scenes",
+    "zone-templates"
+   ]
+  },
   "JoinRequest": {
    "type": "object",
    "properties": {
@@ -2333,6 +2424,53 @@
    "required": [
     "surface",
     "layers"
+   ],
+   "additionalProperties": false
+  },
+  "LibraryItem": {
+   "description": "An item of an installed pack, for the gallery.",
+   "type": "object",
+   "properties": {
+    "ref": {
+     "description": "author/pack:item.",
+     "type": "string",
+     "maxLength": 130
+    },
+    "pack": {
+     "type": "string",
+     "maxLength": 65
+    },
+    "version": {
+     "description": "The pack's version.",
+     "type": "string",
+     "maxLength": 32
+    },
+    "type": {
+     "$ref": "#/$defs/ItemType"
+    },
+    "hash": {
+     "description": "SHA-256 (hex) of the item's file, as provenance records it.",
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "preview": {
+     "description": "The preview's path under /library/packs/{pack}/previews/, or empty.",
+     "type": "string",
+     "maxLength": 255
+    },
+    "item": {
+     "description": "The item, as clamped (pack.json's item of this type).",
+     "type": "object"
+    }
+   },
+   "required": [
+    "ref",
+    "pack",
+    "version",
+    "type",
+    "hash",
+    "preview",
+    "item"
    ],
    "additionalProperties": false
   },
@@ -2634,6 +2772,15 @@
      "$ref": "#/$defs/SchemaVersion",
      "default": 2
     },
+    "description": {
+     "description": "Shown in the gallery.",
+     "type": "string",
+     "maxLength": 500
+    },
+    "hints": {
+     "description": "Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.",
+     "type": "object"
+    },
     "name": {
      "$ref": "#/$defs/Name",
      "default": "Look"
@@ -2651,12 +2798,12 @@
     },
     "reaction": {
      "type": "string",
-     "maxLength": 160,
+     "maxLength": 130,
      "default": ""
     },
     "palette": {
      "type": "string",
-     "maxLength": 160,
+     "maxLength": 130,
      "default": ""
     }
    },
@@ -3314,6 +3461,35 @@
    },
    "additionalProperties": false
   },
+  "PackCategory": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/Id",
+     "default": ""
+    },
+    "name": {
+     "$ref": "#/$defs/Name",
+     "default": "Category"
+    },
+    "description": {
+     "type": "string",
+     "maxLength": 500,
+     "default": ""
+    },
+    "items": {
+     "description": "Item references (author/pack:item), in order.",
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 130
+     },
+     "maxItems": 500,
+     "default": []
+    }
+   },
+   "additionalProperties": false
+  },
   "PackContents": {
    "type": "object",
    "properties": {
@@ -3385,13 +3561,22 @@
      "maxLength": 500
     },
     "builtin": {
-     "description": "folo-core, folo-genres and folo-effects can't be removed.",
+     "description": "folo/core, folo/genres and folo/effects ship with the node and can't be removed.",
+     "type": "boolean"
+    },
+    "editable": {
+     "description": "A local pack (author local), whose items can be written.",
      "type": "boolean"
     },
     "items": {
      "type": "integer",
      "minimum": 0,
      "maximum": 500
+    },
+    "hash": {
+     "description": "SHA-256 (hex) of the pack's canonical .folopack (ADR-0038 D9).",
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
     }
    },
    "required": [
@@ -3400,7 +3585,9 @@
     "name",
     "description",
     "builtin",
-    "items"
+    "editable",
+    "items",
+    "hash"
    ],
    "additionalProperties": false
   },
@@ -3491,6 +3678,14 @@
       "maxLength": 255
      },
      "default": {}
+    },
+    "categories": {
+     "description": "Groups of the gallery, merged by id across packs (ADR-0038 D17).",
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/PackCategory"
+     },
+     "maxItems": 32
     }
    },
    "additionalProperties": false
@@ -3610,6 +3805,15 @@
     "schema_version": {
      "$ref": "#/$defs/SchemaVersion",
      "default": 2
+    },
+    "description": {
+     "description": "Shown in the gallery.",
+     "type": "string",
+     "maxLength": 500
+    },
+    "hints": {
+     "description": "Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.",
+     "type": "object"
     },
     "name": {
      "$ref": "#/$defs/Name",
@@ -3749,12 +3953,12 @@
    "additionalProperties": false
   },
   "Provenance": {
-   "description": "Where an applied scene came from.",
+   "description": "Where an applied scene came from (ADR-0038 D11).",
    "type": "object",
    "properties": {
     "pack": {
      "type": "string",
-     "maxLength": 64,
+     "maxLength": 65,
      "default": ""
     },
     "version": {
@@ -3766,6 +3970,11 @@
      "type": "string",
      "maxLength": 64,
      "default": ""
+    },
+    "hash": {
+     "description": "SHA-256 (hex) of the item's file as applied; absent when unknown.",
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
     }
    },
    "additionalProperties": false
@@ -4144,6 +4353,15 @@
      "$ref": "#/$defs/SchemaVersion",
      "default": 2
     },
+    "description": {
+     "description": "Shown in the gallery.",
+     "type": "string",
+     "maxLength": 500
+    },
+    "hints": {
+     "description": "Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.",
+     "type": "object"
+    },
     "name": {
      "$ref": "#/$defs/Name",
      "default": "Reaction"
@@ -4275,7 +4493,7 @@
    }
   },
   "RelativeRegion": {
-   "description": "start-end along a strip, 0-1 of its length.",
+   "description": "start-end along a strip, 0-1 of its length. snap: cover takes every cell the range touches; nearest rounds both ends to the nearest cell, halves up, as the studio's built-in builders do (docs/architecture/pipeline.md, ADR-0038 D14).",
    "type": "object",
    "properties": {
     "kind": {
@@ -4292,6 +4510,13 @@
      "minimum": 0,
      "maximum": 1,
      "default": 1
+    },
+    "snap": {
+     "description": "Absent means cover.",
+     "enum": [
+      "cover",
+      "nearest"
+     ]
     }
    },
    "required": [
@@ -4370,6 +4595,31 @@
    "minimum": 0,
    "maximum": 9007199254740991,
    "default": 0
+  },
+  "RoleBinding": {
+   "description": "The surfaces a user chose for a scene's roles in a zone.",
+   "type": "object",
+   "properties": {
+    "zone": {
+     "$ref": "#/$defs/Ref",
+     "default": ""
+    },
+    "scene": {
+     "description": "The scene's reference as resolved: author/pack:item, or a scene id of this document.",
+     "type": "string",
+     "maxLength": 130,
+     "default": ""
+    },
+    "roles": {
+     "description": "Role: surface id.",
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/$defs/Ref"
+     },
+     "default": {}
+    }
+   },
+   "additionalProperties": false
   },
   "RpcNotification": {
    "type": "object",
@@ -4495,6 +4745,26 @@
    },
    "additionalProperties": false
   },
+  "SceneApplied": {
+   "type": "object",
+   "properties": {
+    "show": {
+     "$ref": "#/$defs/ShowDocument"
+    },
+    "results": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ApplyResult"
+     },
+     "maxItems": 256
+    }
+   },
+   "required": [
+    "show",
+    "results"
+   ],
+   "additionalProperties": false
+  },
   "SceneApplyRequest": {
    "type": "object",
    "properties": {
@@ -4503,13 +4773,18 @@
      "maxLength": 64
     },
     "roles": {
-     "description": "Role: surface id, overriding the automatic match.",
+     "description": "Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).",
      "type": "object",
      "additionalProperties": {
       "type": "string",
       "maxLength": 64
      },
      "default": {}
+    },
+    "keep_changes": {
+     "description": "Merge into the zone's active scene, keeping what the user changed since it was applied (ADR-0038 D15).",
+     "type": "boolean",
+     "default": false
     }
    },
    "required": [
@@ -4528,6 +4803,15 @@
     "schema_version": {
      "$ref": "#/$defs/SchemaVersion",
      "default": 2
+    },
+    "description": {
+     "description": "Shown in the gallery.",
+     "type": "string",
+     "maxLength": 500
+    },
+    "hints": {
+     "description": "Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.",
+     "type": "object"
     },
     "scene": {
      "$ref": "#/$defs/Scene",
@@ -4964,6 +5248,15 @@
       "$ref": "#/$defs/ProviderSecrets"
      },
      "default": {}
+    },
+    "pinned_certificates": {
+     "description": "Hue bridge id (lowercase): the SHA-256 fingerprint, in lowercase hex, of the certificate a person confirmed for a bridge whose certificate doesn't chain to a Signify root (trust on first use, docs/integrations/hue.md).",
+     "type": "object",
+     "additionalProperties": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     },
+     "default": {}
     }
    },
    "additionalProperties": false
@@ -5017,14 +5310,39 @@
      "default": {}
     },
     "default_scene": {
-     "description": "What Reset all restores: a scene id, or a built-in id (fx:*, genre:*) resolved through the alias table.",
-     "$ref": "#/$defs/Ref",
+     "description": "What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).",
+     "type": "string",
+     "maxLength": 130,
      "default": ""
     },
     "scenes": {
      "type": "array",
      "items": {
       "$ref": "#/$defs/Scene"
+     },
+     "maxItems": 256,
+     "default": []
+    },
+    "bindings": {
+     "description": "Remembered role overrides per zone and scene (ADR-0038 D13).",
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/RoleBinding"
+     },
+     "maxItems": 256
+    }
+   },
+   "additionalProperties": false
+  },
+  "ShowResetRequest": {
+   "description": "Reset all: the zones to reset; empty for every zone (ADR-0038 D21).",
+   "type": "object",
+   "properties": {
+    "zones": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 64
      },
      "maxItems": 256,
      "default": []
@@ -6646,6 +6964,15 @@
     "schema_version": {
      "$ref": "#/$defs/SchemaVersion",
      "default": 2
+    },
+    "description": {
+     "description": "Shown in the gallery.",
+     "type": "string",
+     "maxLength": 500
+    },
+    "hints": {
+     "description": "Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.",
+     "type": "object"
     },
     "zone": {
      "$ref": "#/$defs/Zone",

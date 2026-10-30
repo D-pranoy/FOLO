@@ -1,0 +1,10 @@
+{
+  "id": "synthwave",
+  "schema_version": 2,
+  "name": "Synthwave",
+  "colors": [
+    "#FF00C8",
+    "#8F00FF",
+    "#00E5FF"
+  ]
+}
