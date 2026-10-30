@@ -80,6 +80,10 @@ impl BackendChoice {
         if matches!(self, Self::Auto | Self::Dda | Self::Wgc | Self::Gdi) {
             return Box::new(folo_capture_windows::clock::QpcClock::new());
         }
+        #[cfg(target_os = "linux")]
+        if matches!(self, Self::Auto | Self::Portal) {
+            return Box::new(folo_capture_linux::MonotonicClock);
+        }
         Box::new(ProcessClock::new())
     }
 
@@ -241,6 +245,20 @@ mod tests {
             assert!(
                 stamp.abs_diff(counter) < 1_000_000,
                 "{choice:?}: {stamp} against {counter}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_portal_stamps_with_the_monotonic_clock() {
+        for choice in [BackendChoice::Auto, BackendChoice::Portal] {
+            let monotonic = folo_capture_linux::MonotonicClock.now_us();
+            let stamp = choice.clock().now_us();
+            // A process clock would start near 0; CLOCK_MONOTONIC has run since the system started
+            assert!(
+                stamp.abs_diff(monotonic) < 1_000_000,
+                "{choice:?}: {stamp} against {monotonic}"
             );
         }
     }
