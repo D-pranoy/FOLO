@@ -1,6 +1,6 @@
 # M6 Screen
 
-Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; step 6: the capture link, the agent's link client and the node's side; the backends, the bar detector and the Screen effect follow)
+Status: Accepted · Implementation: Partial (RB-14 step 1: the core crate and the agent scaffold; step 6: the capture link, the agent's link client and the node's side; step 7: the engine's screen input, `CanvasEffect`, the Screen effect, the render trigger and the per-surface screen activity; step 9 (the replay end-to-end part); the backends and the bar detector follow)
 
 ## RB-14: Display capture and Screen effect
 
@@ -47,6 +47,7 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md): the agent
    - on Linux, on the CI runner: a real PipeWire daemon with a test producer and a fake ScreenCast portal on a private `dbus-daemon`, in an Ubuntu 24.04 job (the workspace must still build on 22.04)
    - privacy: marker pixels in the frames of a run must be in no live message, log line or temporary file
    - a replay-driven end-to-end run (node, agent in replay mode, the real engine) asserting the published canvas frames, extended through projection when RB-08 lands
+   - done so far: the replay end-to-end test (`crates/folo-node/tests/replay_e2e.rs`, `FOLO_E2E=1`, run by CI's Rust jobs): the node, the built `folo-capture` on a committed synthetic replay file (a normal, a held, a protected and a second normal frame, with markers in the held, protected, bar and margin areas) and the real engine publish, on `surface:wall`, exactly the canvases the Screen effect should draw from the normal frames (cell for cell, no tolerance), and the markers are in no log, status, answer, live message or file of the home. Still to come: the golden, shader and Linux-portal tests, and the run through projection when RB-08 lands (a follow-up of this test: it asserts `target:<id>` then)
 10. **Live verification** on Windows (SDR and HDR desktop), KDE Plasma (Arch-based and Ubuntu) and GNOME, per the [testing policy](../process/testing-policy.md).
 
 **Done when:** the replay and golden suites are green and live verification has passed on every Tier 1 platform.
