@@ -96,14 +96,17 @@ def test_the_packs_hold_what_adr_0038_d17_lists() -> None:
     assert len(ledfx) == 18
 
 
-@pytest.mark.parametrize('pack', ['folo/core', 'folo/genres', 'folo/effects'])
-def test_each_manifest_lists_its_files_and_contents(pack: str) -> None:
+@pytest.mark.parametrize(
+    ('pack', 'license_id'),
+    [('folo/core', 'MIT'), ('folo/genres', 'MIT'), ('folo/effects', 'GPL-3.0')],
+)
+def test_each_manifest_lists_its_files_and_contents(pack: str, license_id: str) -> None:
     folder = pack_dir(pack)
     manifest = read(folder / 'folo-pack.json')
     assert clamp.clamp('PackManifest', manifest) == manifest
     assert manifest['id'] == pack
     assert manifest['version'] == '1.0.0'
-    assert manifest['license'] == 'MIT'
+    assert manifest['license'] == license_id
     assert manifest['authors'] == ['FOLO contributors']
     on_disk = sorted(
         p.relative_to(folder).as_posix()
