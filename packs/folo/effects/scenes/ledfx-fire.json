@@ -1,0 +1,70 @@
+{
+  "id": "ledfx-fire",
+  "schema_version": 2,
+  "description": "LedFx-inspired. Violet and pink flames rise up the strip and reach higher with the bass.",
+  "hints": {
+    "tempo": "Medium",
+    "source": "LedFx"
+  },
+  "scene": {
+    "id": "ledfx-fire",
+    "name": "Fire",
+    "tags": [
+      "LedFx",
+      "Rock",
+      "Metal",
+      "Ambient"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Flames",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 30.0,
+            "freq_hi": 250.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -48.0,
+            "ceiling": -14.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 30.0,
+            "release": 400.0,
+            "floor": 0.25,
+            "mode": "fire",
+            "direction": "forward",
+            "speed": 90.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#000080",
+              "#4B00FF",
+              "#8F00FF",
+              "#FF00FF",
+              "#FF3399"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

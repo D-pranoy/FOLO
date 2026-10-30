@@ -1,0 +1,10 @@
+{
+  "id": "neon-pink",
+  "schema_version": 2,
+  "name": "Neon Pink",
+  "colors": [
+    "#FF3399",
+    "#FF00FF",
+    "#800080"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "bass-strobe",
+  "schema_version": 2,
+  "description": "Hard on/off flicker on loud bass hits.",
+  "hints": {
+    "group": "Low end",
+    "tempo": "Very fast",
+    "anim": "kick",
+    "dur": 0.22
+  },
+  "name": "Bass strobe",
+  "params": {
+    "freq_lo": 40,
+    "freq_hi": 100,
+    "threshold": 6,
+    "ceiling": 12,
+    "trigger": "hits",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "forward",
+    "attack": 0,
+    "release": 35,
+    "gain": 1,
+    "curve": 2,
+    "floor": 0,
+    "peak": false
+  }
+}

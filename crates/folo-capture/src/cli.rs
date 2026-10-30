@@ -55,7 +55,7 @@ pub fn main() -> ExitCode {
     ExitCode::from(status)
 }
 
-fn run(backend: &BackendChoice) -> u8 {
+fn run(choice: &BackendChoice) -> u8 {
     let environment = match Environment::read(|name| std::env::var(name).ok()) {
         Ok(environment) => environment,
         Err(missing) => {
@@ -63,7 +63,7 @@ fn run(backend: &BackendChoice) -> u8 {
             return EXIT_USAGE;
         }
     };
-    let backend = match backend.open() {
+    let backend = match choice.open() {
         Ok(backend) => backend,
         Err(error) => {
             eprintln!("folo-capture: {error}.");
@@ -80,7 +80,7 @@ fn run(backend: &BackendChoice) -> u8 {
             return EXIT_FAILED;
         }
     };
-    let (handle, worker) = worker::spawn(Agent::new(backend));
+    let (handle, worker) = worker::spawn(Agent::new(backend, choice.clock()));
     let status = runtime.block_on(link::run(&environment, &handle, Timing::default()));
     // The worker ends once nothing holds its handle
     drop(handle);

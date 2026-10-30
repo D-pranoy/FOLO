@@ -1,0 +1,28 @@
+{
+  "id": "guitar-wave",
+  "schema_version": 2,
+  "description": "Smooth fill that rolls along the segment.",
+  "hints": {
+    "group": "Mids",
+    "tempo": "Medium",
+    "anim": "meter",
+    "dur": 1.4
+  },
+  "name": "Guitar wave",
+  "params": {
+    "freq_lo": 250,
+    "freq_hi": 1500,
+    "threshold": -50,
+    "ceiling": -25,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "fill",
+    "direction": "forward",
+    "attack": 40,
+    "release": 500,
+    "gain": 1,
+    "curve": 1.3,
+    "floor": 0.05,
+    "peak": false
+  }
+}

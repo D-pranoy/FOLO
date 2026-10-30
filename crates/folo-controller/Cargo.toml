@@ -1,0 +1,26 @@
+[package]
+name = "folo-controller"
+description = "The controller's output core: per active zone, the compositor, the ambient light, projection and the adapter chains, stepped on the controller's clock (RB-08, ADR-0036)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-adapters = { path = "../folo-adapters" }
+folo-compositor = { path = "../folo-compositor" }
+folo-geometry = { path = "../folo-geometry" }
+folo-protocol = { path = "../folo-protocol" }
+folo-provider = { path = "../folo-provider" }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+
+[dev-dependencies]
+png = "0.18"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt", "time", "test-util"] }

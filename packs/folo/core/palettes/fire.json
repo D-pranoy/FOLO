@@ -1,0 +1,11 @@
+{
+  "id": "fire",
+  "schema_version": 2,
+  "name": "Fire",
+  "colors": [
+    "#FF0000",
+    "#FF5A00",
+    "#FFB000",
+    "#FFF1A0"
+  ]
+}

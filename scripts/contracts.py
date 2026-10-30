@@ -16,6 +16,7 @@ import argparse
 import difflib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -284,8 +285,23 @@ def _generate_python(bundle_path: Path, out: Path) -> None:
             '--collapse-root-models',
         ]
     )
-    # The same file on every platform
-    out.write_text(out.read_text(encoding='utf-8').replace('\r\n', '\n'), encoding='utf-8')
+    # The same file on every platform, with the keys of maps as pyright reads types
+    text = out.read_text(encoding='utf-8').replace('\r\n', '\n')
+    out.write_text(_constrained_keys(text), encoding='utf-8')
+
+
+def _constrained_keys(text: str) -> str:
+    """
+    A map with `propertyNames` is generated as dict[constr(max_length=N), V], a
+    call in a type expression that pyright refuses; the same constraint as an
+    annotated type is accepted by both pydantic and pyright.
+    """
+    text = re.sub(
+        r'constr\(max_length=(\d+)\)', r'Annotated[str, StringConstraints(max_length=\1)]', text
+    )
+    if 'constr(' not in text and 'StringConstraints' in text:
+        text = text.replace(', constr\n', ', StringConstraints\n', 1)
+    return text
 
 
 def generate_rust(bundle_path: Path, out: Path) -> None:

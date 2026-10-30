@@ -1,0 +1,28 @@
+{
+  "id": "snare-snap",
+  "schema_version": 2,
+  "description": "Quick bright hit on snares and claps.",
+  "hints": {
+    "group": "Mids",
+    "tempo": "Fast",
+    "anim": "kick",
+    "dur": 0.45
+  },
+  "name": "Snare snap",
+  "params": {
+    "freq_lo": 1800,
+    "freq_hi": 5000,
+    "threshold": 5,
+    "ceiling": 14,
+    "trigger": "hits",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 90,
+    "gain": 1,
+    "curve": 1.6,
+    "floor": 0,
+    "peak": false
+  }
+}

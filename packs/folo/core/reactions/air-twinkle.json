@@ -1,0 +1,28 @@
+{
+  "id": "air-twinkle",
+  "schema_version": 2,
+  "description": "Twinkling from both ends on the airy top end.",
+  "hints": {
+    "group": "Highs",
+    "tempo": "Medium",
+    "anim": "eq",
+    "dur": 0.9
+  },
+  "name": "Air twinkle",
+  "params": {
+    "freq_lo": 10000,
+    "freq_hi": 20000,
+    "threshold": -75,
+    "ceiling": -50,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "spectrum",
+    "direction": "edges",
+    "attack": 0,
+    "release": 250,
+    "gain": 1.2,
+    "curve": 1.4,
+    "floor": 0,
+    "peak": false
+  }
+}

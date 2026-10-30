@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 folo-capture-core = { path = "../folo-capture-core" }
+folo-capture-windows = { path = "../folo-capture-windows" }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 getrandom = { version = "0.3", features = ["std"] }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }

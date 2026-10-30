@@ -391,3 +391,19 @@ fn a_request_hides_its_restore_token_when_debug_printed() {
     );
     assert!(!shown.contains("must-not-be-logged"), "{shown}");
 }
+
+#[test]
+fn a_status_hides_its_restore_token_when_debug_printed() {
+    use folo_capture_core::types::{CaptureState, CaptureStatus};
+    let status = CaptureStatus {
+        state: CaptureState::Capturing,
+        restore_token: Some("new-token-that-must-not-be-logged".to_owned()),
+        ..CaptureStatus::off()
+    };
+    let shown = format!("{status:?}");
+    assert!(
+        shown.contains("Capturing") && shown.contains("<hidden>"),
+        "{shown}"
+    );
+    assert!(!shown.contains("must-not-be-logged"), "{shown}");
+}

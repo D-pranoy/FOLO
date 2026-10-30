@@ -20,10 +20,21 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::node::Node;
-use crate::{api, live, ui};
+use crate::{api, apply_api, backup_api, library_api, live, ui};
 
 /// The client API's body limit (docs/specs/client-api.md#conventions).
 const BODY_LIMIT: usize = 1024 * 1024;
+/// A pack install's body limit: 10 MB (docs/specs/client-api.md#conventions).
+const INSTALL_BODY_LIMIT: usize = 10 * 1024 * 1024;
+/// A restore's body limit: 256 MB (docs/specs/client-api.md#conventions).
+const RESTORE_BODY_LIMIT: usize = 256 * 1024 * 1024;
+/// Mutating requests that send a zip archive instead of JSON (ADR-0038 D28).
+/// `application/zip` isn't a type a page can send without a preflight, so
+/// the JSON rule's protection holds.
+const ZIP_ROUTES: [(Method, &str); 2] = [
+    (Method::POST, "/api/v1/library/packs"),
+    (Method::POST, "/api/v1/system/restore"),
+];
 /// Host names always allowed by the Host check.
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
@@ -72,6 +83,36 @@ fn later_post(runbook: &'static str) -> MethodRouter<Arc<Node>> {
     post(later(runbook))
 }
 
+/// The content library's paths (RB-09), apart for `router`'s length.
+fn library_routes() -> Router<Arc<Node>> {
+    let v1 = |path: &str| format!("/api/v1{path}");
+    Router::new()
+        .route(
+            &v1("/library/packs"),
+            get(library_api::packs)
+                .post(post(library_api::install).layer(DefaultBodyLimit::max(INSTALL_BODY_LIMIT))),
+        )
+        .route(
+            &v1("/library/packs/{pack}"),
+            get(library_api::pack).delete(library_api::remove_pack),
+        )
+        .route(
+            &v1("/library/packs/{pack}/export"),
+            get(library_api::export),
+        )
+        .route(
+            &v1("/library/packs/{pack}/items/{type}/{item}"),
+            get(library_api::item)
+                .put(library_api::put_item)
+                .delete(library_api::delete_item),
+        )
+        .route(
+            &v1("/library/packs/{pack}/previews/{file}"),
+            get(library_api::preview),
+        )
+        .route(&v1("/library/items"), get(library_api::items))
+}
+
 /// Every path of specs/openapi.yaml, with the methods it lists.
 pub fn router(node: Arc<Node>) -> Router {
     let v1 = |path: &str| format!("/api/v1{path}");
@@ -84,12 +125,13 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/zones/{id}"),
             get(api::zone).put(api::put_zone).delete(api::delete_zone),
         )
-        .route(&v1("/zones/{id}/activate"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/deactivate"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/identify"), later_post("RB-08"))
-        .route(&v1("/zones/{id}/test"), later_post("RB-08"))
+        .route(&v1("/zones/{id}/activate"), post(api::activate_zone))
+        .route(&v1("/zones/{id}/deactivate"), post(api::deactivate_zone))
+        .route(&v1("/zones/{id}/identify"), post(api::identify_zone))
+        .route(&v1("/zones/{id}/test"), post(api::test_zone))
         .route(&v1("/show"), get(api::show).put(api::put_show))
-        .route(&v1("/scenes/{id}/apply"), later_post("RB-09"))
+        .route(&v1("/show/reset"), post(apply_api::reset))
+        .route(&v1("/scenes/{ref}/apply"), post(apply_api::apply))
         .route(&v1("/effects"), get(api::effects))
         .route(
             &v1("/providers"),
@@ -101,10 +143,10 @@ pub fn router(node: Arc<Node>) -> Router {
                 .put(api::put_provider)
                 .delete(api::delete_provider),
         )
-        .route(&v1("/providers/discover"), later_post("RB-08"))
+        .route(&v1("/providers/discover"), post(api::discover_providers))
         .route(
             &v1("/providers/{id}/admin/{action}"),
-            later_get("RB-08").post(later("RB-08")),
+            get(api::get_provider_admin).post(api::post_provider_admin),
         )
         .route(&v1("/providers/{id}/hue/pair"), later_post("RB-13"))
         .route(&v1("/sources"), get(api::sources))
@@ -129,15 +171,7 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/sources/join-requests/{id}/reject"),
             later_post("RB-16"),
         )
-        .route(
-            &v1("/library/packs"),
-            later_get("RB-09").post(later("RB-09")),
-        )
-        .route(
-            &v1("/library/packs/{id}"),
-            later_get("RB-09").delete(later("RB-09")),
-        )
-        .route(&v1("/library/packs/{id}/export"), later_get("RB-09"))
+        .merge(library_routes())
         .route(&v1("/clients"), later_get("RB-15").post(later("RB-15")))
         .route(
             &v1("/clients/{id}"),
@@ -154,8 +188,11 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/system/status"), get(api::system_status))
         .route(&v1("/system/reload"), post(api::system_reload))
         .route(&v1("/system/logs"), get(api::system_logs))
-        .route(&v1("/system/backup"), later_get("RB-09"))
-        .route(&v1("/system/restore"), later_post("RB-09"))
+        .route(&v1("/system/backup"), get(backup_api::backup))
+        .route(
+            &v1("/system/restore"),
+            post(backup_api::restore).layer(DefaultBodyLimit::max(RESTORE_BODY_LIMIT)),
+        )
         .route(&v1("/auth/login"), later_post("RB-15"))
         .route(&v1("/auth/logout"), later_post("RB-15"))
         .route(&v1("/auth/requests"), later_post("RB-15"))
@@ -169,6 +206,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .fallback(fallback)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(middleware::from_fn(no_empty_segments))
         .layer(middleware::from_fn_with_state(Arc::clone(&node), guard))
         .layer(middleware::from_fn(headers))
         .with_state(node)
@@ -257,13 +295,24 @@ fn private(ip: IpAddr) -> bool {
     }
 }
 
-/// JSON for mutating requests (docs/specs/client-api.md#conventions).
+/// JSON for mutating requests (docs/specs/client-api.md#conventions), a zip
+/// archive for the routes that take one.
 async fn json_only(request: Request, next: Next) -> Response {
     let mutating = matches!(
         *request.method(),
         Method::POST | Method::PUT | Method::PATCH | Method::DELETE
     );
-    if mutating && !is_json(request.headers()) {
+    let zip = ZIP_ROUTES
+        .iter()
+        .any(|(method, path)| method == request.method() && *path == request.uri().path());
+    if zip && !is_zip(request.headers()) {
+        return error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "zip_required",
+            "this request must send Content-Type: application/zip",
+        );
+    }
+    if mutating && !zip && !is_json(request.headers()) {
         return error(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "json_required",
@@ -320,11 +369,31 @@ fn host_name(host: &str) -> &str {
 }
 
 fn is_json(headers: &HeaderMap) -> bool {
+    has_media_type(headers, "application/json")
+}
+
+fn is_zip(headers: &HeaderMap) -> bool {
+    has_media_type(headers, "application/zip")
+}
+
+fn has_media_type(headers: &HeaderMap, wanted: &str) -> bool {
     headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(';').next())
-        .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
+        .is_some_and(|v| v.trim().eq_ignore_ascii_case(wanted))
+}
+
+/// An empty segment in an API path names no resource, so it gets the 404 of
+/// any id that isn't there, rather than the `{id}` route its neighbours match
+/// (`/zones//identify`) (docs/specs/client-api.md#conventions). Runs after
+/// the request checks, as "the resource exists" does.
+async fn no_empty_segments(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    if path.starts_with("/api/") && path.contains("//") {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such resource");
+    }
+    next.run(request).await
 }
 
 /// Paths no route takes: 404 under `/api/`, the UI's files elsewhere.
@@ -639,16 +708,15 @@ mod tests {
     #[tokio::test]
     async fn later_subsystems_answer_501_with_their_run_book() {
         let request = Request::builder()
-            .method(Method::POST)
-            .uri("/api/v1/zones/desk/activate")
+            .method(Method::GET)
+            .uri("/api/v1/updates")
             .header(header::HOST, "localhost")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from("{}"))
+            .body(Body::empty())
             .unwrap();
         let (status, _, body) = ask("", "127.0.0.1:50000", request).await;
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
         assert_eq!(body["error"]["code"], "not_implemented");
-        assert_eq!(body["error"]["details"]["runbook"], "RB-08");
+        assert_eq!(body["error"]["details"]["runbook"], "RB-17");
     }
 
     #[test]

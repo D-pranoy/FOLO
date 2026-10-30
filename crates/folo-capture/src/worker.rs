@@ -4,14 +4,20 @@
 //! a thread of its own, because backends block waiting for pictures.
 //!
 //! The agent never captures on its own: its state is `off` until
-//! `capture.start` and again after `capture.stop` (D3).
+//! `capture.start` and again after `capture.stop` (D3). While the backend
+//! can't capture (its [`CaptureBackend::status`] says `paused`), the state is
+//! `paused`, the last picture goes out again with `held`, and the status
+//! carries the backend's message and settings page (D13). A backend that
+//! reports its own state ([`CaptureBackend::report`]: the portal waiting for
+//! consent) sets the status's, and the restore token it hands over stays in
+//! the status until the capture ends (D14).
 
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use folo_capture_core::backend::CaptureBackend;
-use folo_capture_core::clock::{Clock, ProcessClock};
+use folo_capture_core::clock::Clock;
 use folo_capture_core::codec::{self, MESSAGE_TYPE};
 use folo_capture_core::error::CaptureError;
 use folo_capture_core::pacer::FramePacer;
@@ -68,22 +74,29 @@ struct Capture {
     pacer: FramePacer,
     window_start_us: u64,
     sent_in_window: u32,
+    /// A picture of this capture has come.
+    pictured: bool,
+    /// The newest picture had `held` set (a replay of a pause).
+    picture_held: bool,
 }
 
 /// The capture side of the agent.
 pub struct Agent {
     backend: Box<dyn CaptureBackend>,
-    clock: ProcessClock,
+    clock: Box<dyn Clock>,
     capture: Option<Capture>,
     status: CaptureStatus,
 }
 
 impl Agent {
+    /// The agent of `backend`, stamping its frames with `clock`: the
+    /// operating system's monotonic counter for the real backends (D6), as
+    /// [`crate::backends::BackendChoice::clock`] gives it.
     #[must_use]
-    pub fn new(backend: Box<dyn CaptureBackend>) -> Self {
+    pub fn new(backend: Box<dyn CaptureBackend>, clock: Box<dyn Clock>) -> Self {
         Self {
             backend,
-            clock: ProcessClock::new(),
+            clock,
             capture: None,
             status: CaptureStatus::off(),
         }
@@ -160,6 +173,8 @@ impl Agent {
                     request,
                     window_start_us: self.clock.now_us(),
                     sent_in_window: 0,
+                    pictured: false,
+                    picture_held: false,
                 });
             }
         }
@@ -180,12 +195,8 @@ impl Agent {
         let capture = self.capture.as_mut()?;
         match self.backend.next_picture(timeout) {
             Ok(Some(picture)) => {
-                capture.pacer.set_held(picture.flags.held);
-                self.status.state = if picture.flags.held {
-                    CaptureState::Paused
-                } else {
-                    CaptureState::Capturing
-                };
+                capture.pictured = true;
+                capture.picture_held = picture.flags.held;
                 self.status.hdr = picture.flags.hdr;
                 self.status.protected = picture.flags.protected;
                 self.status.bars = picture.bars.fractions(picture.width, picture.height);
@@ -197,6 +208,48 @@ impl Agent {
                 return None;
             }
         }
+        // A backend with more to say than its pictures reports it (D3, D14):
+        // the portal waits for consent, fails, and hands over restore tokens
+        let mut report = self.backend.report();
+        if let Some(failed) = &report
+            && failed.state == CaptureState::Error
+        {
+            let why = failed.message.clone();
+            self.fail(&CaptureError::Failed(
+                why.unwrap_or_else(|| "the capture failed".to_owned()),
+            ));
+            return None;
+        }
+        if let Some(token) = report
+            .as_mut()
+            .and_then(|report| report.restore_token.take())
+        {
+            // It stays in the status until the capture ends, so a status that
+            // newer ones replace before the link sends it can't lose it; the
+            // node keeps one copy (D14)
+            self.status.restore_token = Some(token);
+        }
+        // While the backend can't capture, the repeats of the last picture
+        // carry `held` and the status says why (D13)
+        let backend = self.backend.status();
+        let held = backend.paused || capture.picture_held;
+        capture.pacer.set_held(held);
+        // `off` comes only from the agent itself, before a start and after a stop
+        let reported = report
+            .as_ref()
+            .map(|report| report.state)
+            .filter(|state| *state != CaptureState::Off);
+        self.status.state = if held {
+            CaptureState::Paused
+        } else if let Some(state) = reported {
+            state
+        } else if capture.pictured {
+            CaptureState::Capturing
+        } else {
+            CaptureState::Starting
+        };
+        self.status.message = report.and_then(|report| report.message).or(backend.message);
+        self.status.settings_uri = backend.settings_uri;
         let now = self.clock.now_us();
         let frame = capture.pacer.poll(now)?;
         capture.sent_in_window += 1;
@@ -333,11 +386,16 @@ fn handle(agent: &mut Agent, command: Command, frames: &watch::Sender<Option<Byt
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
+    use folo_capture_core::backend::{BackendReport, BackendStatus};
+    use folo_capture_core::clock::ProcessClock;
     use folo_capture_core::replay::{self, ReplayBackend};
     use folo_capture_core::synthetic::{Pattern, SyntheticBackend};
-    use folo_capture_core::types::{Bars, FrameFlags, Picture, ScreenFrame};
+    use folo_capture_core::types::{Bars, FrameFlags, Picture, Screen, ScreenFrame};
 
     use super::*;
 
@@ -350,7 +408,112 @@ mod tests {
     }
 
     fn synthetic() -> Agent {
-        Agent::new(Box::new(SyntheticBackend::unpaced(Pattern::Letterbox)))
+        Agent::new(
+            Box::new(SyntheticBackend::unpaced(Pattern::Letterbox)),
+            Box::new(ProcessClock::new()),
+        )
+    }
+
+    /// What [`FakeBackend`] gives: the pictures to come, its status, and its
+    /// report, whose restore token it hands over once.
+    #[derive(Default)]
+    struct Script {
+        pictures: VecDeque<Picture>,
+        status: BackendStatus,
+        report: Option<BackendReport>,
+    }
+
+    /// A backend the test drives: pictures come when the script has them, and
+    /// the status is whatever the script says.
+    struct FakeBackend(Arc<Mutex<Script>>);
+
+    impl CaptureBackend for FakeBackend {
+        fn name(&self) -> &'static str {
+            "fake"
+        }
+
+        fn list_screens(&mut self) -> Result<Vec<Screen>, CaptureError> {
+            Ok(vec![Screen {
+                id: "fake-0".to_owned(),
+                name: "Fake".to_owned(),
+                width: 16,
+                height: 9,
+                primary: true,
+            }])
+        }
+
+        fn start(&mut self, request: &CaptureRequest) -> Result<(), CaptureError> {
+            if request.screen == "fake-0" {
+                Ok(())
+            } else {
+                Err(CaptureError::UnknownScreen(request.screen.clone()))
+            }
+        }
+
+        fn next_picture(&mut self, _timeout: Duration) -> Result<Option<Picture>, CaptureError> {
+            Ok(self.0.lock().unwrap().pictures.pop_front())
+        }
+
+        fn stop(&mut self) {}
+
+        fn status(&self) -> BackendStatus {
+            self.0.lock().unwrap().status.clone()
+        }
+
+        fn report(&mut self) -> Option<BackendReport> {
+            let mut script = self.0.lock().unwrap();
+            let report = script.report.clone();
+            if let Some(kept) = &mut script.report {
+                kept.restore_token = None;
+            }
+            report
+        }
+    }
+
+    fn reported(state: CaptureState, message: Option<&str>, token: Option<&str>) -> BackendReport {
+        BackendReport {
+            state,
+            message: message.map(str::to_owned),
+            restore_token: token.map(str::to_owned),
+            fps: 0.0,
+        }
+    }
+
+    /// A clock the test moves.
+    struct FakeClock(Arc<AtomicU64>);
+
+    impl Clock for FakeClock {
+        fn now_us(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    /// An agent on a [`FakeBackend`] and a [`FakeClock`] at 5 s, capturing.
+    fn scripted() -> (Agent, Arc<Mutex<Script>>, Arc<AtomicU64>) {
+        let script = Arc::new(Mutex::new(Script::default()));
+        let time = Arc::new(AtomicU64::new(5_000_000));
+        let mut agent = Agent::new(
+            Box::new(FakeBackend(Arc::clone(&script))),
+            Box::new(FakeClock(Arc::clone(&time))),
+        );
+        agent.call("capture.start", start_params("fake-0")).unwrap();
+        (agent, script, time)
+    }
+
+    fn picture() -> Picture {
+        Picture {
+            screen_index: 0,
+            width: 16,
+            height: 9,
+            flags: FrameFlags::default(),
+            bars: Bars::default(),
+            pixels: vec![40; 16 * 9 * 3],
+        }
+    }
+
+    fn decoded(message: &[u8]) -> ScreenFrame {
+        assert_eq!(message[0], MESSAGE_TYPE);
+        codec::decode(&message[1..]).expect("a frame the codec reads")
     }
 
     /// Steps until a frame comes, at most a second.
@@ -521,7 +684,7 @@ mod tests {
         std::fs::write(&file, replay::write(&frames).unwrap()).unwrap();
         let backend = ReplayBackend::open(&file).unwrap();
         let _ = std::fs::remove_file(&file);
-        let mut agent = Agent::new(Box::new(backend));
+        let mut agent = Agent::new(Box::new(backend), Box::new(ProcessClock::new()));
         agent.call("capture.start", start_params("replay")).unwrap();
         // The pacer keeps the newest picture of those that come together, so the
         // status is watched at every step: the replay loops through its frames
@@ -537,5 +700,178 @@ mod tests {
             && (s.bars.top - 1.0 / 9.0).abs() < 1e-9));
         assert!(seen.iter().any(|s| s.hdr && s.protected));
         assert!(seen.iter().any(|s| s.state == CaptureState::Paused));
+    }
+
+    #[test]
+    fn a_paused_backend_pauses_the_capture_and_its_repeats_are_held() {
+        let (mut agent, script, time) = scripted();
+        script.lock().unwrap().pictures.push_back(picture());
+        let first = decoded(&agent.step(Duration::ZERO).expect("the first picture"));
+        assert!(!first.picture.flags.held);
+        assert_eq!(
+            first.timestamp_us, 5_000_000,
+            "stamped on the agent's clock"
+        );
+        assert_eq!(agent.status().state, CaptureState::Capturing);
+
+        // The secure desktop: no pictures, and the backend says why
+        script.lock().unwrap().status = BackendStatus {
+            paused: true,
+            message: Some("the secure desktop is shown".to_owned()),
+            settings_uri: None,
+        };
+        time.store(5_100_000, Ordering::SeqCst);
+        assert!(
+            agent.step(Duration::ZERO).is_none(),
+            "no repeat before 0.25 s"
+        );
+        assert_eq!(agent.status().state, CaptureState::Paused);
+        assert_eq!(
+            agent.status().message.as_deref(),
+            Some("the secure desktop is shown")
+        );
+        time.store(5_260_000, Ordering::SeqCst);
+        let repeat = decoded(&agent.step(Duration::ZERO).expect("a repeat after 0.25 s"));
+        assert!(repeat.picture.flags.held, "a repeat while paused is held");
+        assert_eq!(repeat.picture.pixels, first.picture.pixels);
+        assert_eq!(repeat.sequence, first.sequence.wrapping_add(1));
+        assert_eq!(repeat.timestamp_us, 5_260_000);
+
+        // Capturing again: the new picture isn't held, and the message is gone
+        {
+            let mut script = script.lock().unwrap();
+            script.status = BackendStatus::default();
+            script.pictures.push_back(picture());
+        }
+        time.store(5_300_000, Ordering::SeqCst);
+        let back = decoded(&agent.step(Duration::ZERO).expect("the new picture"));
+        assert!(!back.picture.flags.held);
+        assert_eq!(back.timestamp_us, 5_300_000);
+        assert_eq!(agent.status().state, CaptureState::Capturing);
+        assert_eq!(agent.status().message, None);
+    }
+
+    #[test]
+    fn a_capture_the_privacy_setting_denies_is_paused_with_the_settings_page() {
+        let (mut agent, script, time) = scripted();
+        assert!(agent.step(Duration::ZERO).is_none());
+        assert_eq!(
+            agent.status().state,
+            CaptureState::Starting,
+            "starting until a picture comes"
+        );
+        script.lock().unwrap().status = BackendStatus {
+            paused: true,
+            message: Some("Windows' privacy setting denies screen capture".to_owned()),
+            settings_uri: Some("ms-settings:privacy-graphicscaptureprogrammatic".to_owned()),
+        };
+        for second in 1..=3 {
+            time.store(5_000_000 + second * 1_000_000, Ordering::SeqCst);
+            assert!(
+                agent.step(Duration::ZERO).is_none(),
+                "no picture came, so none is repeated"
+            );
+            assert_eq!(agent.status().state, CaptureState::Paused);
+        }
+        let sent = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(sent["state"], "paused");
+        assert_eq!(
+            sent["settings_uri"],
+            "ms-settings:privacy-graphicscaptureprogrammatic"
+        );
+        assert_eq!(
+            sent["message"],
+            "Windows' privacy setting denies screen capture"
+        );
+        // A stop leaves nothing of it
+        agent.stop();
+        assert_eq!(agent.status(), &CaptureStatus::off());
+    }
+
+    #[test]
+    fn the_state_and_message_a_backend_reports_reach_the_status() {
+        let (mut agent, script, time) = scripted();
+        script.lock().unwrap().report = Some(reported(
+            CaptureState::WaitingConsent,
+            Some("the desktop asks which screen to share"),
+            None,
+        ));
+        assert!(agent.step(Duration::ZERO).is_none());
+        assert_eq!(agent.status().state, CaptureState::WaitingConsent);
+        assert_eq!(
+            agent.status().message.as_deref(),
+            Some("the desktop asks which screen to share")
+        );
+
+        {
+            let mut script = script.lock().unwrap();
+            script.report = Some(reported(CaptureState::Capturing, None, None));
+            script.pictures.push_back(picture());
+        }
+        assert!(agent.step(Duration::ZERO).is_some());
+        assert_eq!(agent.status().state, CaptureState::Capturing);
+        assert_eq!(agent.status().message, None);
+
+        // `off` is the agent's own word: a backend's is passed over while capturing
+        script.lock().unwrap().report = Some(reported(CaptureState::Off, None, None));
+        time.store(5_100_000, Ordering::SeqCst);
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().state, CaptureState::Capturing);
+
+        // An error ends the capture with the backend's reason
+        script.lock().unwrap().report = Some(reported(
+            CaptureState::Error,
+            Some("the desktop ended the share"),
+            None,
+        ));
+        assert!(agent.step(Duration::ZERO).is_none());
+        assert!(!agent.capturing());
+        assert_eq!(agent.status().state, CaptureState::Error);
+        assert_eq!(
+            agent.status().message.as_deref(),
+            Some("the desktop ended the share")
+        );
+    }
+
+    #[test]
+    fn a_restore_token_stays_in_the_status_until_the_capture_ends() {
+        let (mut agent, script, time) = scripted();
+        script.lock().unwrap().report =
+            Some(reported(CaptureState::Capturing, None, Some("token-1")));
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().restore_token.as_deref(), Some("token-1"));
+        // The backend handed it over once; the status keeps it for the link
+        assert_eq!(
+            script
+                .lock()
+                .unwrap()
+                .report
+                .as_ref()
+                .unwrap()
+                .restore_token,
+            None
+        );
+        time.store(6_000_000, Ordering::SeqCst);
+        agent.step(Duration::ZERO);
+        let sent = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(sent["restore_token"], "token-1");
+
+        // A newer token replaces it, and a change in place keeps it
+        script.lock().unwrap().report =
+            Some(reported(CaptureState::Capturing, None, Some("token-2")));
+        agent.step(Duration::ZERO);
+        let mut bigger = start_params("fake-0");
+        bigger["width"] = json!(128);
+        bigger["height"] = json!(72);
+        agent.call("capture.start", bigger).unwrap();
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().restore_token.as_deref(), Some("token-2"));
+
+        // A stop ends it, and a new capture has none until the backend hands one over
+        agent.call("capture.stop", json!({})).unwrap();
+        assert_eq!(agent.status().restore_token, None);
+        agent.call("capture.start", start_params("fake-0")).unwrap();
+        agent.step(Duration::ZERO);
+        assert_eq!(agent.status().restore_token, None);
     }
 }

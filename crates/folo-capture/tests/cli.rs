@@ -139,25 +139,29 @@ fn the_environment_is_checked_before_the_backend() {
 const PORTAL_BUILT: bool = cfg!(all(target_os = "linux", feature = "portal"));
 
 /// The backends that can't be opened here, with what their message says: the
-/// Windows ones everywhere, and the platform's own where it isn't built.
+/// Windows ones on other systems, the portal outside Linux or without its
+/// feature, and `auto` where the platform's own isn't built.
 fn unbuilt_backends() -> Vec<(&'static str, &'static str)> {
-    let mut backends = vec![
-        ("dda", "dda backend isn't built yet"),
-        ("wgc", "wgc backend isn't built yet"),
-        ("gdi", "gdi backend isn't built yet"),
-    ];
+    let mut backends = Vec::new();
+    if !cfg!(windows) {
+        backends.extend([
+            ("dda", "dda backend isn't built yet"),
+            ("wgc", "wgc backend isn't built yet"),
+            ("gdi", "gdi backend isn't built yet"),
+        ]);
+    }
     if !PORTAL_BUILT {
-        let portal = if cfg!(target_os = "linux") {
-            "built into this binary"
+        if cfg!(target_os = "linux") {
+            backends.extend([
+                ("auto", "built into this binary"),
+                ("portal", "built into this binary"),
+            ]);
         } else {
-            "portal backend is for Linux"
-        };
-        let auto = if cfg!(target_os = "linux") {
-            "built into this binary"
-        } else {
-            "platform's capture backend isn't built yet"
-        };
-        backends.extend([("auto", auto), ("portal", portal)]);
+            backends.push(("portal", "portal backend is for Linux"));
+        }
+    }
+    if !cfg!(windows) && !cfg!(target_os = "linux") {
+        backends.push(("auto", "platform backend isn't built yet"));
     }
     backends
 }
@@ -327,5 +331,29 @@ fn run_on_the_portal_backend_with_a_link_that_is_not_a_url_exits_with_1() {
 #[test]
 fn the_default_backend_is_auto() {
     let output = agent(&["screens", "--json"], &[]);
-    assert_eq!(code(&output), i32::from(!PORTAL_BUILT));
+    assert_eq!(code(&output), i32::from(!(cfg!(windows) || PORTAL_BUILT)));
+}
+
+/// Listing the monitors captures nothing and asks for no consent, so the real backend is
+/// run here. A machine with no display lists none, which is a valid answer too.
+#[cfg(windows)]
+#[test]
+fn screens_json_on_the_windows_backends_lists_the_monitors_in_the_shape_of_the_schema() {
+    for backend in ["auto", "dda", "wgc", "gdi"] {
+        let output = agent(&["screens", "--json", "--backend", backend], &[]);
+        assert_eq!(code(&output), 0, "{backend}: {}", stderr(&output));
+        let listed: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let screens = listed["screens"].as_array().expect("a screens array");
+        let mut ids = std::collections::HashSet::new();
+        for screen in screens {
+            let id = screen["id"].as_str().unwrap();
+            assert!(!id.is_empty() && id.chars().count() <= 128, "{screen}");
+            assert!(!screen["name"].as_str().unwrap().is_empty(), "{screen}");
+            assert!(screen["width"].as_u64().unwrap() > 0, "{screen}");
+            assert!(screen["height"].as_u64().unwrap() > 0, "{screen}");
+            assert!(screen["primary"].is_boolean(), "{screen}");
+            assert!(ids.insert(id.to_owned()), "ids are unique: {screen}");
+        }
+        assert_eq!(stderr(&output), "", "{backend}");
+    }
 }
