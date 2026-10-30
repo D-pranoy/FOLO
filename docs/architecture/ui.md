@@ -66,7 +66,7 @@ The inspector is **generated from each effect's parameter schema**, so effects t
 - **First run on a controller:** Welcome → Photosensitivity warning ([below](#photosensitivity)) → Role → Audio (live meter) → Find lights (discovery; the Hue link-button step) → Create zone → Pick a scene → Add a phone or source (QR) → Done.
 - **First run on a source:** join a controller (scan or paste an invite, or pick a discovered controller and approve there); check inputs.
 - **First run on a client:** scan or paste a controller's connect code.
-- **Task wizards:** add WLED, pair Hue, add a source, create a zone, add a device, enable screen sync. The screen-sync wizard includes picking the screen, the operating system's consent step, a black-bar preview, and turning on start at sign-in.
+- **Task wizards:** add WLED, pair Hue, add a source, create a zone, add a device, enable screen sync. The screen-sync wizard includes picking the screen, the operating system's consent step, a black-bar preview, and turning on start at sign-in. The preview is drawn from the black bars the capture agent reports, over the zone's surface; the UI never receives screen frames ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D9). A zone using screen sync shows a banner while the source reports protected content, and a link to the Windows privacy setting when that is what refuses capture.
 - **Rules:** one decision per screen; large primary buttons; every wizard can be skipped and resumed. The photosensitivity warning is shown even when the rest of the first run is skipped.
 
 ## Responsive and touch rules

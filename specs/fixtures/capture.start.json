@@ -1,0 +1,17 @@
+{
+ "jsonrpc": "2.0",
+ "id": 22,
+ "method": "capture.start",
+ "params": {
+  "screen": "\\\\?\\DISPLAY#TST0001#5&0&UID1",
+  "width": 128,
+  "height": 72,
+  "rate_hz": 60,
+  "black_bars": {
+   "preset": "auto",
+   "mode": "default",
+   "threshold": 0.05
+  },
+  "profile": "video"
+ }
+}

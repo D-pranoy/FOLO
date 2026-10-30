@@ -4,7 +4,7 @@
   "folo": ">=1.0 <2",
   "name": "FOLO effects",
   "description": "Whole-strip effects, including the LedFx-inspired ones.",
-  "license": "MIT",
+  "license": "GPL-3.0",
   "authors": [
     "FOLO contributors"
   ],

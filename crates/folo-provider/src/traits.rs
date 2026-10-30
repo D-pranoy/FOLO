@@ -72,6 +72,13 @@ pub trait Provider: Send + Sync {
         Box::pin(async move { Err(AdminError::UnknownAction(action)) })
     }
 
+    /// The credentials this provider holds now, when an administration action has changed them
+    /// (Hyperion's token after a login that worked). The node keeps them in `secrets.json`
+    /// after each change; a kind without credentials of its own answers `None`.
+    fn secrets(&self) -> Option<ProviderSecrets> {
+        None
+    }
+
     /// What the sender needs to know of this kind: keepalive and the state bucket.
     fn delivery_policy(&self) -> DeliveryPolicy;
 

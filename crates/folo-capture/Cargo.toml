@@ -1,0 +1,29 @@
+[package]
+name = "folo-capture"
+description = "The display capture agent, binary `folo-capture`: run and screens --json (RB-14, ADR-0037)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "folo-capture"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+folo-capture-core = { path = "../folo-capture-core" }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+getrandom = { version = "0.3", features = ["std"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+tokio = { version = "1", features = ["macros", "net", "rt", "sync", "time"] }
+tokio-tungstenite = "0.29"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
