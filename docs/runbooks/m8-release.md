@@ -12,6 +12,7 @@ Status: Accepted · Implementation: Not started
 3. **Tray:**
    - status icon (ok, warning, off, updating)
    - menu: Open, Output on/off, Start at sign-in, Join a controller (source role), Updates, Quit
+   - a "screen sync active" indicator while the source's screen status says `capturing` or `paused` ([RB-14](m6-screen.md), [ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D21)
    - on Linux, menu only; document the GNOME AppIndicator extension
 4. **Window:** a taskbar button while shown; close hides to the tray (setting); `--minimized`; single instance.
 5. **Start at sign-in:** an explicit per-user implementation (HKCU Run / XDG autostart), off by default, exposed to the UI through the loopback bridge.
@@ -63,7 +64,7 @@ Status: Accepted · Implementation: Not started
 1. **Units:**
    - `folo.service` (user unit, `Restart=on-failure`)
    - `folo-controller.service` (system unit, user `folo`, `/var/lib/folo`)
-   - `app-io.github.d-pranoy.folo-capture.service` (user unit, `PartOf=`/`After=graphical-session.target`)
+   - `app-io.github.d-pranoy.folo-capture.service` (user unit, `PartOf=`/`After=graphical-session.target`), reserved with service mode: how it gets the node's launch token is decided with RB-19 and RB-20 ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D2)
 2. **deb and rpm** through Tauri's `files`:
    - units into `/usr/lib/systemd/{user,system}/`; the node and workers into `/usr/lib/folo/`
    - `postinst` runs `daemon-reload` only; units are not enabled

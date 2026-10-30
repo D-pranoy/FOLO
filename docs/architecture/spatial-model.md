@@ -1,6 +1,6 @@
 # Spatial model, zones and projection
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (activation, defaults on creation, element positions, kernels, gather plans and mappings, run per zone by the node's output; not yet the Hue conversion)
 
 Decided in [ADR-0006](../decisions/ADR-0006-spatial-model-zones-and-projection.md) and, for activation, defaults and the details of projection, [ADR-0036](../decisions/ADR-0036-controller-output.md).
 
@@ -28,6 +28,11 @@ A **zone** is a spatial setup: a room, a TV corner, a desk. A controller has any
   - of the zones that share a target, the one first in `zones.json` keeps it, whether the write added a zone or changed one; a new zone goes last, so a new zone that shares a target with an active one comes up effectively inactive, and nothing is refused
   - a zone the check suppressed becomes effective as soon as the zone that held its target is deactivated or removed, as it would after a restart
   - the file's flag isn't rewritten by the check; `GET /zones` gives the stored one, and `ZoneActivation.active` and the live channel give the effective one
+- **Details of the check:**
+  - it goes through the zones in file order and a zone that lost holds nothing for the zones after it, so a chain of overlaps silences only the zones that must be
+  - a target with no provider instance yet shares a target only by id; one bound to an instance without an address has the default address (LED 0, one LED)
+  - Hue channels are compared with channels only, and LED ranges with LED ranges, so a channel target and a range target on one instance never share
+  - `take_over` also deactivates the other zones that are active in the file and share a target, the suppressed ones included, so the zone can't lose a target to a zone that comes before it in the file; its answer has no `conflicts`, since none is left
 - Only effectively active zones are rendered by the effect engine and driven by the controller ([control plane](control-plane.md#supervision)).
 
 ## Targets
@@ -54,7 +59,7 @@ Element positions come from manual placement in the zone editor, or are imported
 Where each element of a target sits, in the zone's coordinates:
 - **point:** its position.
 - **line** of `N` elements: element `i` is at arc length `i / (N − 1)` of the path (a line of one element is at the path's start). Explicit `positions` win when they have exactly `count` entries. A path of fewer than 2 points is **unplaced**: its elements have no position, and only manual mappings can reach them.
-- **grid** of `W × H`: the rectangle is spanned from its `origin` corner by the edge vectors `u` (across the columns) and `v` (down the rows). Column `c` and row `r` are centred at `origin + u · (c + ½) / W + v · (r + ½) / H`. Element indices follow the **wiring order**: they start at the `start` corner, run along rows (or columns, with `order: column`), and each following row (column) runs the other way when `serpentine` is on.
+- **grid** of `W × H`: the rectangle is spanned from its `origin` corner by the edge vectors `u` (across the columns) and `v` (down the rows). Column `c` and row `r` are centred at `origin + u · (c + ½) / W + v · (r + ½) / H`. Row 0 is the `origin` side along `v` (`top`) and column 0 the `origin` side along `u` (`left`). Element indices follow the **wiring order**: they start at the `start` corner, run along rows (or columns, with `order: column`), and each following row (column) runs the other way when `serpentine` is on.
 - **display:** no positions; validated only.
 
 ## Surfaces
@@ -71,12 +76,18 @@ Zone types create default surfaces with **roles**, which scenes bind to ([conten
 
 ### Defaults
 
-Defaults are applied only when a zone is created through the API or a target is added to one, **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
+Defaults are applied only when a zone is created through the API (a target added to an existing zone is not covered yet: the API has no such call apart from replacing the zone, and replacing never applies defaults), **never when a document is loaded or migrated**, so a migrated setup stays as the migration made it ([configuration model](../specs/config-model.md#migration-from-the-current-studiojson-version-1)):
 - `canvas.room`: 64 × 36 cells on the floor plane, covering the room, with **row 0 on the +y side**: the plane's origin is the corner at `(−x/2, +y/2, 0)`, with `u` along +x and `v` along −y.
 - `canvas.screen` (zones of type `screen` whose reference is a TV): 64 × 36 cells on the TV's plane, which comes from the reference object. At orientation 0 the TV faces the room: its centre is `reference.position`, its screen's normal points towards −y, and a viewer looking along +y sees +x to the right. Its rectangle has the origin corner at the top left as the viewer sees it, `(−w/2, 0, +h/2)` from the centre, with `u = (w, 0, 0)` and `v = (0, 0, −h)`, `w` and `h` being the reference's `size`. `orientation` then turns the rectangle about its centre: `yaw` about +z (counter-clockwise seen from above), then `pitch` about the TV's own x axis, then `roll` about its own y axis, in degrees. A zone whose reference isn't a TV has no `canvas.screen`. The default `reference.position` is `(0, 0, 0)`, the centre of the floor.
 - `strip.<target>`: one strip surface per line target, with the target's element count as its resolution.
 - One default mapping for each new target: a manual 1:1 mapping from its `strip.<target>` surface for a line target. For any other target, a plane mapping from `canvas.screen` in a `screen` zone with a TV (area kernel, edge `clamp`, so lights beside the screen sample its nearest edge), and from `canvas.room` otherwise.
 - A new surface lists the source `local`.
+
+The node applies them in `POST /zones`, to each of `surfaces` and `mappings` the client left out of the body (an empty list counts as sent), after clamping. Edits (`PUT`), loading and migration never do. Choices the text above doesn't fix:
+- Surface and mapping ids are generated like any missing id. The roles are what scenes bind to.
+- The `canvas.room` plane is as wide and deep as the zone's `bounds` (`u = (x, 0, 0)`, `v = (0, −y, 0)`); the `canvas.screen` plane is the TV's rectangle turned by `Rz(yaw) · Rx(pitch) · Ry(roll)`, right-handed, about its centre.
+- A `strip.<target>` is unplaced (`placement` `none`), and a line target's manual mapping covers all its elements (`geometry.count`).
+- Only a zone that omits `mappings` gets default ones, and only for targets whose surface exists, so the 64-surface limit leaves the line targets past it unmapped. A `strip.<id>` role that would pass 64 characters is shortened: the start of the id and a hash of the whole id (FNV-1a, 8 hex digits) after a `-`, so it is deterministic and unique within the zone, with a warning in the log naming the zone and target. A `display` target no mapping. A `null` counts as left out. The `music`, `desk`, `room` and `custom` types differ in no default; only `screen` with a TV adds `canvas.screen`.
 
 ## Mappings and projection
 
@@ -100,21 +111,24 @@ Edge policy is clamp (ambilight-style; lights beside a screen sample its nearest
 Each element has a sample position on its surface, in cell units. The kernels turn it into taps (a cell and a weight):
 - **nearest:** the cell the sample falls in, with weight 1.
 - **bilinear:** the four cells around the sample, weighted by their distance, measured between cell centres.
-- **area:** a box centred on the sample, with half-size `radius` × the element's **spacing** along each axis of the surface. Each cell the box overlaps is a tap, weighted by its exact overlap, the weights normalised to add up to 1. At most **64 taps**: a larger box is sampled on an 8 × 8 sub-grid of the box, each sub-cell counting for the cell it falls in. `radius` is a fraction of the spacing, 0 to 1 (half a spacing by default).
-  - **Spacing,** in cells of the surface: for a line, the distance between neighbouring elements (at the ends, to their one neighbour), converted to the surface's cells along the sample axis; for a grid, separately along `u` (the plane's width over `W`) and along `v` (its height over `H`), so the box can be a rectangle; for a point and for a line of one element, one cell; for a manual range, `cells / elements`.
-  - **Box shape:** a strip surface has one row, so the box is that row's one cell tall and has its half-size only along the strip.
-- **Edges:** with `clamp`, a tap outside the surface moves to the nearest cell. With `none`, taps outside are dropped and the remaining weights are renormalised to add up to 1.
-- **Manual ranges:** element `i` of a range samples its cell range at `(i + ½) · cells / elements`. **When the two counts are equal the kernel is ignored:** every element has one tap of weight 1, which makes the mapping exact, whatever the kernel's type and radius. It is the parity mapping.
+- **area:** a box centred on the sample, with half-size `radius` × the element's **spacing** along each axis of the surface. Each cell the box overlaps is a tap, weighted by its exact overlap, the weights normalised to add up to 1. At most **64 taps**: a larger box is sampled on an 8 × 8 sub-grid of the box (64 × 1 when the box is one cell across on the other axis), each sub-cell counting for the cell it falls in. `radius` is a fraction of the spacing, 0 to 1 (half a spacing by default).
+  - **Spacing,** in cells of the surface: for a line, the mean of an element's distances to its neighbours (an end element has one), converted to the surface's cells along the sample axis; for a grid, separately along `u` (the plane's width over `W`) and along `v` (its height over `H`), so the box can be a rectangle, and the mean of the two when the grid is mapped onto a path, which has one axis; for a point, a line of one element and elements on top of each other, one cell; for a manual range, `cells / elements`.
+  - **Box shape:** a strip surface has one row, so the box is that row's one cell tall and has its half-size only along the strip. A path mapping samples halfway up its surface, and its box covers the surface's whole height.
+- **Edges:** with `clamp`, a tap outside the surface moves to the nearest cell. With `none`, taps outside are dropped and the remaining weights are renormalised to add up to 1; the share of the weight that stayed is the element's **coverage**, which `alpha` blending uses. An element exactly on the surface's edge, such as a path's end, keeps half of a bilinear or area kernel, so its coverage is ½.
+- **A gathered colour** is clamped to the range of the cells it read, so a flat surface stays exactly flat whatever the rounding of the weights.
+- **Manual ranges:** the surface is read as one row of its `width × height` cells, row by row, and element `i` of a range samples its cell range at `(i + ½) · cells / elements`. The edge policy applies at the ends of the whole surface, not of the range, so a box at a range's end reads the next range's cells. **When the two counts are equal the kernel is ignored:** every element has one tap of weight 1, which makes the mapping exact, whatever the kernel's type and radius. It is the parity mapping.
 
 ### Combining mappings
 
 When several mappings feed one target:
-- They blend in ascending `priority`, ties in the order of the zone's mapping list, by their `blend` (max or alpha).
+- They blend in ascending `priority`, ties in the order of the zone's mapping list, by their `blend`: `max` keeps each channel's larger value, and `alpha` paints the mapping over what the lower ones left by its coverage, which with `clamp` is 1, a plain replacement.
 - An element that no mapping covers is black.
 - A mapping onto a `display` target is skipped.
 
 **Gather plans:**
 - For each mapping, the controller precomputes index and weight arrays of shape `(elements, taps)` whenever the configuration revision changes.
+- Plans are made for the size each surface is **published** at, which is its resolution except for canvases, published at most 128 × 72 per axis ([control plane](control-plane.md#supervision)). Plane coordinates and manual `cells` count published cells.
+- A mapping that validation finds an error in (a range beyond its surface or target, a placement its method needs and the surface lacks) is skipped whole. When a surface's frame has another size than its plan was made for, the target isn't projected from that frame at all, and keeps what it had.
 - Each frame is then one vectorised gather and weighted sum.
 - When several mappings feed one target, they blend in mapping priority order (max or alpha).
 

@@ -1,6 +1,6 @@
 # M5 Devices
 
-Status: Accepted · Implementation: Not started
+Status: Accepted · Implementation: Partial (RB-13 steps 1–6, 9 and 10)
 
 ## RB-12: WLED provider
 
@@ -24,11 +24,13 @@ Status: Accepted · Implementation: Not started
 9. **Live verification** per the [testing policy](../process/testing-policy.md).
 
 **Done when:** the fake suites are green and live verification has passed.
+**Status:** steps 1–8 are built in `crates/folo-provider-wled` ([WLED, Implementation](../integrations/wled.md#implementation)), with the fake device in its `testing` module. Step 9 is a person's. The node does not register the kind yet: RB-08's controller output does, with `WledKind::new()` and `DEFAULT_RATE_HZ`.
 
 ## RB-13: Hue provider and zone sync
 
 **Goal:** Hue entertainment streaming, managed configurations, zone sync and basic administration.
 **Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)).
+**Status:** steps 1–6, 9 and 10 are done in `crates/folo-provider-hue` (see the [implementation notes](../integrations/hue.md#implementation-notes)); steps 7 and 8, the sync tests of step 10, and step 11 remain.
 
 1. **Fake bridge first:**
    - a REST double: `/api/config`, `/api` pairing (link-button states), `/auth/v1`, CLIP v2 resources and entertainment configuration CRUD, the event stream
