@@ -133,7 +133,7 @@ Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done)
 3. **Built-ins as data** (D17 to D20):
    - `export_builtins.mjs --trace` and `scripts/build_packs.py generate | check`, writing `packs/folo/core`, `genres` and `effects` and `packs/aliases.json`; the check, and `FOLO_NODE_TESTS=1 uv run pytest tests/test_builtin_packs.py`, in CI's contract job
    - stable ids; descriptions and hints; the categories in `folo/core`
-   - equivalence: the built-in golden frames byte for byte at 30, 61 and 144 LEDs; the layers at every length from 1 to 64 and at 100, 144, 255, 256, 300, 512, 1000, 1024, 1999 and 2000; reactions and palettes; `scaleSegments()` scaling
+   - equivalence: the built-in golden frames byte for byte at 30, 61 and 144 LEDs; the layers at every length from 1 to 64 and at 100, 144, 255, 256, 300, 512, 1000, 1024, 1999 and 2000; reactions and palettes; `scaleSegments()` scaling (with code change 4, which writes the scaling)
 4. **Reset all** on the controller: `POST /show/reset` with the default scene, else `folo/core:default`; master 1 and a black background (D21).
 5. **Distribution:** none in v1 (D22). A source answers `packs.install` and `packs.remove` with `-32601` until content that needs them arrives.
 6. **Clean-room rewrite gate** (D23, D24):

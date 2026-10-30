@@ -149,6 +149,12 @@ jobs:
       - name: The generated TypeScript types build (strict tsc)
         run: npm run check:types
         working-directory: ui
+      - name: The built-in packs are up to date with the studio's builders (RB-09)
+        run: uv run python scripts/build_packs.py check
+      - name: The built-in packs against the builders, with Node (RB-09)
+        run: uv run pytest tests/test_builtin_packs.py
+        env:
+          FOLO_NODE_TESTS: '1'
       - name: Message fixtures against AsyncAPI
         run: uv run python scripts/conformance.py messages
       - name: The client API against OpenAPI, on a node of its own (RB-07 step 7)

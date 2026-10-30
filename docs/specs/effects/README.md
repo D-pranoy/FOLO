@@ -1,6 +1,6 @@
 # Effect specifications
 
-Status: Accepted · Implementation: Not started (no specification is written yet)
+Status: Accepted · Implementation: Partial (the gate test `tests/test_clean_room_gate.py`; no specification is written yet)
 
 Behaviour specifications of effects and of the scenes built on them, written so that an implementation can be made from them alone. The first ones are those the clean-room rewrite needs ([ADR-0023](../../decisions/ADR-0023-legacy-code-and-licensing.md) D3, [ADR-0038](../../decisions/ADR-0038-content-library.md) D23, D24).
 

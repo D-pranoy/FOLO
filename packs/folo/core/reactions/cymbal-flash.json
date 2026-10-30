@@ -1,0 +1,28 @@
+{
+  "id": "cymbal-flash",
+  "schema_version": 2,
+  "description": "Short white-hot flashes on cymbals.",
+  "hints": {
+    "group": "Highs",
+    "tempo": "Very fast",
+    "anim": "kick",
+    "dur": 0.2
+  },
+  "name": "Cymbal flash",
+  "params": {
+    "freq_lo": 8000,
+    "freq_hi": 18000,
+    "threshold": 7,
+    "ceiling": 18,
+    "trigger": "hits",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 50,
+    "gain": 1,
+    "curve": 1.8,
+    "floor": 0,
+    "peak": false
+  }
+}
