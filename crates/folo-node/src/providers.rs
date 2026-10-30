@@ -13,12 +13,14 @@ use folo_provider_wled::{DEFAULT_RATE_HZ as WLED_RATE_HZ, WledKind};
 use folo_store::{Store, StoreError};
 use serde_json::{Map, Value};
 
-/// The part of `secrets.json` the providers use. Reads and writes go one at a time, because a
+/// The shared provider and capture secrets. Updates go one at a time, because a
 /// write is a read, a change and a write of the whole file; the identity is not touched.
 pub struct SecretsFile {
     dir: PathBuf,
     server_id: String,
     one_at_a_time: Mutex<()>,
+    #[cfg(test)]
+    update_started: Mutex<Option<std::sync::mpsc::Sender<()>>>,
 }
 
 impl SecretsFile {
@@ -35,6 +37,8 @@ impl SecretsFile {
             dir: dir.to_path_buf(),
             server_id: server_id.to_owned(),
             one_at_a_time: Mutex::new(()),
+            #[cfg(test)]
+            update_started: Mutex::new(None),
         })
     }
 
@@ -43,6 +47,15 @@ impl SecretsFile {
     /// # Errors
     /// [`StoreError`] when the file can't be read or written.
     pub fn update(&self, change: impl FnOnce(&mut Value)) -> Result<(), StoreError> {
+        #[cfg(test)]
+        if let Some(observer) = self
+            .update_started
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            let _ = observer.send(());
+        }
         let _turn = self
             .one_at_a_time
             .lock()
@@ -54,6 +67,17 @@ impl SecretsFile {
             folo_store::write_secrets(&self.dir, &secrets, &self.server_id)?;
         }
         Ok(())
+    }
+
+    /// Lets a concurrency test observe an update before it waits for the file lock.
+    #[cfg(test)]
+    pub(crate) fn observe_updates(&self) -> std::sync::mpsc::Receiver<()> {
+        let (send, receive) = std::sync::mpsc::channel();
+        *self
+            .update_started
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(send);
+        receive
     }
 
     /// The document as stored.

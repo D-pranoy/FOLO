@@ -196,10 +196,11 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         args: Vec::new(),
     };
     let supervisor = Supervisor::start(engine, String::new(), Arc::new(EngineLog), false);
+    let secrets = providers::SecretsFile::in_dir(dir, "abcd1234");
     let capture = CaptureSupervisor::start(
         CaptureCommand::find(dir),
         String::new(),
-        Arc::new(CaptureLog::new(dir, "test")),
+        Arc::new(CaptureLog::new(Arc::clone(&secrets))),
         supervisor.screen_frames(),
         None,
         None,
@@ -218,7 +219,7 @@ pub(crate) fn for_tests(dir: &std::path::Path, node_toml: &str) -> Arc<Node> {
         capture,
         live: live::Hub::default(),
         output: output::Output::new(Registry::new()),
-        secrets: providers::SecretsFile::in_dir(dir, "abcd1234"),
+        secrets,
     })
 }
 
@@ -251,30 +252,27 @@ impl LogSink for EngineLog {
 /// The capture agent's output goes into the node's log, and the restore
 /// token it returns into `secrets.json` (ADR-0037 D14).
 struct CaptureLog {
-    data: std::path::PathBuf,
-    server_id: String,
+    secrets: Arc<providers::SecretsFile>,
     /// The newest token, and one write of `secrets.json` at a time: a write
     /// that runs late still stores the newest.
     newest: Arc<Mutex<Option<String>>>,
 }
 
 impl CaptureLog {
-    fn new(data: &std::path::Path, server_id: &str) -> Self {
+    fn new(secrets: Arc<providers::SecretsFile>) -> Self {
         Self {
-            data: data.to_path_buf(),
-            server_id: server_id.to_owned(),
+            secrets,
             newest: Arc::new(Mutex::new(None)),
         }
     }
 
-    fn store(data: &std::path::Path, server_id: &str, token: &str) {
-        let stored = folo_store::read_secrets(data).and_then(|mut secrets| {
+    fn store(secrets: &providers::SecretsFile, token: &str) {
+        let stored = secrets.update(|secrets| {
             secrets["capture"] = json!({"restore_token": token});
-            folo_store::write_secrets(data, &secrets, server_id)
         });
         // The token is never in the message (ADR-0037 D9, D14)
         match stored {
-            Ok(_) => log::debug!("kept the capture agent's new restore token"),
+            Ok(()) => log::debug!("kept the capture agent's new restore token"),
             Err(error) => log::error!("secrets.json can't take the restore token: {error}"),
         }
     }
@@ -287,16 +285,12 @@ impl CaptureSink for CaptureLog {
 
     fn restore_token(&self, token: &str) {
         *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(token.to_owned());
-        let (data, server_id, newest) = (
-            self.data.clone(),
-            self.server_id.clone(),
-            Arc::clone(&self.newest),
-        );
+        let (secrets, newest) = (Arc::clone(&self.secrets), Arc::clone(&self.newest));
         // A file write with a sync, off the link's task
         let write = move || {
             let mut newest = newest.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(token) = newest.take() {
-                Self::store(&data, &server_id, &token);
+                Self::store(&secrets, &token);
             }
         };
         if tokio::runtime::Handle::try_current().is_ok() {
@@ -492,7 +486,7 @@ async fn start(
     let capture = CaptureSupervisor::start(
         capture,
         capture_url,
-        Arc::new(CaptureLog::new(store.dir(), store.server_id())),
+        Arc::new(CaptureLog::new(Arc::clone(&secrets))),
         supervisor.screen_frames(),
         restore_token,
         no_session,
@@ -689,4 +683,57 @@ fn accept_ctrl_c() {
     // SAFETY: without a handler, SetConsoleCtrlHandler only sets whether
     // this process ignores Ctrl+C.
     let _ = unsafe { windows_sys::Win32::System::Console::SetConsoleCtrlHandler(None, 0) };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn capture_token_waits_for_a_provider_transaction_and_both_survive() {
+        let dir =
+            std::env::temp_dir().join(format!("folo-shared-secrets-{}", folo_store::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let secrets = providers::SecretsFile::in_dir(&dir, "abcd1234");
+        let capture = CaptureLog::new(Arc::clone(&secrets));
+        let updates = secrets.observe_updates();
+        let (read, after_read) = mpsc::channel();
+        let (commit, before_commit) = mpsc::channel();
+        let timeout = Duration::from_secs(5);
+
+        std::thread::scope(|threads| {
+            let provider_secrets = Arc::clone(&secrets);
+            let provider = threads.spawn(move || {
+                provider_secrets.update(|document| {
+                    document["providers"]["hue"] = json!({"app_key": "test-app-key"});
+                    document["pinned_certificates"]["ecb5fafffe000001"] = json!("07".repeat(32));
+                    // Hold the read-modify-write transaction open until capture tries to update.
+                    read.send(()).unwrap();
+                    before_commit.recv_timeout(timeout * 2).unwrap();
+                })
+            });
+            updates.recv_timeout(timeout).unwrap();
+            after_read.recv_timeout(timeout).unwrap();
+            let token = threads.spawn(|| capture.restore_token("test-restore-token"));
+            // This event is before the shared lock: capture has attempted its transaction,
+            // while the provider still holds the document it read. No sleeps or races.
+            let attempted = updates.recv_timeout(timeout);
+            commit.send(()).unwrap();
+            provider.join().unwrap().unwrap();
+            token.join().unwrap();
+            attempted.expect("capture must use the shared secrets transaction");
+        });
+
+        let stored = folo_store::read_secrets(&dir).unwrap();
+        assert_eq!(stored["providers"]["hue"]["app_key"], "test-app-key");
+        assert_eq!(
+            stored["pinned_certificates"]["ecb5fafffe000001"],
+            "07".repeat(32)
+        );
+        assert_eq!(stored["capture"]["restore_token"], "test-restore-token");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
