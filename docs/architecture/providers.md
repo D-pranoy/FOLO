@@ -1,6 +1,6 @@
 # Providers
 
-Status: Accepted · Implementation: Partial (the interface, the registry, the sender and the recording provider; the node runs a sender per enabled instance of a registered kind, with discovery, administration and the states on the live channel; no kind is registered until RB-10, RB-12 and RB-13)
+Status: Accepted · Implementation: Partial (the interface, the registry, the sender and the recording provider; the node runs a sender per enabled instance of a registered kind, with discovery, administration and the states on the live channel; the node registers Hyperion, WLED and Hue)
 
 A provider is the controller's output backend for one kind of device: Hyperion, WLED or Philips Hue ([glossary](../glossary.md)). This page is the interface every provider implements, its lifecycle, the sender that drives it, and how discovery, description and administration work. The stages before it are in [pipeline](pipeline.md#controller-stages) and [capabilities](capabilities.md), decided in [ADR-0036](../decisions/ADR-0036-controller-output.md). What each device speaks is in its integration document: [Hyperion](../integrations/hyperion.md), [WLED](../integrations/wled.md) and [Hue](../integrations/hue.md).
 
@@ -25,6 +25,7 @@ Every instance offers these operations. All of them are asynchronous, and none o
 | **wire key** | Gives the bytes (or a digest of them) the provider would send for a target's frame: the frame as the device receives it, after the provider's truncation and encoding. The sender compares keys to find changed frames. |
 | **release** | Gives one target's lights back: clears the priority (Hyperion), ends realtime (WLED), closes the stream (Hue). It takes the target; releasing all of an instance's targets is the instance's release. |
 | **status** | The instance's state, and a message when there is something to say. The instance's sender keeps it, from how the other calls end; a provider doesn't report it. |
+| **secrets** | Optional. The credentials the provider holds now, when an administration action changed them (Hyperion's token after a login that worked). After each `POST` administration action the node keeps them in `secrets.json`. |
 | **admin** | The basic administration of [ADR-0014](../decisions/ADR-0014-device-administration-scope.md), by action name. |
 
 - **`ElementOutput`** is the interface of `send`. A frame holds, per target, one colour per element **in the target's colour model**: on/off, dimmer, CCT, RGB, RGBW, RGB+CCT or xy ([capabilities](capabilities.md)). RGB values are on the effect engine's 0–255 scale and the provider truncates them to the bytes its device takes, which is what keeps [parity](pipeline.md#parity-mode) byte-exact.
@@ -80,7 +81,7 @@ One sender task runs per enabled instance, at the instance's `rate_hz` (1–100;
 
 ## Describe, discover and administration
 
-- **Discovery** (`POST /providers/discover`) asks every registered kind in the request's `kinds` (all, by default) and gathers the answers into one list. Kinds without an implementation add nothing, so the list is empty until RB-10 brings the first. Discovery changes no configuration.
+- **Discovery** (`POST /providers/discover`) asks every registered kind in the request's `kinds` (all, by default) and gathers the answers into one list. Kinds without an implementation add nothing, so a node built without a kind answers an empty list. Discovery changes no configuration.
 - **What describe writes.** Only a target's `capabilities.discovered`, and only when it differs from what is stored. Everything else describe learns, such as the layouts a device offers (Hyperion's LED rectangles on the TV plane; WLED's segments are targets of their own, and its matrix offers its shape), is offered to the zone editor and never written by itself. The exception is RB-10's layout watching, which rescales mappings proportionally when Hyperion's LED count changes ([Hyperion](../integrations/hyperion.md#folo-provider-design)). A user's overrides are never touched.
 - **Administration** (`/providers/{id}/admin/...`, `admin` scope):
   - `GET` reads: the device's current values and, for an action, **what a `POST` would change** ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md) D3).

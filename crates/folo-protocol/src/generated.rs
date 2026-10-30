@@ -16744,6 +16744,12 @@ pub struct SecretsDocument {
     pub identity: Identity,
     #[serde(default = "defaults::secrets_document_master_key_hash")]
     pub master_key_hash: SecretsDocumentMasterKeyHash,
+    ///Hue bridge id (lowercase): the SHA-256 fingerprint, in lowercase hex, of the certificate a person confirmed for a bridge whose certificate doesn't chain to a Signify root (trust on first use, docs/integrations/hue.md).
+    #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
+    pub pinned_certificates: ::std::collections::HashMap<
+        ::std::string::String,
+        SecretsDocumentPinnedCertificatesValue,
+    >,
     ///Provider instance id: its credentials.
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub providers: ::std::collections::HashMap<::std::string::String, ProviderSecrets>,
@@ -16760,6 +16766,7 @@ impl ::std::default::Default for SecretsDocument {
             capture: Default::default(),
             identity: defaults::secrets_document_identity(),
             master_key_hash: defaults::secrets_document_master_key_hash(),
+            pinned_certificates: Default::default(),
             providers: Default::default(),
             revision: defaults::secrets_document_revision(),
             schema_version: defaults::secrets_document_schema_version(),
@@ -16815,6 +16822,64 @@ impl ::std::convert::TryFrom<::std::string::String> for SecretsDocumentMasterKey
     }
 }
 impl<'de> ::serde::Deserialize<'de> for SecretsDocumentMasterKeyHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`SecretsDocumentPinnedCertificatesValue`
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SecretsDocumentPinnedCertificatesValue(::std::string::String);
+impl ::std::ops::Deref for SecretsDocumentPinnedCertificatesValue {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SecretsDocumentPinnedCertificatesValue>
+for ::std::string::String {
+    fn from(value: SecretsDocumentPinnedCertificatesValue) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for SecretsDocumentPinnedCertificatesValue {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SecretsDocumentPinnedCertificatesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for SecretsDocumentPinnedCertificatesValue {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SecretsDocumentPinnedCertificatesValue {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,

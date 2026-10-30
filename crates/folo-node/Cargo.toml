@@ -24,6 +24,9 @@ folo-controller = { path = "../folo-controller" }
 folo-identity = { path = "../folo-identity" }
 folo-protocol = { path = "../folo-protocol" }
 folo-provider = { path = "../folo-provider" }
+folo-provider-hue = { path = "../folo-provider-hue" }
+folo-provider-hyperion = { path = "../folo-provider-hyperion" }
+folo-provider-wled = { path = "../folo-provider-wled" }
 folo-settings = { path = "../folo-settings" }
 folo-store = { path = "../folo-store" }
 folo-supervisor = { path = "../folo-supervisor" }
@@ -42,3 +45,4 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 serde = "1"
 tokio-tungstenite = "0.29"
 tower = { version = "0.5", default-features = false, features = ["util"] }
+folo-provider-hyperion = { path = "../folo-provider-hyperion", features = ["testing"] }

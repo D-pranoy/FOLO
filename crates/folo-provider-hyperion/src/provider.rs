@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use folo_protocol::generated::{
     Address, CapabilityDescriptor, CapabilityDescriptorAddressing, CapabilityDescriptorColorModel,
-    CapabilityDescriptorDelivery, CapabilityLimits, LineGeometry, TargetKind,
+    CapabilityDescriptorDelivery, CapabilityLimits, LineGeometry, ProviderSecrets, TargetKind,
 };
 use folo_provider::{
     AdminError, AdminMethod, BoxFuture, DeliveryPolicy, DescribedLayout, DescribedTarget,
@@ -30,6 +30,9 @@ use crate::wire;
 /// How often the sender describes again to watch the LED count: as the legacy layout watcher
 /// polls. A node builds the instance's `SenderConfig` with this as `describe_every`.
 pub const DESCRIBE_EVERY: Duration = Duration::from_secs(5);
+
+/// The Hyperion instance of a target that no instance number names.
+const DEFAULT_INSTANCE: u32 = 0;
 
 /// Hyperion keeps the colours 2 s after the last frame, so an unchanged frame goes out again
 /// after at most this long (`docs/architecture/providers.md`, the sender).
@@ -266,8 +269,11 @@ impl HyperionProvider {
         }
     }
 
-    fn instance_of(target: &str) -> Option<u32> {
-        target.parse().ok()
+    /// The Hyperion instance a target drives: the number a described target is named by, and
+    /// for any other target (a migrated setup's `strip`), whose address names no Hyperion
+    /// instance, the default instance 0 that the legacy studio drove.
+    fn instance_of(target: &str) -> u32 {
+        target.parse().unwrap_or(DEFAULT_INSTANCE)
     }
 }
 
@@ -320,6 +326,12 @@ impl Provider for HyperionProvider {
         Box::pin(async move { self.run_admin(&action, method, &body).await })
     }
 
+    fn secrets(&self) -> Option<ProviderSecrets> {
+        let token = self.lock().token.clone()?;
+        let secrets = serde_json::json!({"token": token});
+        serde_json::from_value(secrets).ok()
+    }
+
     fn delivery_policy(&self) -> DeliveryPolicy {
         DeliveryPolicy {
             keepalive: KEEPALIVE,
@@ -341,7 +353,7 @@ impl ElementOutput for HyperionProvider {
     fn start(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>> {
         let target = target.to_owned();
         Box::pin(async move {
-            let known = Self::instance_of(&target).and_then(|n| self.link(n));
+            let known = self.link(Self::instance_of(&target));
             let Some(link) = known else {
                 if self.lock().links.is_empty() {
                     return Err(not_connected());
@@ -368,8 +380,8 @@ impl ElementOutput for HyperionProvider {
                 if rgb.is_empty() {
                     continue;
                 }
-                let link = Self::instance_of(&output.target)
-                    .and_then(|n| self.link(n))
+                let link = self
+                    .link(Self::instance_of(&output.target))
                     .ok_or_else(|| {
                         ProviderError::Unreachable(format!(
                             "no connection to Hyperion instance {}",
@@ -393,7 +405,7 @@ impl ElementOutput for HyperionProvider {
     fn release(&self, target: &str) -> BoxFuture<'_, Result<(), ProviderError>> {
         let target = target.to_owned();
         Box::pin(async move {
-            let Some(link) = Self::instance_of(&target).and_then(|n| self.link(n)) else {
+            let Some(link) = self.link(Self::instance_of(&target)) else {
                 return Ok(());
             };
             link.send_line(&wire::clear_line(self.config.priority))

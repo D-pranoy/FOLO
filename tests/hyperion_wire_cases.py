@@ -17,6 +17,20 @@ from folo_source.legacy.hyperion import HYPERION_DURATION
 from tests import golden_cases
 
 WIRE = golden_cases.GOLDEN_DIR / 'hyperion' / 'legacy.json'
+PARITY = golden_cases.GOLDEN_DIR / 'hyperion' / 'parity.json'
+
+# RB-10 step 5: renderer goldens (a migrated configuration's LED count each) whose sampled frames
+# the node must send to Hyperion as the legacy sender does, with the legacy origin
+PARITY_PRIORITY = 100
+PARITY_ORIGIN = 'Audio Effects'
+PARITY_FRAMES = 14
+PARITY_CASES: list[tuple[str, str]] = [
+    ('builtin', 'builtin-fx-bass-burst-144.png'),
+    ('builtin', 'builtin-fx-ledfx-fire-144.png'),
+    ('builtin', 'builtin-genre-edm-144.png'),
+    ('default', 'gain+0.png'),
+    ('default', 'gain+24.png'),
+]
 
 # (name, priority, origin, levels): the origin goes through json.dumps with ensure_ascii
 CASES: list[tuple[str, int, str, list[int]]] = [
@@ -112,4 +126,35 @@ def write() -> int:
     entries = generate()
     WIRE.parent.mkdir(parents=True, exist_ok=True)
     WIRE.write_text(dumps(entries), encoding='utf-8')
+    write_parity()
     return len(entries)
+
+
+def sampled_rows(rows: list[list[int]]) -> list[int]:
+    """Evenly spaced frames, none the same as the one before it: the sender sends changes."""
+    step = len(rows) // PARITY_FRAMES
+    picked: list[int] = []
+    for index in range(step // 2, len(rows), step):
+        if len(picked) < PARITY_FRAMES and (not picked or rows[index] != rows[picked[-1]]):
+            picked.append(index)
+    return picked
+
+
+def generate_parity() -> dict[str, Any]:
+    cases: list[dict[str, Any]] = []
+    for config, name in PARITY_CASES:
+        frames = golden_cases.read_png(golden_cases.GOLDEN_DIR / 'renderer' / name)
+        rows = [[int(v) for v in frame.reshape(-1)] for frame in frames]
+        picked = sampled_rows(rows)
+        lines = [legacy_bytes(PARITY_PRIORITY, PARITY_ORIGIN, rows[i])[0] for i in picked]
+        cases.append({'config': config, 'png': name, 'rows': picked, 'lines': lines})
+    return {'priority': PARITY_PRIORITY, 'origin': PARITY_ORIGIN, 'cases': cases}
+
+
+def dumps_parity(document: dict[str, Any]) -> str:
+    return json.dumps(document, indent=1) + '\n'
+
+
+def write_parity() -> int:
+    PARITY.write_text(dumps_parity(generate_parity()), encoding='utf-8')
+    return len(PARITY_CASES)

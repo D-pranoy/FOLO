@@ -5248,6 +5248,15 @@
       "$ref": "#/$defs/ProviderSecrets"
      },
      "default": {}
+    },
+    "pinned_certificates": {
+     "description": "Hue bridge id (lowercase): the SHA-256 fingerprint, in lowercase hex, of the certificate a person confirmed for a bridge whose certificate doesn't chain to a Signify root (trust on first use, docs/integrations/hue.md).",
+     "type": "object",
+     "additionalProperties": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     },
+     "default": {}
     }
    },
    "additionalProperties": false

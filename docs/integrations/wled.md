@@ -88,7 +88,7 @@ The provider is the crate `crates/folo-provider-wled` (RB-12). The choices below
 - **DNRGB(W):** the timeout byte is the instance's `timeout_s`, kept to 1–254, since 255 would never time out. WLED ignores a packet of one pixel, so a lone trailing pixel is paired with the one before it, and a target of a single pixel (a PWM or relay point) goes out by DDP, with push, in the same frame. The UDP port is `info.udpport` (0 counts as unset).
 - **Release:** both transports end realtime with a DNRGB packet of timeout 0, sent when the last started target is released. Starts and releases are counted per target, and a release of a target that isn't running sends nothing. If the packet is lost, the device's timeout ends the output.
 - **Refresh:** the provider's keepalive is 1 s, or half the instance's `timeout_s` when that is shorter, which the sender applies to unchanged frames.
-- **Rate:** `DEFAULT_RATE_HZ` is 60, for the node to apply to a new instance (the contract's default is 40).
+- **Rate:** `DEFAULT_RATE_HZ` is 60, for the node to apply to a new instance (the contract's default is 40); `POST /providers` applies it when the body names no `rate_hz`.
 - **Shared session:** realtime is device-wide, so a released target that isn't the last keeps its last colours until the last one is released.
 - **Dual auto-white:** WLED computes white itself when the white byte is 0, so `calibration.white: off` has no effect on a device in Dual mode.
 - **Addresses:** the host's address is looked up again after 60 s, and on each connect. An IPv6 zone (link-local) is not kept by discovery.

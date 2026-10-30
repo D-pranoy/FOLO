@@ -35,10 +35,33 @@ async fn post(provider: &HyperionProvider, action: &str, body: Value) -> Value {
         .unwrap_or_else(|e| panic!("changing {action}: {e}"))
 }
 
+/// A request Hyperion refused, or one the provider refused to send.
 async fn refused(provider: &HyperionProvider, action: &str, body: Value) -> String {
     match provider.admin(action, AdminMethod::Change, body).await {
-        Err(AdminError::Provider(ProviderError::Refused(why))) => why,
+        Err(AdminError::Provider(ProviderError::Refused(why)) | AdminError::BadRequest(why)) => why,
         other => panic!("expected a refusal, got {other:?}"),
+    }
+}
+
+/// A body that isn't what the action takes is 400 `bad_body`, not a provider error.
+#[tokio::test]
+async fn a_malformed_body_is_a_bad_request() {
+    let fake = FakeHyperion::start().await;
+    let provider = connected(&fake).await;
+    for (action, body) in [
+        ("priorities", json!({})),
+        ("source", json!({"auto": false})),
+        ("token", json!({"token": 5})),
+    ] {
+        let error = provider
+            .admin(action, AdminMethod::Change, body.clone())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, AdminError::BadRequest(_)),
+            "{action} {body}: {error:?}"
+        );
+        assert_eq!((error.status(), error.code()), (400, "bad_body"));
     }
 }
 
@@ -402,7 +425,7 @@ async fn a_token_is_tried_and_then_used() {
     );
 
     let preview = get(&provider, "token", json!({"token": TOKEN})).await;
-    assert!(preview["change"].as_str().unwrap().contains("not stored"));
+    assert!(preview["change"].as_str().unwrap().contains("secrets.json"));
     assert_eq!(preview["configured"], false, "a read adopts nothing");
 
     let accepted = post(&provider, "token", json!({"token": TOKEN})).await;

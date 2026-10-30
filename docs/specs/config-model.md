@@ -171,7 +171,7 @@ Each document has `schema_version` (2), `revision` and `server_id`. Writes are a
 
 **Client** (in `clients.json`): `id`, `name`, `scope` (`control` (default) or `admin`), `key_hash` (the client key's hash; the key itself is never stored), `created` and `last_used` (Unix seconds; 0 for never).
 
-**Secrets** (`secrets.json`): `identity {public_key, private_key}` (X25519, base64url), `master_key_hash`, `providers {instance id: {app_key?, client_key?, pin?, token?}}` for Hue, WLED and Hyperion credentials, and `capture {restore_token?}`: the Linux portal's single-use restore token for the capture agent ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D14), absent until the portal gives one.
+**Secrets** (`secrets.json`): `identity {public_key, private_key}` (X25519, base64url), `master_key_hash`, `providers {instance id: {app_key?, client_key?, pin?, token?}}` for Hue, WLED and Hyperion credentials, `pinned_certificates {Hue bridge id (lowercase): SHA-256 fingerprint in lowercase hex}` for confirmed bridge certificates, and `capture {restore_token?}`: the Linux portal's single-use restore token for the capture agent ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D14), absent until the portal gives one.
 
 **Node settings** (`node.toml`, described by `node.json`):
 

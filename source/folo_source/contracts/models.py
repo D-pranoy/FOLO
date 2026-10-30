@@ -1710,6 +1710,12 @@ class ScreensListResult(BaseModel):
     screens: Annotated[list[Screen], Field(max_length=16)]
 
 
+PinnedCertificatesAdditionalProperty = TypeAliasType(
+    "PinnedCertificatesAdditionalProperty",
+    Annotated[str, Field(pattern='^[0-9a-f]{64}$')],
+)
+
+
 class ServiceStatus(BaseModel):
     """
     Loopback only.
@@ -2880,6 +2886,9 @@ class SecretsDocument(BaseModel):
     master_key_hash: Annotated[str, Field(max_length=128)] = ''
     capture: CaptureSecrets | None = None
     providers: Annotated[dict[str, ProviderSecrets], Field(description='Provider instance id: its credentials.', validate_default=True)] = {
+
+    }
+    pinned_certificates: Annotated[dict[str, PinnedCertificatesAdditionalProperty], Field(description="Hue bridge id (lowercase): the SHA-256 fingerprint, in lowercase hex, of the certificate a person confirmed for a bridge whose certificate doesn't chain to a Signify root (trust on first use, docs/integrations/hue.md).")] = {
 
     }
 
