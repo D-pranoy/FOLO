@@ -293,7 +293,12 @@ async fn a_message_over_the_limit_drops_the_link_and_the_agent_comes_back() {
 #[tokio::test]
 async fn a_node_that_stops_reading_gets_the_newest_frame_not_all_of_them() {
     let node = FakeNode::bind().await;
-    let agent = run_agent(node.environment(), fast());
+    // Sends held up by the pause below must not time out: this node is slow, not lost
+    let timing = Timing {
+        send: Duration::from_secs(10),
+        ..fast()
+    };
+    let agent = run_agent(node.environment(), timing);
     let mut link = node.accept().await;
     link.welcomed().await;
     // The largest frames at the highest rate: more than the sockets hold
@@ -302,10 +307,12 @@ async fn a_node_that_stops_reading_gets_the_newest_frame_not_all_of_them() {
     large["height"] = json!(270);
     link.call("capture.start", large).await;
     let first = link.frame().await;
-    // The node reads nothing for a while
-    tokio::time::sleep(Duration::from_millis(900)).await;
+    // The node reads nothing for a while. The sockets hold about 25 of these
+    // frames, and a debug build on a busy runner makes well under 60 a second,
+    // so the pause is long enough for many more to be replaced than are held
+    tokio::time::sleep(Duration::from_secs(2)).await;
     let mut sequences = vec![first.sequence];
-    while sequences.len() < 25 {
+    while sequences.len() < 40 {
         sequences.push(link.frame().await.sequence);
     }
     let span = sequences.last().unwrap() - sequences[0] + 1;

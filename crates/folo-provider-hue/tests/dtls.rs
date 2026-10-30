@@ -105,16 +105,32 @@ fn a_stream_the_bridge_closed_is_noticed_when_sending() {
     let server = DtlsServer::start(IDENTITY, &KEY);
     server.close_after.store(1, Ordering::SeqCst);
     let mut session = DtlsSession::connect(address(&server), &settings(IDENTITY, &KEY)).unwrap();
-    session.send(b"one").unwrap();
+    // The bridge closes once it has the first datagram, and `send` looks for a close right after
+    // writing, so any send from the first on may be the one that notices
+    let mut sent = session.send(b"one");
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     let error = loop {
-        match session.send(b"more") {
+        match sent {
             Err(e) => break e,
             Ok(()) if std::time::Instant::now() > deadline => panic!("the close was never noticed"),
-            Ok(()) => std::thread::sleep(Duration::from_millis(20)),
+            Ok(()) => {
+                std::thread::sleep(Duration::from_millis(20));
+                sent = session.send(b"more");
+            }
         }
     };
     assert!(matches!(error, DtlsError::Closed(_)), "{error}");
+    assert_eq!(
+        server
+            .observed
+            .lock()
+            .unwrap()
+            .datagrams
+            .first()
+            .map(Vec::as_slice),
+        Some(&b"one"[..]),
+        "the first datagram arrived before the close"
+    );
 }
 
 #[test]
