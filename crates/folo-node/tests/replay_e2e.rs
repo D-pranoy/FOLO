@@ -244,6 +244,7 @@ fn capture_command() -> CaptureCommand {
         run_args: args(&["run"]),
         list_program: agent_program(),
         list_args: args(&["screens", "--json"]),
+        scope_launcher: None,
     }
 }
 
