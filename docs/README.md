@@ -24,7 +24,7 @@ When documents conflict, the higher entry wins. Fix the lower one.
 | Specifications | [index](specs/README.md) · [configuration model](specs/config-model.md) · [client API](specs/client-api.md) · [source link](specs/source-link.md) · [pairing and connect](specs/pairing-and-connect.md) · [pack format](specs/pack-format.md) · [UI parity checklist](specs/ui-parity-checklist.md) · [visual design](specs/visual-design.md) |
 | Decisions | [register and ADRs](decisions/README.md) |
 | Run books | [index](runbooks/README.md) |
-| Process | [workflow](process/workflow.md) · [testing policy](process/testing-policy.md) · [governance](process/governance.md) |
+| Process | [workflow](process/workflow.md) · [testing policy](process/testing-policy.md) · [governance](process/governance.md) · [merge-train nits](process/merge-train-nits.md) |
 
 ## Document conventions
 
