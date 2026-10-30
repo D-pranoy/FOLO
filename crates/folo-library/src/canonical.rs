@@ -119,43 +119,9 @@ fn write_string(text: &str, out: &mut String) {
 
 /// ECMAScript's `Number::toString` (ECMA-262, 6.1.6.1.20) of a finite number.
 fn number_text(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_owned();
-    }
-    let sign = if value < 0.0 { "-" } else { "" };
-    // Rust's `{:e}` gives the shortest digits that read back as the same
-    // number, which is what the ECMAScript algorithm asks for
-    let scientific = format!("{:e}", value.abs());
-    let (mantissa, exponent) = scientific
-        .split_once('e')
-        .expect("`{:e}` always has an exponent");
-    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
-    let exponent: i32 = exponent.parse().expect("`{:e}` writes a decimal exponent");
-    format!("{sign}{}", es_digits(&digits, exponent))
-}
-
-/// The digits `d1d2…dk` of a number `d1.d2…dk × 10^exponent`, written the
-/// way ECMAScript does.
-fn es_digits(digits: &str, exponent: i32) -> String {
-    let k = i32::try_from(digits.len()).expect("a float has at most 17 digits");
-    let n = exponent + 1;
-    if k <= n && n <= 21 {
-        let zeros = usize::try_from(n - k).expect("n >= k here");
-        format!("{digits}{}", "0".repeat(zeros))
-    } else if 0 < n && n <= 21 {
-        let (whole, fraction) = digits.split_at(usize::try_from(n).expect("n > 0 here"));
-        format!("{whole}.{fraction}")
-    } else if -6 < n && n <= 0 {
-        let zeros = usize::try_from(-n).expect("n <= 0 here");
-        format!("0.{}{digits}", "0".repeat(zeros))
-    } else {
-        let sign = if exponent < 0 { '-' } else { '+' };
-        let power = exponent.abs();
-        match digits.split_at(1) {
-            (first, "") => format!("{first}e{sign}{power}"),
-            (first, rest) => format!("{first}.{rest}e{sign}{power}"),
-        }
-    }
+    // Finite values were checked by write_value; Ryū-js supplies ECMAScript's
+    // shortest-decimal tie handling and fixed/exponent formatting (ADR-0038 D5).
+    ryu_js::Buffer::new().format_finite(value).to_owned()
 }
 
 #[cfg(test)]
