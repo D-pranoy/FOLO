@@ -77,6 +77,10 @@ pub struct CaptureCommand {
     pub list_program: PathBuf,
     /// The arguments that print it (`screens --json`).
     pub list_args: Vec<OsString>,
+    /// `systemd-run`, where the agent is started in a transient scope so the
+    /// desktop portal reads its application id (ADR-0037 D16). `None` starts
+    /// the agent directly. Only used on Linux.
+    pub scope_launcher: Option<PathBuf>,
 }
 
 impl CaptureCommand {
@@ -99,8 +103,52 @@ impl CaptureCommand {
             program,
             run_args: Vec::new(),
             list_args: vec!["screens".into(), "--json".into()],
+            scope_launcher: find_scope_launcher(),
         }
     }
+
+    /// The program and arguments that start the agent: in a transient scope
+    /// named `scope` when a launcher is set, else the agent itself. The link's
+    /// URL and token are never among them (ADR-0037 D2).
+    #[cfg(target_os = "linux")]
+    fn launch(&self, scope: &str) -> (&Path, Vec<OsString>) {
+        let Some(launcher) = &self.scope_launcher else {
+            return (&self.program, self.run_args.clone());
+        };
+        let mut args: Vec<OsString> = vec![
+            "--user".into(),
+            "--scope".into(),
+            "--quiet".into(),
+            format!("--unit={scope}").into(),
+            self.program.clone().into_os_string(),
+        ];
+        // `--backend ...` comes before the subcommand
+        args.extend(self.run_args.iter().cloned());
+        args.push("run".into());
+        (launcher, args)
+    }
+}
+
+/// `systemd-run` on the `PATH` on Linux, if it can make a scope for this user
+/// (no reachable user manager makes it fail, and a direct start still works).
+fn find_scope_launcher() -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let launcher = std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|folder| folder.join("systemd-run"))
+        .find(|candidate| candidate.is_file())?;
+    let works = std::process::Command::new(&launcher)
+        .args(["--user", "--scope", "--quiet", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !works {
+        log::warn!("systemd-run can't make a user scope here");
+    }
+    works.then_some(launcher)
 }
 
 /// Why `screens()` has no list.
@@ -1100,16 +1148,41 @@ async fn stop(shared: &Shared, child: &mut Child) {
     }
 }
 
+/// The missing-launcher warning is logged once, not at every restart.
+#[cfg(target_os = "linux")]
+static WARNED: std::sync::Once = std::sync::Once::new();
+
+/// How the agent is started on this platform. `systemd-run --scope` replaces
+/// itself with the agent once the scope exists, so the child is the agent and
+/// it inherits the environment that carries the link's token.
+fn launch_plan(command: &CaptureCommand) -> (&Path, Vec<OsString>) {
+    #[cfg(target_os = "linux")]
+    {
+        if command.scope_launcher.is_some() {
+            let random = launch_token();
+            return command.launch(&folo_capture_linux::appid::transient_scope_name(&random));
+        }
+        WARNED.call_once(|| {
+            log::warn!(
+                "systemd-run isn't available; starting the capture agent outside a scope, so the \
+             desktop portal may not know it (ADR-0037 D16)"
+            );
+        });
+    }
+    (&command.program, command.run_args.clone())
+}
+
 fn spawn(
     command: &CaptureCommand,
     url: &str,
     token: &str,
     sink: &Arc<dyn CaptureSink>,
 ) -> std::io::Result<Child> {
-    let mut process = Command::new(&command.program);
+    let (program, args) = launch_plan(command);
+    let mut process = Command::new(program);
     // Its logs are its stderr (ADR-0034 D8); it prints nothing on stdout.
     process
-        .args(&command.run_args)
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

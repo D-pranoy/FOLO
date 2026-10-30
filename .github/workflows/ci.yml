@@ -115,6 +115,7 @@ jobs:
   # so it is a feature that the Ubuntu 22.04 jobs above leave off: they still
   # build the whole workspace. Here the feature is on, and its tests run against
   # a real PipeWire daemon and a fake ScreenCast portal on a private session bus.
+  # A Linux release builds the agent the same way: `cargo build --release -p folo-capture --features portal`.
   capture-linux:
     name: Linux capture (ubuntu-24.04)
     runs-on: ubuntu-24.04

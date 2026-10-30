@@ -444,6 +444,7 @@ async fn without_a_session_to_run_in_capture_is_unavailable_and_no_screens_are_l
             run_args: Vec::new(),
             list_program: PathBuf::from("no such program"),
             list_args: Vec::new(),
+            scope_launcher: None,
         },
         String::new(),
         Arc::new(Sink::default()),
@@ -529,4 +530,112 @@ async fn a_long_reason_is_cut_to_what_the_contract_takes_and_the_agent_gets_no_a
     let live = rig.supervisor.screen_live();
     assert_eq!(live["state"], "error");
     assert_eq!(live["message"].as_str().unwrap().chars().count(), 500);
+}
+
+// ------------------------------------------------- the Linux scope launch
+
+#[cfg(target_os = "linux")]
+mod scope {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    /// A folder of its own, removed afterwards.
+    struct Folder(PathBuf);
+
+    impl Folder {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!("folo-scope-{name}-{}", launch_token()));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A `systemd-run` that writes its arguments and the link's variables
+    /// to files instead of running anything.
+    fn stand_in(folder: &Folder) -> PathBuf {
+        let script = folder.0.join("systemd-run");
+        let body = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{dir}/argv'\n\
+             printf '%s\\n%s\\n' \"$FOLO_CAPTURE_LINK\" \"$FOLO_CAPTURE_TOKEN\" > '{dir}/env'\n",
+            dir = folder.0.display()
+        );
+        std::fs::write(&script, body).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script
+    }
+
+    fn command(launcher: Option<PathBuf>, run_args: Vec<OsString>) -> CaptureCommand {
+        CaptureCommand {
+            program: PathBuf::from("/opt/folo/folo-capture"),
+            run_args,
+            list_program: PathBuf::from("/opt/folo/folo-capture"),
+            list_args: Vec::new(),
+            scope_launcher: launcher,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_agent_starts_in_a_transient_scope_and_the_token_is_only_in_the_environment() {
+        let folder = Folder::new("scope");
+        let sink: Arc<dyn CaptureSink> = Arc::new(Sink::default());
+        let command = command(Some(stand_in(&folder)), Vec::new());
+        let mut child = spawn(&command, "ws://127.0.0.1:1/link", "the-token", &sink).unwrap();
+        assert!(child.wait().await.unwrap().success());
+        let recorded = std::fs::read_to_string(folder.0.join("argv")).unwrap();
+        let args: Vec<&str> = recorded.lines().collect();
+        assert_eq!(&args[..3], ["--user", "--scope", "--quiet"]);
+        let unit = args[3].strip_prefix("--unit=").unwrap();
+        let random = unit
+            .strip_prefix(r"app-io.github.d\x2dpranoy.folo\x2dcapture-")
+            .and_then(|rest| rest.strip_suffix(".scope"))
+            .unwrap();
+        assert!(!random.is_empty() && random.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_eq!(&args[4..], ["/opt/folo/folo-capture", "run"]);
+        let env = std::fs::read_to_string(folder.0.join("env")).unwrap();
+        assert_eq!(env, "ws://127.0.0.1:1/link\nthe-token\n");
+        assert!(!recorded.contains("the-token") && !recorded.contains("127.0.0.1"));
+    }
+
+    #[test]
+    fn the_agents_own_arguments_come_before_run_and_every_scope_is_named_anew() {
+        let launcher = Some(PathBuf::from("systemd-run"));
+        let command = command(launcher, vec!["--backend".into(), "portal".into()]);
+        let (program, args) = launch_plan(&command);
+        assert_eq!(program, Path::new("systemd-run"));
+        assert_eq!(
+            &args[4..],
+            ["/opt/folo/folo-capture", "--backend", "portal", "run"]
+        );
+        assert_ne!(launch_plan(&command).1[3], args[3]);
+    }
+
+    #[tokio::test]
+    async fn without_systemd_run_the_agent_starts_directly_with_the_environment_only() {
+        let folder = Folder::new("direct");
+        let script = folder.0.join("folo-capture");
+        let body = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{dir}/argv'\n\
+             printf '%s\\n%s\\n' \"$FOLO_CAPTURE_LINK\" \"$FOLO_CAPTURE_TOKEN\" > '{dir}/env'\n",
+            dir = folder.0.display()
+        );
+        std::fs::write(&script, body).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let sink: Arc<dyn CaptureSink> = Arc::new(Sink::default());
+        let mut command = command(None, vec!["--backend".into(), "portal".into()]);
+        command.program = script;
+        let mut child = spawn(&command, "ws://127.0.0.1:1/link", "the-token", &sink).unwrap();
+        assert!(child.wait().await.unwrap().success());
+        assert_eq!(
+            std::fs::read_to_string(folder.0.join("argv")).unwrap(),
+            "--backend\nportal\n"
+        );
+        let env = std::fs::read_to_string(folder.0.join("env")).unwrap();
+        assert_eq!(env, "ws://127.0.0.1:1/link\nthe-token\n");
+    }
 }

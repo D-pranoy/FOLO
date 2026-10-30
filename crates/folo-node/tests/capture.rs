@@ -385,6 +385,7 @@ fn capture_command(name: &str, listing: &Path) -> CaptureCommand {
         // The test harness prints to stdout, so the listing is a script's
         list_program: listing.to_path_buf(),
         list_args: Vec::new(),
+        scope_launcher: None,
     }
 }
 
