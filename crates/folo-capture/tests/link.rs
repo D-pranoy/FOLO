@@ -11,6 +11,7 @@ use folo_capture::cli::{EXIT_FAILED, EXIT_OK};
 use folo_capture::environment::Environment;
 use folo_capture::link::{self, Timing};
 use folo_capture::worker::{self, Agent};
+use folo_capture_core::clock::ProcessClock;
 use folo_capture_core::synthetic::{Pattern, SyntheticBackend};
 use futures_util::SinkExt as _;
 use serde_json::{Value, json};
@@ -43,7 +44,8 @@ fn start_params(rate: u32) -> Value {
 fn run_agent(environment: Environment, timing: Timing) -> tokio::task::JoinHandle<u8> {
     tokio::spawn(async move {
         let backend = SyntheticBackend::new(Pattern::Letterbox);
-        let (handle, thread) = worker::spawn(Agent::new(Box::new(backend)));
+        let (handle, thread) =
+            worker::spawn(Agent::new(Box::new(backend), Box::new(ProcessClock::new())));
         let status = link::run(&environment, &handle, timing).await;
         drop(handle);
         let _ = thread.join();

@@ -1,6 +1,6 @@
 # Display capture (screen sync)
 
-Status: Accepted · Implementation: Partial (the core crate, the capture link and the agent's link client; no backend for a real screen yet; see [RB-14](../runbooks/m6-screen.md))
+Status: Accepted · Implementation: Partial (the core crate, the Windows backend, the capture link and the agent's link client; no Linux backend yet; see [RB-14](../runbooks/m6-screen.md))
 
 Decided in [ADR-0015](../decisions/ADR-0015-display-capture.md) and [ADR-0037](../decisions/ADR-0037-display-capture-agent.md).
 
@@ -62,9 +62,31 @@ Decided in [ADR-0037](../decisions/ADR-0037-display-capture-agent.md); the messa
   1. **DXGI Desktop Duplication**, using `DuplicateOutput1` with {BGRA8, R16G16B16A16_FLOAT}. A D3D11 device is created on the adapter that drives the output, with one duplication per output.
   2. **Windows.Graphics.Capture**, for cases Desktop Duplication can't handle: hybrid-GPU laptops capturing against the discrete GPU fail by design. Settings: cursor capture off, a free-threaded frame pool, borderless when the user consents (build 20348+). Otherwise the yellow border shows.
   3. GDI, as a last resort.
-- **Recovery:** a state machine handles `ACCESS_LOST` (mode changes, UAC, lock screen), `DXGI_ERROR_UNSUPPORTED`, `SESSION_DISCONNECTED` and the four-processes-per-session limit, with backoff. On the secure desktop, the agent is `paused` and holds the last frame (`held`); the Screen effect keeps showing it, the screen's activity ends, and the controller's ambient light takes over.
-- **HDR:** detected through the output colour space (`DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020`). Frames are averaged in linear FP16, then tone-mapped against the user's SDR white level (from `DISPLAYCONFIG_SDR_WHITE_LEVEL`).
-- **Shaders:** the downscale and tone-mapping shaders are HLSL embedded in the agent and compiled at run time with the in-box `d3dcompiler_47`.
+- **Recovery:** a state machine (`folo-capture-windows`'s `recovery` module) decides after every failure. On the secure desktop, the agent is `paused` and holds the last frame (`held`); the Screen effect keeps showing it, the screen's activity ends, and the controller's ambient light takes over.
+
+  | Failure | What happens |
+  |---|---|
+  | `DXGI_ERROR_ACCESS_LOST` (mode change, UAC, lock screen), `E_ACCESSDENIED` on the duplication (secure desktop), `DXGI_ERROR_SESSION_DISCONNECTED`, a monitor that isn't connected | `paused`; the backend is opened again after 0.1 s, doubling to 2 s, without end |
+  | `DXGI_ERROR_UNSUPPORTED`, or `E_INVALIDARG` when opening a duplication (the output is on another adapter than the device) | the next backend of `auto`'s order, at once |
+  | `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` (four duplications per session) | `paused`; three retries, then the next backend |
+  | Device removed, reset or hung (`paused`); any other failure (not `paused`) | five retries, then the next backend. On the last backend they go on at the longest delay, since a GPU reset or a busy session can pass. |
+  | Windows' privacy setting denies graphics capture (`E_ACCESSDENIED` from Windows.Graphics.Capture) | `paused` with `settings_uri`; retried every 5 s at most. **No other backend is tried:** the setting is the user's. |
+  | No backend left (only after `unsupported` on the last one) | the agent's state is `error` and the call fails with the reason; the same `capture.start` again tries again |
+
+  The retries count faults of the same kind in a row since the last picture, so three lost screens don't use up the process limit's retries. Once the agent has moved to another backend it stays there until it restarts. A paused agent stays paused until its first picture after the reopen. When a grab ends without a picture, both GPU grabbers ask the device whether it was removed, because a lost GPU would otherwise look like a still screen. `--backend dda`, `wgc` or `gdi` tries only that backend. `CaptureBackend::status()` tells the agent whether the backend is paused, why, and the `settings_uri`.
+- **Screens:** `EnumDisplayMonitors` lists the monitors of the desktop whatever drives them, so a remote session still lists its screens. The id is the monitor's device path (`QueryDisplayConfig`), or its GDI name (`\\.\DISPLAY1`) when Windows has no path; both are cut to the schema's 128 characters. The name is the monitor's friendly name. The primary monitor comes first, then the others by position. The agent makes itself per-monitor DPI aware, so sizes are in real pixels. DXGI adds the adapter and output Desktop Duplication needs.
+- **Clock:** frames are stamped with `QueryPerformanceCounter` in microseconds (`QpcClock`), the counter the engine's `time.monotonic_ns` reads.
+- **Rate:** Desktop Duplication and Windows.Graphics.Capture copy every desktop image they are given into a texture of the agent's (one GPU copy, so the frame goes back at once) and downscale at most `rate_hz` times a second, always the newest. A screen that goes still after a skipped image still gets its last state.
+- **HDR:**
+  - **Detection:** the output's colour space (`IDXGIOutput6::GetDesc1`) is `G2084`. The `hdr` flag follows it.
+  - **Formats:** `DuplicateOutput1` is offered FP16 first on an HDR output and BGRA8 first otherwise, with the other as the second choice; Windows.Graphics.Capture uses an FP16 frame pool on an HDR output. An FP16 frame is scRGB (linear, 1.0 is 80 nits).
+  - **Mapping:** the shader averages in linear light, then multiplies by 80 / the SDR white level (`DISPLAYCONFIG_SDR_WHITE_LEVEL`, 1000 for 80 nits, between 80 and 1000 nits; 80 when unreadable), so SDR white becomes 1.0. What is brighter is divided by its brightest component (it clips to white and keeps its hue); negative components go to 0. The result is sRGB-encoded.
+  - **Not followed:** the HDR state and the SDR white level are read when a capture is opened. Desktop Duplication reopens on a mode change but not when only the SDR brightness slider moves; a Windows.Graphics.Capture session doesn't notice HDR being switched on or off. Both take effect when the capture is opened again.
+- **Not detected (to verify live):** a Windows.Graphics.Capture session that stops delivering frames on the secure desktop looks like a screen that doesn't change; the lost-device check and the closed-item event are its only fault sources. The size box can be as small as 1 × 1 by the link's limits; the node asks for at least 64 × 36, and a box far below the screen's size makes the shader loop over many texels per pixel.
+- **Process settings:** listing the monitors makes the process per-monitor DPI aware (once), which is right for the agent and is a side effect for any other program that uses the crate.
+- **Rotated outputs:** Desktop Duplication delivers the unrotated image, so a rotated output is `unsupported` there and `auto` goes on to Windows.Graphics.Capture, which delivers it as it is shown.
+- **GDI:** `BitBlt` (with `CAPTUREBLT`) of the monitor's rectangle into a 32-bit DIB section, then the core's CPU downscale. It has no way to tell nothing changed, so it makes a picture every interval. A resolution change ends it with `ACCESS_LOST`.
+- **Windows.Graphics.Capture borders:** where `GraphicsCaptureSession.IsBorderRequired` exists, the agent asks Windows for borderless access (`GraphicsCaptureAccess`) and then turns the border off; if Windows doesn't grant it, the yellow border stays. The consent is asked on a thread of its own and waited for one second at most; the border stays if it isn't granted in time. The consent path is to be verified live (RB-14 step 10).
 - **Protected content:** Desktop Duplication's `ProtectedContentMaskedOut` flag is reported as **"protected content"** (the `protected` flag) rather than black. Hardware-DRM video, for example the Netflix app or PlayReady in Edge, can't be captured.
 - **Privacy setting:** newer Windows 11 builds have a "Screenshots and screen recording" setting and policy. If access is denied, the agent's status says so with a link to the setting (`settings_uri`).
 
@@ -141,7 +163,7 @@ The sampling of a new frame onto a layer takes about 1 ms for a 256×144 frame o
 
 - Capture sits behind an interface with synthetic and replay inputs (recorded frame sequences, committed as synthetic ones). The node is tested with a fake agent, and the agent with a fake node.
 - **Golden tests** for black bars: letterbox, pillarbox, 21:9, subtitles in the bars, logos, fade to black, OSD, noise near the threshold.
-- **Downscale and tone-map shaders** run on Windows' WARP software device with fixtures.
+- **Downscale and tone-map shader** run on Windows' WARP software device with synthetic textures, against the core's colour reference (within one level of 8-bit output) and the tone-map reference of `folo-capture-windows`; CI's Windows job runs them. The recovery state machine is tested with injected failures on every platform. `crates/folo-capture-windows/tests/live.rs` holds the live checks (`#[ignore]`: they capture the real desktop).
 - **Linux:** on the CI runner, a real PipeWire daemon with a test producer and a fake ScreenCast portal (a service on a private `dbus-daemon`). These capture tests run in an Ubuntu 24.04 job; the workspace must still build on Ubuntu 22.04. The consent path is tested manually.
 - **Privacy:** a run with marker pixels the effect can't copy (in `held` and `protected` frames, the bar rows and the margins) collects every status, levels and spectrum message, log line, the node's status, API answer and file in the temporary and data folders, and asserts neither the raw payload nor the markers are in them. The `surface:` and `target:` topics are expected to carry the canvas and nothing else.
 - **End to end:** the node, the agent in replay mode and the real engine, asserting the canvas frames the engine publishes; through projection once RB-08 lands.
