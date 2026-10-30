@@ -1,0 +1,28 @@
+{
+  "id": "sub-swell",
+  "schema_version": 2,
+  "description": "Slow rise and fall with the deep sub bass.",
+  "hints": {
+    "group": "Low end",
+    "tempo": "Slow",
+    "anim": "breathe",
+    "dur": 3.2
+  },
+  "name": "Sub swell",
+  "params": {
+    "freq_lo": 20,
+    "freq_hi": 60,
+    "threshold": -50,
+    "ceiling": -18,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 250,
+    "release": 1200,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0.08,
+    "peak": false
+  }
+}

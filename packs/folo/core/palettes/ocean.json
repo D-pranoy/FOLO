@@ -1,0 +1,11 @@
+{
+  "id": "ocean",
+  "schema_version": 2,
+  "name": "Ocean",
+  "colors": [
+    "#001F54",
+    "#0077B6",
+    "#00B4D8",
+    "#90E0EF"
+  ]
+}

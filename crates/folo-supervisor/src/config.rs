@@ -24,7 +24,8 @@ pub struct Wanted {
 }
 
 /// `config.apply`'s params for the local source, without `revision`, which
-/// the link adds when it sends them. Each signal keeps its index whatever
+/// the link adds when it sends them. Only zones whose `active` is not false
+/// have surfaces assigned (ADR-0036 D6). Each signal keeps its index whatever
 /// else is wanted (`beat` 0, `spectrum` 1), so a frame that arrives after
 /// the wanted signals change is never taken for another signal's.
 #[must_use]
@@ -104,14 +105,101 @@ pub fn local_config(zones: &Value, show: &Value, sources: &Value, wanted: Wanted
     })
 }
 
+/// The smallest and largest box of screen frames (ADR-0037 D5).
+const FRAME_BOX_MIN: (u64, u64) = (64, 36);
+const FRAME_BOX_MAX: (u64, u64) = (480, 270);
+
+/// `capture.start`'s params (without a restore token) when capture is
+/// wanted, else `None` (ADR-0037 D3, D5): an `inputs.screens[]` entry of the
+/// local source is enabled, and an enabled `screen` layer is in the active
+/// scene of a surface assigned to it. Of several enabled entries the first
+/// is captured. The frames fit a box of twice the width and twice the height
+/// of the largest published surface with such a layer, within 64 × 36 and
+/// 480 × 270, at the rate surfaces are published at.
+#[must_use]
+pub fn capture_request(zones: &Value, show: &Value, sources: &Value) -> Option<Value> {
+    let local = sources["sources"]
+        .as_array()?
+        .iter()
+        .find(|s| s["id"] == LOCAL_SOURCE)?;
+    let input = local["inputs"]["screens"]
+        .as_array()?
+        .iter()
+        .find(|s| s["enabled"] == true)?;
+    let mut widest = 0;
+    let mut tallest = 0;
+    let mut wanted = false;
+    for id in local["surfaces"]
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        let Some((zone, surface)) = find_surface(zones, id) else {
+            continue;
+        };
+        if !has_screen_layer(show, zone, surface) {
+            continue;
+        }
+        let (width, height) = published_size(surface);
+        widest = widest.max(width);
+        tallest = tallest.max(height);
+        wanted = true;
+    }
+    if !wanted {
+        return None;
+    }
+    let black_bars = clamp("BlackBars", &input["black_bars"], &mut String::new)
+        .unwrap_or_else(|_| json!({"preset": "auto", "mode": "default", "threshold": 0.05}));
+    let profile = if input["profile"] == "game" {
+        "game"
+    } else {
+        "video"
+    };
+    Some(json!({
+        "screen": input["id"],
+        "width": (widest * 2).clamp(FRAME_BOX_MIN.0, FRAME_BOX_MAX.0),
+        "height": (tallest * 2).clamp(FRAME_BOX_MIN.1, FRAME_BOX_MAX.1),
+        "rate_hz": RATE_HZ,
+        "black_bars": black_bars,
+        "profile": profile,
+    }))
+}
+
+/// Whether the zone's active scene has an enabled `screen` layer for the
+/// surface's role.
+fn has_screen_layer(show: &Value, zone: &Value, surface: &Value) -> bool {
+    let active = show["active"][zone["id"].as_str().unwrap_or_default()]
+        .as_str()
+        .unwrap_or_default();
+    let Some(scene) = show["scenes"]
+        .as_array()
+        .and_then(|scenes| scenes.iter().find(|s| s["id"] == active))
+    else {
+        return false;
+    };
+    let role = surface["role"].as_str().unwrap_or_default();
+    scene["layers_by_role"][role]
+        .as_array()
+        .is_some_and(|layers| {
+            layers
+                .iter()
+                .any(|l| l["effect"]["id"] == "screen" && l["enabled"] != false)
+        })
+}
+
 fn default_inputs() -> Value {
     clamp("SourceInputs", &Value::Object(Map::new()), &mut String::new)
         .expect("an empty object clamps to the defaults")
 }
 
-/// The zone holding the surface `id`, and the surface.
+/// The zone holding the surface `id`, and the surface. Only active zones
+/// have surfaces to assign (ADR-0036 D6): `zones` holds the **effective**
+/// `active` flags, which the node works out (`folo-node`'s `zones` module).
 fn find_surface<'a>(zones: &'a Value, id: &str) -> Option<(&'a Value, &'a Value)> {
     zones["zones"].as_array()?.iter().find_map(|zone| {
+        if zone["active"] == false {
+            return None;
+        }
         zone["surfaces"]
             .as_array()?
             .iter()
@@ -172,6 +260,25 @@ mod tests {
             ]}),
         );
         (zones, show, sources)
+    }
+
+    #[test]
+    fn inactive_zones_have_no_surfaces_assigned() {
+        let (mut zones, show, sources) = documents();
+        zones["zones"][0]["active"] = json!(false);
+        let config = local_config(&zones, &show, &sources, Wanted::default());
+        let surfaces = config["surfaces"].as_array().unwrap();
+        assert_eq!(surfaces.len(), 1);
+        // Surfaces are numbered in the order of the call
+        assert_eq!(surfaces[0]["index"], 0);
+        assert_eq!(surfaces[0]["surface"]["id"], "main");
+        assert_eq!(config["publish"]["surfaces"].as_array().unwrap().len(), 1);
+        let wanted = Wanted {
+            levels: true,
+            ..Wanted::default()
+        };
+        let config = local_config(&zones, &show, &sources, wanted);
+        assert_eq!(config["publish"]["levels"], json!([0]));
     }
 
     #[test]
@@ -274,6 +381,94 @@ mod tests {
             }
             _ => a == b,
         }
+    }
+
+    /// A wall canvas (256 x 144, published as 128 x 72) and a strip, a scene
+    /// with `layers` for the wall, and a local source with `screens`.
+    fn capture_documents(layers: &Value, screens: &Value) -> (Value, Value, Value) {
+        let (zones, _, _) = documents();
+        let show = clamped(
+            "ShowDocument",
+            &json!({
+                "active": {"default": "current", "desk": "current"},
+                "scenes": [{"id": "current", "name": "Current", "layers_by_role": {"canvas.room": layers}}],
+            }),
+        );
+        let sources = clamped(
+            "SourcesDocument",
+            &json!({"sources": [
+                {"id": "local", "surfaces": ["main", "wall"], "inputs": {"screens": screens}},
+            ]}),
+        );
+        (zones, show, sources)
+    }
+
+    fn screen_layer(enabled: bool) -> Value {
+        json!([{"id": "s", "effect": {"id": "screen"}, "enabled": enabled}])
+    }
+
+    #[test]
+    fn capture_is_wanted_with_an_enabled_screen_and_an_enabled_screen_layer() {
+        let screens = json!([
+            {"id": "off-one", "enabled": false},
+            {"id": "DP-1", "enabled": true, "profile": "game", "black_bars": {"preset": "21:9"}},
+            {"id": "second", "enabled": true},
+        ]);
+        let (zones, show, sources) = capture_documents(&screen_layer(true), &screens);
+        let request = capture_request(&zones, &show, &sources).expect("wanted");
+        assert_eq!(request["screen"], "DP-1");
+        assert!(same(&request["width"], &json!(256)), "{request}");
+        assert!(same(&request["height"], &json!(144)), "{request}");
+        assert!(same(&request["rate_hz"], &json!(60)));
+        assert_eq!(request["profile"], "game");
+        assert_eq!(request["black_bars"]["preset"], "21:9");
+        assert_eq!(request["black_bars"]["mode"], "default");
+        // It is a valid capture.start without the token
+        let mut params = request.clone();
+        params["restore_token"] = json!("t");
+        let again = clamped("CaptureStartParams", &params);
+        assert_eq!(again["screen"], "DP-1");
+    }
+
+    #[test]
+    fn capture_is_not_wanted_without_both() {
+        let on = json!([{"id": "DP-1", "enabled": true}]);
+        let off = json!([{"id": "DP-1", "enabled": false}]);
+        let (zones, show, sources) = capture_documents(&screen_layer(false), &on);
+        assert_eq!(capture_request(&zones, &show, &sources), None);
+        let (zones, show, sources) = capture_documents(&screen_layer(true), &off);
+        assert_eq!(capture_request(&zones, &show, &sources), None);
+        let (zones, show, sources) = capture_documents(&json!([]), &on);
+        assert_eq!(capture_request(&zones, &show, &sources), None);
+        // A screen layer in a scene that isn't the active one
+        let (zones, mut show, sources) = capture_documents(&screen_layer(true), &on);
+        show["active"]["desk"] = json!("elsewhere");
+        assert_eq!(capture_request(&zones, &show, &sources), None);
+        // No local source at all
+        let empty = clamped("SourcesDocument", &json!({}));
+        assert_eq!(capture_request(&zones, &show, &empty), None);
+    }
+
+    #[test]
+    fn the_box_follows_the_largest_surface_within_its_limits() {
+        // Only the strip (281 x 1 published) carries the layer: the box is the least
+        let (zones, _, _) = documents();
+        let show = clamped(
+            "ShowDocument",
+            &json!({
+                "active": {"default": "current"},
+                "scenes": [{"id": "current", "name": "Current", "layers_by_role": {"strip.main": [{"id": "s", "effect": {"id": "screen"}}]}}],
+            }),
+        );
+        let sources = clamped(
+            "SourcesDocument",
+            &json!({"sources": [
+                {"id": "local", "surfaces": ["main"], "inputs": {"screens": [{"id": "a", "enabled": true}]}},
+            ]}),
+        );
+        let request = capture_request(&zones, &show, &sources).expect("wanted");
+        assert!(same(&request["width"], &json!(480)), "{request}");
+        assert!(same(&request["height"], &json!(36)), "{request}");
     }
 
     #[test]

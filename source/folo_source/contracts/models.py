@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints
 from typing_extensions import TypeAliasType
 
 
@@ -51,6 +51,42 @@ class Address(BaseModel):
     start: Annotated[int, Field(ge=0, le=65535)] = 0
     count: Annotated[int, Field(ge=1, le=65535)] = 1
     channels: Annotated[list[Channel], Field(max_length=20, validate_default=True)] = []
+
+
+RolesAdditionalProperty = TypeAliasType(
+    "RolesAdditionalProperty", Annotated[str, Field(max_length=64)]
+)
+
+
+class SkippedItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=64)]
+
+
+class ApplyResult(BaseModel):
+    """
+    What an apply did in one zone.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    zone: Annotated[str, Field(max_length=64)]
+    scene: Annotated[
+        str,
+        Field(
+            description='The id of the scene the zone now has active.', max_length=64
+        ),
+    ]
+    roles: Annotated[
+        dict[str, RolesAdditionalProperty],
+        Field(
+            description='Each bound role of the applied scene: the surface it went to.'
+        ),
+    ]
+    skipped: Annotated[
+        list[SkippedItem],
+        Field(description='Roles no surface of the zone could take.', max_length=64),
+    ]
 
 
 class AudioApp(BaseModel):
@@ -133,6 +169,38 @@ class AuthResult(BaseModel):
     key: Annotated[str | None, Field(description='Only when approved.', max_length=128)] = (
         None
     )
+
+
+FilesAdditionalProperty = TypeAliasType(
+    "FilesAdditionalProperty", Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+)
+
+
+class BackupManifest(BaseModel):
+    """
+    folo-backup.json, the manifest of a backup archive (ADR-0038 D25).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    format: Annotated[
+        int,
+        Field(description='1; a newer format is refused with 422 incompatible.', ge=1),
+    ]
+    created: Annotated[int, Field(description='Unix seconds.', ge=0)]
+    node_version: Annotated[str, Field(max_length=32)]
+    schema_version: Annotated[
+        int,
+        Field(
+            description="The documents' schema_version; a newer one than the node reads is refused with 422 incompatible.",
+            ge=2,
+        ),
+    ]
+    files: Annotated[
+        dict[str, FilesAdditionalProperty],
+        Field(description='path: SHA-256 (hex) of every other file in the archive.'),
+    ]
 
 
 class BeatStatus(BaseModel):
@@ -471,7 +539,13 @@ class Event(BaseModel):
         extra='forbid',
     )
     kind: Annotated[str, Field(max_length=64)]
-    id: Annotated[str, Field(max_length=64)]
+    id: Annotated[
+        str,
+        Field(
+            description="The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).",
+            max_length=65,
+        ),
+    ]
     state: Annotated[str, Field(max_length=32)]
     progress: Annotated[float | None, Field(ge=0.0, le=1.0)] = None
     message: Annotated[str | None, Field(max_length=1000)] = None
@@ -703,6 +777,41 @@ class LevelsParams(BaseModel):
     layers: Annotated[
         dict[str, LayersAdditionalProperty],
         Field(description='Layer id: [band level dB, value 0-1, recent average dB].'),
+    ]
+
+
+class LibraryItem(BaseModel):
+    """
+    An item of an installed pack, for the gallery.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    ref: Annotated[str, Field(description='author/pack:item.', max_length=130)]
+    pack: Annotated[str, Field(max_length=65)]
+    version: Annotated[str, Field(description="The pack's version.", max_length=32)]
+    type: Annotated[
+        Literal['palettes', 'reactions', 'looks', 'scenes', 'zone-templates'],
+        Field(description='A pack item type, as its folder is named.'),
+    ]
+    hash: Annotated[
+        str,
+        Field(
+            description="SHA-256 (hex) of the item's file, as provenance records it.",
+            pattern='^[0-9a-f]{64}$',
+        ),
+    ]
+    preview: Annotated[
+        str,
+        Field(
+            description="The preview's path under /library/packs/{pack}/previews/, or empty.",
+            max_length=255,
+        ),
+    ]
+    item: Annotated[
+        dict[str, Any],
+        Field(description="The item, as clamped (pack.json's item of this type)."),
     ]
 
 
@@ -948,6 +1057,33 @@ class Orientation(BaseModel):
     roll: Annotated[float, Field(ge=-180.0, le=180.0)] = 0
 
 
+class Item(RootModel[str]):
+    root: Annotated[str, Field(max_length=130)]
+
+
+class PackCategory(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='An id of 1-64 characters. Missing, empty or duplicate ids get a new one (8 lowercase hex characters).',
+            max_length=64,
+        ),
+    ] = ''
+    name: Annotated[str, Field(max_length=64)] = 'Category'
+    description: Annotated[str, Field(max_length=500)] = ''
+    items: Annotated[
+        list[Item],
+        Field(
+            description='Item references (author/pack:item), in order.',
+            max_length=500,
+            validate_default=True,
+        ),
+    ] = []
+
+
 class Palette1(RootModel[str]):
     root: Annotated[str, Field(max_length=64)]
 
@@ -995,9 +1131,22 @@ class PackInfo(BaseModel):
     description: Annotated[str, Field(max_length=500)]
     builtin: Annotated[
         bool,
-        Field(description="folo-core, folo-genres and folo-effects can't be removed."),
+        Field(
+            description="folo/core, folo/genres and folo/effects ship with the node and can't be removed."
+        ),
+    ]
+    editable: Annotated[
+        bool,
+        Field(description='A local pack (author local), whose items can be written.'),
     ]
     items: Annotated[int, Field(ge=0, le=500)]
+    hash: Annotated[
+        str,
+        Field(
+            description="SHA-256 (hex) of the pack's canonical .folopack (ADR-0038 D9).",
+            pattern='^[0-9a-f]{64}$',
+        ),
+    ]
 
 
 class Author(RootModel[str]):
@@ -1006,11 +1155,6 @@ class Author(RootModel[str]):
 
 RequiresAdditionalProperty = TypeAliasType(
     "RequiresAdditionalProperty", Annotated[str, Field(max_length=64)]
-)
-
-
-FilesAdditionalProperty = TypeAliasType(
-    "FilesAdditionalProperty", Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 )
 
 
@@ -1083,15 +1227,22 @@ class PaletteColor(RootModel[str]):
 
 class Provenance(BaseModel):
     """
-    Where an applied scene came from.
+    Where an applied scene came from (ADR-0038 D11).
     """
 
     model_config = ConfigDict(
         extra='forbid',
     )
-    pack: Annotated[str, Field(max_length=64)] = ''
+    pack: Annotated[str, Field(max_length=65)] = ''
     version: Annotated[str, Field(max_length=32)] = ''
     item: Annotated[str, Field(max_length=64)] = ''
+    hash: Annotated[
+        str | None,
+        Field(
+            description="SHA-256 (hex) of the item's file as applied; absent when unknown.",
+            pattern='^[0-9a-f]{64}$',
+        ),
+    ] = None
 
 
 class ProviderLive(BaseModel):
@@ -1240,7 +1391,7 @@ class ReferenceSize(BaseModel):
 
 class RelativeRegion(BaseModel):
     """
-    start-end along a strip, 0-1 of its length.
+    start-end along a strip, 0-1 of its length. snap: cover takes every cell the range touches; nearest rounds both ends to the nearest cell, halves up, as the studio's built-in builders do (docs/architecture/pipeline.md, ADR-0038 D14).
     """
 
     model_config = ConfigDict(
@@ -1249,6 +1400,9 @@ class RelativeRegion(BaseModel):
     kind: Literal['relative']
     start: Annotated[float, Field(ge=0.0, le=1.0)] = 0
     end: Annotated[float, Field(ge=0.0, le=1.0)] = 1
+    snap: Annotated[
+        Literal['cover', 'nearest'] | None, Field(description='Absent means cover.')
+    ] = None
 
 
 class AppliedItem(RootModel[str]):
@@ -1303,6 +1457,30 @@ class RestartParams(BaseModel):
     component: Literal['engine', 'capture', 'node']
 
 
+class RoleBinding(BaseModel):
+    """
+    The surfaces a user chose for a scene's roles in a zone.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    zone: Annotated[
+        str,
+        Field(description='The id of another entity; empty for none.', max_length=64),
+    ] = ''
+    scene: Annotated[
+        str,
+        Field(
+            description="The scene's reference as resolved: author/pack:item, or a scene id of this document.",
+            max_length=130,
+        ),
+    ] = ''
+    roles: Annotated[dict[str, Ref], Field(description='Role: surface id.', validate_default=True)] = {
+
+    }
+
+
 class RpcNotification(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1347,19 +1525,20 @@ class RpcResponse(BaseModel):
     error: Error2 | None = None
 
 
-RolesAdditionalProperty = TypeAliasType(
-    "RolesAdditionalProperty", Annotated[str, Field(max_length=64)]
-)
-
-
 class SceneApplyRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     zone: Annotated[str, Field(max_length=64)]
-    roles: Annotated[dict[str, RolesAdditionalProperty], Field(description='Role: surface id, overriding the automatic match.')] = {
+    roles: Annotated[dict[Annotated[str, StringConstraints(max_length=64)], RolesAdditionalProperty], Field(description='Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).', max_length=64)] = {
 
     }
+    keep_changes: Annotated[
+        bool,
+        Field(
+            description="Merge into the zone's active scene, keeping what the user changed since it was applied (ADR-0038 D15)."
+        ),
+    ] = False
 
 
 FallbacksAdditionalProperty = TypeAliasType(
@@ -1531,6 +1710,12 @@ class ScreensListResult(BaseModel):
     screens: Annotated[list[Screen], Field(max_length=16)]
 
 
+PinnedCertificatesAdditionalProperty = TypeAliasType(
+    "PinnedCertificatesAdditionalProperty",
+    Annotated[str, Field(pattern='^[0-9a-f]{64}$')],
+)
+
+
 class ServiceStatus(BaseModel):
     """
     Loopback only.
@@ -1541,6 +1726,21 @@ class ServiceStatus(BaseModel):
     )
     installed: bool
     running: bool
+
+
+class Zone(RootModel[str]):
+    root: Annotated[str, Field(max_length=64)]
+
+
+class ShowResetRequest(BaseModel):
+    """
+    Reset all: the zones to reset; empty for every zone (ADR-0038 D21).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    zones: Annotated[list[Zone], Field(max_length=256, validate_default=True)] = []
 
 
 class SignalFrameHeader(BaseModel):
@@ -2275,14 +2475,23 @@ class LookItem(BaseModel):
             le=2,
         ),
     ] = 2
+    description: Annotated[
+        str | None, Field(description='Shown in the gallery.', max_length=500)
+    ] = None
+    hints: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.'
+        ),
+    ] = None
     name: Annotated[str, Field(max_length=64)] = 'Look'
     effect: Annotated[EffectRef, Field(validate_default=True)] = {
         'id': 'audio-visualizer',
         'version': '1.0.0',
     }
     params: dict[str, Any] = {}
-    reaction: Annotated[str, Field(max_length=160)] = ''
-    palette: Annotated[str, Field(max_length=160)] = ''
+    reaction: Annotated[str, Field(max_length=130)] = ''
+    palette: Annotated[str, Field(max_length=130)] = ''
 
 
 class MacroTarget(BaseModel):
@@ -2476,6 +2685,13 @@ class PackManifest(BaseModel):
     previews: Annotated[dict[str, PreviewsAdditionalProperty], Field(description='Item id: preview file.')] = {
 
     }
+    categories: Annotated[
+        list[PackCategory] | None,
+        Field(
+            description='Groups of the gallery, merged by id across packs (ADR-0038 D17).',
+            max_length=32,
+        ),
+    ] = None
 
 
 class PaletteItem(BaseModel):
@@ -2497,6 +2713,15 @@ class PaletteItem(BaseModel):
             le=2,
         ),
     ] = 2
+    description: Annotated[
+        str | None, Field(description='Shown in the gallery.', max_length=500)
+    ] = None
+    hints: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.'
+        ),
+    ] = None
     name: Annotated[str, Field(max_length=64)] = 'Palette'
     colors: Annotated[
         list[PaletteColor], Field(max_length=16, min_length=1, validate_default=True)
@@ -2598,6 +2823,15 @@ class ReactionItem(BaseModel):
             le=2,
         ),
     ] = 2
+    description: Annotated[
+        str | None, Field(description='Shown in the gallery.', max_length=500)
+    ] = None
+    hints: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.'
+        ),
+    ] = None
     name: Annotated[str, Field(max_length=64)] = 'Reaction'
     params: Annotated[dict[str, Any], Field(description='A subset of the audio-visualizer parameters, clamped when a look or layer uses it.')] = {
 
@@ -2652,6 +2886,9 @@ class SecretsDocument(BaseModel):
     master_key_hash: Annotated[str, Field(max_length=128)] = ''
     capture: CaptureSecrets | None = None
     providers: Annotated[dict[str, ProviderSecrets], Field(description='Provider instance id: its credentials.', validate_default=True)] = {
+
+    }
+    pinned_certificates: Annotated[dict[str, PinnedCertificatesAdditionalProperty], Field(description="Hue bridge id (lowercase): the SHA-256 fingerprint, in lowercase hex, of the certificate a person confirmed for a bridge whose certificate doesn't chain to a Signify root (trust on first use, docs/integrations/hue.md).")] = {
 
     }
 
@@ -3000,6 +3237,15 @@ class SceneItem(BaseModel):
             le=2,
         ),
     ] = 2
+    description: Annotated[
+        str | None, Field(description='Shown in the gallery.', max_length=500)
+    ] = None
+    hints: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.'
+        ),
+    ] = None
     scene: Annotated[Scene, Field(validate_default=True)] = {
         'id': '',
         'name': 'Scene',
@@ -3050,11 +3296,18 @@ class ShowDocument(BaseModel):
     default_scene: Annotated[
         str,
         Field(
-            description='What Reset all restores: a scene id, or a built-in id (fx:*, genre:*) resolved through the alias table.',
-            max_length=64,
+            description='What Reset all applies: a pack item (author/pack:item), a built-in id (fx:*, genre:*) resolved through the alias table, or a bare id (a scene of this document, else an item of local/my-presets); empty for folo/core:default (ADR-0038 D19, D21).',
+            max_length=130,
         ),
     ] = ''
     scenes: Annotated[list[Scene], Field(max_length=256, validate_default=True)] = []
+    bindings: Annotated[
+        list[RoleBinding] | None,
+        Field(
+            description='Remembered role overrides per zone and scene (ADR-0038 D13).',
+            max_length=256,
+        ),
+    ] = None
 
 
 class StudioV1(BaseModel):
@@ -3207,6 +3460,14 @@ class ConfigApplyParams(BaseModel):
     publish: Publish
 
 
+class SceneApplied(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    show: ShowDocument
+    results: Annotated[list[ApplyResult], Field(max_length=256)]
+
+
 class Capabilities(BaseModel):
     """
     What a target can do: as discovered from its provider, and the user's overrides (docs/architecture/capabilities.md).
@@ -3290,7 +3551,7 @@ class Target(BaseModel):
     }
 
 
-class Zone(BaseModel):
+class Zone1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -3363,7 +3624,16 @@ class ZoneTemplateItem(BaseModel):
             le=2,
         ),
     ] = 2
-    zone: Annotated[Zone, Field(validate_default=True)] = {
+    description: Annotated[
+        str | None, Field(description='Shown in the gallery.', max_length=500)
+    ] = None
+    hints: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Presentation hints for clients (tempo, preview, group, source); the node and the engines ignore them.'
+        ),
+    ] = None
+    zone: Annotated[Zone1, Field(validate_default=True)] = {
         'id': '',
         'name': 'Zone',
         'type': 'custom',
@@ -3417,7 +3687,7 @@ class ZonesDocument(BaseModel):
             max_length=64,
         ),
     ] = ''
-    zones: Annotated[list[Zone], Field(max_length=64, validate_default=True)] = []
+    zones: Annotated[list[Zone1], Field(max_length=64, validate_default=True)] = []
 
 
 class State(BaseModel):

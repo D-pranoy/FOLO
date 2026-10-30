@@ -20,3 +20,4 @@
 *.npz binary
 *.zip binary
 *.folopack binary
+*.folr binary

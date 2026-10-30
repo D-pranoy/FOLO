@@ -1,0 +1,15 @@
+{
+  "id": "deep-night",
+  "schema_version": 2,
+  "name": "Deep Night",
+  "colors": [
+    "#0033CC",
+    "#000080",
+    "#4B00FF",
+    "#FF3399",
+    "#FF00FF",
+    "#800080",
+    "#8F00FF",
+    "#4B0082"
+  ]
+}

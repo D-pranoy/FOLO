@@ -1,0 +1,28 @@
+{
+  "id": "beat-flash",
+  "schema_version": 2,
+  "description": "Flashes on the loudest moments of the track.",
+  "hints": {
+    "group": "Full range",
+    "tempo": "Very fast",
+    "anim": "kick",
+    "dur": 0.3
+  },
+  "name": "Beat flash",
+  "params": {
+    "freq_lo": 30,
+    "freq_hi": 16000,
+    "threshold": 4,
+    "ceiling": 12,
+    "trigger": "hits",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "forward",
+    "attack": 0,
+    "release": 70,
+    "gain": 1,
+    "curve": 1.8,
+    "floor": 0,
+    "peak": false
+  }
+}

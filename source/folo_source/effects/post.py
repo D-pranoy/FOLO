@@ -14,7 +14,14 @@ from typing import Any
 import numpy as np
 
 from folo_source.contracts import clamp
-from folo_source.effects.base import EffectInfo, LayerSpec, PostEffect, Values, register
+from folo_source.effects.base import (
+    EffectInfo,
+    EffectInputs,
+    LayerSpec,
+    PostEffect,
+    Values,
+    register,
+)
 from folo_source.inputs.audio.analyzer import Analyzer
 
 VERSION = '1.0.0'
@@ -51,7 +58,12 @@ class _Post(PostEffect):
 
     INFO: EffectInfo
 
-    def __init__(self, analyzer: Analyzer | None = None, rng: np.random.Generator | None = None):
+    def __init__(
+        self,
+        analyzer: Analyzer | None = None,
+        rng: np.random.Generator | None = None,
+        inputs: EffectInputs | None = None,
+    ):
         self.layers: list[LayerSpec] = []
 
     @property
@@ -144,8 +156,13 @@ class Trail(_Post):
         'TrailParams',
     )
 
-    def __init__(self, analyzer: Analyzer | None = None, rng: np.random.Generator | None = None):
-        super().__init__(analyzer, rng)
+    def __init__(
+        self,
+        analyzer: Analyzer | None = None,
+        rng: np.random.Generator | None = None,
+        inputs: EffectInputs | None = None,
+    ):
+        super().__init__(analyzer, rng, inputs)
         self.previous: dict[str, Values] = {}
 
     def prepare(self, layers: Sequence[LayerSpec], colors: tuple[str, ...] = ()) -> None:

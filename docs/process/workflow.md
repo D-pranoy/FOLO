@@ -55,7 +55,7 @@ When the roadmap says the rebuild replaces the studio ([roadmap](../roadmap.md#o
 ## Release checklist
 
 1. The release PR from release-please is reviewed; the changelog is accurate.
-2. For the **first public binary release**, the clean-room rewrite gate ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)) must be closed.
+2. For the **first public binary release**, the clean-room rewrite gate ([ADR-0023](../decisions/ADR-0023-legacy-code-and-licensing.md)) must be closed: every row of the [effect specifications](../specs/effects/README.md#the-clean-room-rewrite-gate) is `rewritten`, which `release.yml` and `docker.yml` check by running the gate test with `FOLO_RELEASE_GATE=1` before publishing anything, `edge` images included ([ADR-0038](../decisions/ADR-0038-content-library.md) D24).
 3. Merging the release PR tags the release; `release.yml` builds a draft release.
 4. A maintainer verifies the artifacts (checksums, attestations, an install smoke test) and approves the `release` environment, which publishes the release.
 5. Post-release:

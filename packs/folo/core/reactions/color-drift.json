@@ -1,0 +1,28 @@
+{
+  "id": "color-drift",
+  "schema_version": 2,
+  "description": "Colors drift through the palette with the energy.",
+  "hints": {
+    "group": "Full range",
+    "tempo": "Slow",
+    "anim": "drift",
+    "dur": 6
+  },
+  "name": "Color drift",
+  "params": {
+    "freq_lo": 40,
+    "freq_hi": 4000,
+    "threshold": -45,
+    "ceiling": -15,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "shift",
+    "direction": "forward",
+    "attack": 400,
+    "release": 1500,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0.45,
+    "peak": false
+  }
+}

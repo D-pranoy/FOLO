@@ -1,0 +1,28 @@
+{
+  "id": "shimmer",
+  "schema_version": 2,
+  "description": "Gentle shimmer that swells with the treble.",
+  "hints": {
+    "group": "Highs",
+    "tempo": "Slow",
+    "anim": "breathe",
+    "dur": 2
+  },
+  "name": "Shimmer",
+  "params": {
+    "freq_lo": 4000,
+    "freq_hi": 16000,
+    "threshold": -62,
+    "ceiling": -38,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "forward",
+    "attack": 80,
+    "release": 700,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0.06,
+    "peak": false
+  }
+}

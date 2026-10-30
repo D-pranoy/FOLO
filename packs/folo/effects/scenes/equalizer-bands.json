@@ -1,0 +1,311 @@
+{
+  "id": "equalizer-bands",
+  "schema_version": 2,
+  "description": "Seven bands from sub bass to air side by side, each pulsing on its own hits.",
+  "hints": {
+    "tempo": "Medium"
+  },
+  "scene": {
+    "id": "equalizer-bands",
+    "name": "Equalizer bands",
+    "tags": [
+      "Jazz",
+      "Classical",
+      "Spectrum"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Sub",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 20.0,
+            "freq_hi": 60.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.14285714285714285,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Bass",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 60.0,
+            "freq_hi": 250.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.14285714285714285,
+            "end": 0.2857142857142857,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Low mid",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 250.0,
+            "freq_hi": 500.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#4B00FF",
+              "#FF3399"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.2857142857142857,
+            "end": 0.42857142857142855,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Mid",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 500.0,
+            "freq_hi": 2000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.42857142857142855,
+            "end": 0.5714285714285714,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "5",
+          "name": "High mid",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 2000.0,
+            "freq_hi": 4000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5714285714285714,
+            "end": 0.7142857142857143,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "6",
+          "name": "Presence",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 4000.0,
+            "freq_hi": 6000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.7142857142857143,
+            "end": 0.8571428571428571,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "7",
+          "name": "Air",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 20000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 11.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 5.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.8571428571428571,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

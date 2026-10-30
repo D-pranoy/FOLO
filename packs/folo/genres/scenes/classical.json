@@ -1,0 +1,233 @@
+{
+  "id": "classical",
+  "schema_version": 2,
+  "description": "Low strings swell in the center, the orchestra breathes around them, airy shimmer at the ends.",
+  "hints": {
+    "tempo": "Slow"
+  },
+  "scene": {
+    "id": "classical",
+    "name": "Classical hall",
+    "tags": [
+      "Classical",
+      "Chill"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Air left",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -62.0,
+            "ceiling": -38.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 80.0,
+            "release": 700.0,
+            "floor": 0.06,
+            "mode": "pulse",
+            "direction": "reverse",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.13333333333333333,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Orchestra left",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 250.0,
+            "freq_hi": 4000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -25.0,
+            "gain": 1.2,
+            "curve": 1.0,
+            "attack": 600.0,
+            "release": 2500.0,
+            "floor": 0.15,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.13333333333333333,
+            "end": 0.4,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Low strings",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 40.0,
+            "freq_hi": 250.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -18.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 250.0,
+            "release": 1200.0,
+            "floor": 0.08,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.4,
+            "end": 0.6,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Orchestra right",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 250.0,
+            "freq_hi": 4000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -25.0,
+            "gain": 1.2,
+            "curve": 1.0,
+            "attack": 600.0,
+            "release": 2500.0,
+            "floor": 0.15,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.6,
+            "end": 0.8666666666666667,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "5",
+          "name": "Air right",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -62.0,
+            "ceiling": -38.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 80.0,
+            "release": 700.0,
+            "floor": 0.06,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.8666666666666667,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}
