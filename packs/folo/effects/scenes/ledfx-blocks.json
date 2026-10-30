@@ -1,0 +1,189 @@
+{
+  "id": "ledfx-blocks",
+  "schema_version": 2,
+  "description": "LedFx-inspired. Four color blocks, each showing its quarter of the spectrum LED by LED.",
+  "hints": {
+    "tempo": "Fast",
+    "source": "LedFx"
+  },
+  "scene": {
+    "id": "ledfx-blocks",
+    "name": "Blocks",
+    "tags": [
+      "LedFx",
+      "EDM",
+      "Spectrum"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Band 1",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 30.0,
+            "freq_hi": 142.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -68.0,
+            "ceiling": -28.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#0033CC"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.25,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Band 2",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 142.0,
+            "freq_hi": 671.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -72.0,
+            "ceiling": -32.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#4B00FF",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.25,
+            "end": 0.5,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Band 3",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 671.0,
+            "freq_hi": 3170.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -76.0,
+            "ceiling": -36.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF00FF",
+              "#FF00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5,
+            "end": 0.75,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Band 4",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 3170.0,
+            "freq_hi": 15000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -80.0,
+            "ceiling": -40.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 180.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF3399"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.75,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

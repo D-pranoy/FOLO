@@ -21,6 +21,7 @@ use folo_supervisor::config::LOCAL_SOURCE;
 use folo_supervisor::{RequestError, RpcError};
 use serde_json::{Value, json};
 
+use crate::defaults;
 use crate::node::Node;
 use crate::output::{ProviderAbsent, TestRefused};
 use crate::providers;
@@ -29,7 +30,7 @@ use crate::status;
 use crate::zones;
 
 /// The client API's version: `info.version` in specs/openapi.yaml.
-pub const CLIENT_API_VERSION: &str = "1.3.0";
+pub const CLIENT_API_VERSION: &str = "1.4.0";
 /// JSON-RPC: what the request asked for isn't there (docs/specs/source-link.md).
 const NOT_AVAILABLE: i64 = -32000;
 /// JSON-RPC: params the source can't take.
@@ -320,22 +321,27 @@ struct Items {
     key: &'static str,
     /// The schema definition of one item.
     definition: &'static str,
+    /// Fills in what a new item gets by default, given the body as sent.
+    defaults: Option<fn(&Value, &mut Value, defaults::NewId)>,
 }
 
 const ZONES: Items = Items {
     doc: Doc::Zones,
     key: "zones",
     definition: "Zone",
+    defaults: Some(defaults::apply),
 };
 const PROVIDERS: Items = Items {
     doc: Doc::Providers,
     key: "providers",
     definition: "ProviderInstance",
+    defaults: None,
 };
 const SOURCES: Items = Items {
     doc: Doc::Sources,
     key: "sources",
     definition: "Source",
+    defaults: None,
 };
 
 /// How many items the list may hold (its schema's `maxItems`).
@@ -399,6 +405,9 @@ fn create_item(node: &Node, items: Items, body: Body, defaults: fn(&mut Value)) 
                 why: e.to_string(),
             }
         })?;
+        if let Some(fill) = items.defaults {
+            fill(&body, &mut item, &mut folo_store::new_id);
+        }
         let taken = |id: &Value| list(document, items).iter().any(|i| &i["id"] == id);
         while taken(&item["id"]) {
             item["id"] = Value::String(folo_store::new_id());
@@ -969,9 +978,20 @@ pub async fn source_inputs(State(node): Shared, Path(id): Path<String>) -> Respo
         return *refused;
     }
     match node.supervisor.request("inputs.list", json!({})).await {
-        Ok(inputs) => Json(inputs).into_response(),
+        Ok(inputs) => Json(with_screens(&node, inputs).await).into_response(),
         Err(failure) => request_failed(&failure, StatusCode::NOT_FOUND),
     }
+}
+
+/// The engine leaves `screens` empty: the capture agent's list goes in its
+/// place (ADR-0037 D15), from the linked agent or `folo-capture screens
+/// --json`. A list that can't be had leaves it empty.
+pub async fn with_screens(node: &Node, mut inputs: Value) -> Value {
+    match node.capture.screens().await {
+        Ok(listed) => inputs["screens"] = listed["screens"].clone(),
+        Err(why) => log::debug!("no screen list: {why:?}"),
+    }
+    inputs
 }
 
 /// The source's latest `media` notification, while it's linked.

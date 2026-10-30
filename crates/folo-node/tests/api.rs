@@ -512,12 +512,12 @@ async fn the_node_and_its_catalog(node: &Running) {
     conforms::<Info>(&info, "/info");
     assert_eq!(
         info["contracts"],
-        json!({"client_api": "1.3.0", "source_link": "1.3", "config": 2})
+        json!({"client_api": "1.4.0", "source_link": "1.3", "config": 2})
     );
 
     let effects = node.get("/api/v1/effects").await.json();
     conforms::<Vec<EffectInfo>>(&effects, "/effects");
-    assert_eq!(effects.as_array().unwrap().len(), 5);
+    assert_eq!(effects.as_array().unwrap().len(), 6);
     let state = node.get("/api/v1/state").await.json();
     conforms::<State>(&state, "/state");
     conforms::<SystemSettings>(&node.get("/api/v1/system").await.json(), "/system");
@@ -674,6 +674,44 @@ async fn the_rest(node: &Running) {
     );
     assert_eq!(page.header("cache-control"), Some("no-store"));
     assert_eq!(node.get("/api/v1/live").await.code(), "websocket_required");
+    empty_ids_in_paths(node).await;
+}
+
+/// An empty id segment names no resource: 404, whatever the route behind it
+/// (docs/specs/client-api.md#conventions).
+async fn empty_ids_in_paths(node: &Running) {
+    let paths = [
+        ("POST", "/api/v1/zones//identify"),
+        ("POST", "/api/v1/zones//test"),
+        ("POST", "/api/v1/zones//activate"),
+        ("POST", "/api/v1/zones//deactivate"),
+        ("GET", "/api/v1/zones//"),
+        ("GET", "/api/v1/zones/"),
+        ("PUT", "/api/v1/zones//"),
+        ("DELETE", "/api/v1/providers//"),
+        ("POST", "/api/v1/providers//admin/x"),
+        ("POST", "/api/v1/providers//hue/pair"),
+        ("GET", "/api/v1/sources//media"),
+        ("GET", "/api/v1/sources//media/art"),
+        ("POST", "/api/v1/scenes//apply"),
+        ("GET", "/api/v1/library/packs//export"),
+        ("POST", "/api/v1/updates//approve"),
+        ("POST", "/api/v1/sources/join-requests//approve"),
+    ];
+    for (method, path) in paths {
+        let answer = node.send_json(method, path, &json!({})).await;
+        assert_eq!(answer.status, 404, "{method} {path}");
+        assert_eq!(answer.code(), "not_found", "{method} {path}");
+    }
+    // Not JSON is still a 404 (the resource check comes before the body's)
+    let raw = request_text(node.port, "POST", "/api/v1/zones//identify", &[], Some("x"));
+    assert_eq!(send(node.port, &raw).status, 404);
+    // The path without the segment is another resource: the zone `identify`
+    let other = node
+        .send_json("POST", "/api/v1/zones/identify", &json!({}))
+        .await;
+    assert_eq!(other.status, 405);
+    assert_eq!(other.code(), "method_not_allowed");
 }
 
 /// Sets up a zone with the surface `main`, a scene on it, and the local
@@ -1592,4 +1630,76 @@ async fn a_changed_or_disabled_provider_releases_its_targets_first() {
     })
     .await;
     assert_eq!(node.stop().await, 0);
+}
+
+// ------------------------------------------------------------------ zone defaults
+
+fn roles_of(zone: &Value) -> Vec<String> {
+    zone["surfaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|surface| surface["role"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_zone_gets_the_default_surfaces_of_its_type_on_creation_only() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let node = Running::start(&home, false).await;
+    let line = json!({"id": "strip", "kind": "line", "geometry": {"kind": "line", "count": 20}});
+    for kind in ["music", "screen", "desk", "room", "custom"] {
+        let created = node
+            .send_json(
+                "POST",
+                "/api/v1/zones",
+                &json!({"type": kind, "targets": [line]}),
+            )
+            .await;
+        assert_eq!(created.status, 201, "{kind}");
+        let zone = created.json();
+        assert_eq!(roles_of(&zone), ["canvas.room", "strip.strip"], "{kind}");
+        assert_eq!(zone["mappings"][0]["target"], "strip", "{kind}");
+        assert_eq!(zone["surfaces"][0]["sources"], json!(["local"]), "{kind}");
+    }
+    let tv = json!({"type": "screen", "reference": {"kind": "tv"}});
+    let created = node.send_json("POST", "/api/v1/zones", &tv).await.json();
+    assert_eq!(roles_of(&created), ["canvas.room", "canvas.screen"]);
+    let id = created["id"].as_str().unwrap();
+
+    // an edit never applies them again, whatever it leaves out
+    let mut edited = created.clone();
+    edited["surfaces"] = json!([]);
+    let put = node
+        .send_json("PUT", &format!("/api/v1/zones/{id}"), &edited)
+        .await;
+    assert_eq!(put.status, 200);
+    assert_eq!(put.json()["surfaces"], json!([]));
+    edited.as_object_mut().unwrap().remove("surfaces");
+    let put = node
+        .send_json("PUT", &format!("/api/v1/zones/{id}"), &edited)
+        .await;
+    assert_eq!(put.json()["surfaces"], json!([]));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_surfaces_and_mappings_a_client_sends_are_kept() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let home = Home::new();
+    let node = Running::start(&home, false).await;
+    let line = json!({"id": "strip", "kind": "line", "geometry": {"kind": "line", "count": 20}});
+    let sent = json!({"type": "screen", "reference": {"kind": "tv"}, "targets": [line],
+        "surfaces": [{"id": "mine", "role": "strip.main"}], "mappings": []});
+    let zone = node.send_json("POST", "/api/v1/zones", &sent).await.json();
+    assert_eq!(roles_of(&zone), ["strip.main"]);
+    assert_eq!(zone["mappings"], json!([]));
+
+    let surfaces_only = json!({"targets": [line], "surfaces": []});
+    let zone = node
+        .send_json("POST", "/api/v1/zones", &surfaces_only)
+        .await
+        .json();
+    assert_eq!(zone["surfaces"], json!([]));
+    assert_eq!(zone["mappings"], json!([]));
 }

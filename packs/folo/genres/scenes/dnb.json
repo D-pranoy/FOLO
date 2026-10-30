@@ -1,0 +1,232 @@
+{
+  "id": "dnb",
+  "schema_version": 2,
+  "description": "Snares crack in the center, the reese bass swells around them, breakbeat hats at the ends.",
+  "hints": {
+    "tempo": "Fast"
+  },
+  "scene": {
+    "id": "dnb",
+    "name": "Drum & bass rush",
+    "tags": [
+      "Drum & Bass"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Breaks left",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 5.0,
+            "ceiling": 15.0,
+            "gain": 1.0,
+            "curve": 1.4,
+            "attack": 0.0,
+            "release": 120.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "reverse",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.16666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Reese left",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 40.0,
+            "freq_hi": 90.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -18.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 250.0,
+            "release": 1200.0,
+            "floor": 0.08,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.16666666666666666,
+            "end": 0.4166666666666667,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Snare",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 1500.0,
+            "freq_hi": 5000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 5.0,
+            "ceiling": 14.0,
+            "gain": 1.0,
+            "curve": 1.6,
+            "attack": 0.0,
+            "release": 90.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.4166666666666667,
+            "end": 0.5833333333333334,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Reese right",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 40.0,
+            "freq_hi": 90.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -18.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 250.0,
+            "release": 1200.0,
+            "floor": 0.08,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5833333333333334,
+            "end": 0.8333333333333334,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "5",
+          "name": "Breaks right",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 5.0,
+            "ceiling": 15.0,
+            "gain": 1.0,
+            "curve": 1.4,
+            "attack": 0.0,
+            "release": 120.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.8333333333333334,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

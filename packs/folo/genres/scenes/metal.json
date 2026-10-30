@@ -1,0 +1,528 @@
+{
+  "id": "metal",
+  "schema_version": 2,
+  "description": "Double-kick strobes, churning guitars and crashing cymbals in tight groups.",
+  "hints": {
+    "tempo": "Very fast"
+  },
+  "scene": {
+    "id": "metal",
+    "name": "Metal blast",
+    "tags": [
+      "Metal",
+      "Rock",
+      "Strobe"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Double kick 1",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 60.0,
+            "freq_hi": 140.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 6.0,
+            "ceiling": 12.0,
+            "gain": 1.0,
+            "curve": 2.0,
+            "attack": 0.0,
+            "release": 35.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.08333333333333333,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Guitars 1",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 200.0,
+            "freq_hi": 3000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -55.0,
+            "ceiling": -28.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 15.0,
+            "release": 250.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.08333333333333333,
+            "end": 0.16666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Cymbals 1",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 7.0,
+            "ceiling": 18.0,
+            "gain": 1.0,
+            "curve": 1.8,
+            "attack": 0.0,
+            "release": 50.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.16666666666666666,
+            "end": 0.25,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Double kick 2",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 60.0,
+            "freq_hi": 140.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 6.0,
+            "ceiling": 12.0,
+            "gain": 1.0,
+            "curve": 2.0,
+            "attack": 0.0,
+            "release": 35.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.25,
+            "end": 0.3333333333333333,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "5",
+          "name": "Guitars 2",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 200.0,
+            "freq_hi": 3000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -55.0,
+            "ceiling": -28.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 15.0,
+            "release": 250.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.3333333333333333,
+            "end": 0.4166666666666667,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "6",
+          "name": "Cymbals 2",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 7.0,
+            "ceiling": 18.0,
+            "gain": 1.0,
+            "curve": 1.8,
+            "attack": 0.0,
+            "release": 50.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.4166666666666667,
+            "end": 0.5,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "7",
+          "name": "Double kick 3",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 60.0,
+            "freq_hi": 140.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 6.0,
+            "ceiling": 12.0,
+            "gain": 1.0,
+            "curve": 2.0,
+            "attack": 0.0,
+            "release": 35.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5,
+            "end": 0.5833333333333334,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "8",
+          "name": "Guitars 3",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 200.0,
+            "freq_hi": 3000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -55.0,
+            "ceiling": -28.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 15.0,
+            "release": 250.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5833333333333334,
+            "end": 0.6666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "9",
+          "name": "Cymbals 3",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 7.0,
+            "ceiling": 18.0,
+            "gain": 1.0,
+            "curve": 1.8,
+            "attack": 0.0,
+            "release": 50.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.6666666666666666,
+            "end": 0.75,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "10",
+          "name": "Double kick 4",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 60.0,
+            "freq_hi": 140.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 6.0,
+            "ceiling": 12.0,
+            "gain": 1.0,
+            "curve": 2.0,
+            "attack": 0.0,
+            "release": 35.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.75,
+            "end": 0.8333333333333334,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "11",
+          "name": "Guitars 4",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 200.0,
+            "freq_hi": 3000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -55.0,
+            "ceiling": -28.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 15.0,
+            "release": 250.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.8333333333333334,
+            "end": 0.9166666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "12",
+          "name": "Cymbals 4",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 7.0,
+            "ceiling": 18.0,
+            "gain": 1.0,
+            "curve": 1.8,
+            "attack": 0.0,
+            "release": 50.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.9166666666666666,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

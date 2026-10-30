@@ -20,11 +20,14 @@ Status: Accepted · Implementation: Partial (owner-only secrets, the local link'
 | Sniffing on the LAN | **Source links are Noise-encrypted.** UI traffic is plain HTTP by decision ([ADR-0009](../decisions/ADR-0009-client-access.md)). Anyone who can sniff the LAN can capture a client key. Optional HTTPS is a later option. |
 | Rogue source or impersonated controller | Pinned static keys after pairing; one-time, expiring invites; join requests require a verification code and admin approval |
 | A local program posing as the effect engine | The node starts its engine with a launch token in the engine's environment, and its loopback source link accepts only that token ([ADR-0032](../decisions/ADR-0032-local-source-link.md)) |
-| Malicious content pack | Data-only packs, validated and clamped; size limits; no code execution in v1 ([ADR-0021](../decisions/ADR-0021-content-packs.md)) |
+| A program on `PATH` named `folo-capture` | The node runs the agent from its own folder first, else from the `PATH`, as it does the engine, and hands that program the launch token; installs keep the agent beside the node. |
+| A local program posing as the capture agent | The node starts its capture agent with a launch token in the agent's environment, and its loopback capture link accepts only that token ([ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D2) |
+| Malicious content pack | Data-only packs, validated and clamped; size and entry limits, safe archive paths, preview images checked by content and served sandboxed; no code execution in v1 ([ADR-0021](../decisions/ADR-0021-content-packs.md), [pack format](../specs/pack-format.md#container)) |
+| A leaked backup | Backups hold no secrets, identity keys or client keys ([ADR-0038](../decisions/ADR-0038-content-library.md) D26); they still name devices' addresses |
 | Tampered update | Signatures verified against a public key built into FOLO; SHA-256 checks; approvals; provenance attestations ([updates](updates.md)) |
 | Compromised build pipeline | Pinned actions, least-privilege workflow permissions, release environment with a required reviewer, Dependabot, CodeQL, cargo-deny ([ADR-0019](../decisions/ADR-0019-ci-cd-versioning-and-releases.md)) |
 | Photosensitive harm | A per-zone flash limiter, off by default, and photosensitive epilepsy warnings on first run, in zone settings, in Settings and on fast-flashing effects ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md), [capabilities](capabilities.md#flash-limiter)) |
-| Privacy of captured media | Capture on demand only; visible indicator; full frames and raw audio never stored or sent ([display capture](../integrations/display-capture.md#latency-and-privacy)) |
+| Privacy of captured media | Capture on demand only; visible indicator; raw audio never stored or sent. Raw screen frames travel only from the capture agent to its node and on to its engine, on loopback: never on the live channel, in an API answer, a log, a file FOLO writes or to another machine. The zone's low-resolution canvas, a picture of the screen, is published like any surface, so any client holding a key can watch it with a `surface:` or `target:` subscription, over plain HTTP on the LAN; it is the only screen picture that leaves the engine ([display capture](../integrations/display-capture.md#latency-and-privacy), [ADR-0037](../decisions/ADR-0037-display-capture-agent.md) D9). |
 
 ## Rules
 
@@ -38,7 +41,7 @@ Status: Accepted · Implementation: Partial (owner-only secrets, the local link'
 - **Static UI files load without a key; every API and WebSocket call requires one.** The exceptions are `/api/v1/health` and the pairing endpoints, which use their own proofs.
 - **Before client keys** arrive with RB-15, no key is valid: clients on other machines get `401` from every API and WebSocket call that needs one ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D1).
 - **The UI's Content Security Policy:** `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. Inline styles are allowed because Svelte's transitions write them ([ADR-0035](../decisions/ADR-0035-serving-the-client-api.md) D7).
-- **Secrets** live in a separate file with owner-only permissions. It holds the node's identity, the providers' credentials and the Hue certificates people confirmed. Secrets are excluded from every API response, log and export.
+- **Secrets** live in a separate file with owner-only permissions. It holds the node's identity, the providers' credentials and the Hue certificates people confirmed. Secrets are excluded from every API response, log and export. The capture agent's Linux restore token is one: the node removes it before it shows the agent's status.
 - **Device certificates:**
   - Hue bridges are verified against the bundled Signify root certificates, with CN = bridge id.
   - Non-Signify bridges (for example diyHue) use trust-on-first-use pinning after the user confirms.

@@ -1,6 +1,6 @@
 # M5 Devices
 
-Status: Accepted · Implementation: Partial (RB-12 steps 1–8 and RB-13 steps 1–6, 9 and 10 built on fakes; RB-12 step 9 and RB-13 steps 7–8 not started)
+Status: Accepted · Implementation: Partial (RB-13 steps 1–6, 9 and 10)
 
 ## RB-12: WLED provider
 

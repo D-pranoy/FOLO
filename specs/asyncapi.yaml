@@ -1,15 +1,17 @@
 asyncapi: 3.0.0
 info:
   title: FOLO WebSocket channels
-  version: 1.3.0
+  version: 1.4.0
   description: |
     Machine-readable form of the live channel (docs/specs/client-api.md#live-websocket),
-    the source link (docs/specs/source-link.md, contract version 1.3) and ingest,
-    which it must agree with. On the source link every message after the Noise IK
-    handshake travels inside a Noise transport message, prefixed by a type byte:
-    0x01 JSON-RPC 2.0, 0x02 surface frame, 0x03 signal frame. Binary frames are
+    the source link (docs/specs/source-link.md, contract version 1.4), the capture
+    link and ingest, which it must agree with. On the source link every message
+    after the Noise IK handshake travels inside a Noise transport message,
+    prefixed by a type byte: 0x01 JSON-RPC 2.0, 0x02 surface frame, 0x03 signal
+    frame. 0x04, the screen frame, travels only on the loopback links (the local
+    source link and the capture link), never inside Noise. Binary frames are
     little-endian; their header layouts are in specs/schema/source-link.json
-    (SurfaceFrameHeader, SignalFrameHeader).
+    (SurfaceFrameHeader, SignalFrameHeader, ScreenFrameHeader).
   license:
     name: MIT
     url: https://opensource.org/license/mit
@@ -81,6 +83,21 @@ channels:
       notify.update.result: {$ref: '#/components/messages/notify.update.result'}
       surfaceFrame: {$ref: '#/components/messages/surfaceFrame'}
       signalFrame: {$ref: '#/components/messages/signalFrame'}
+      screenFrame: {$ref: '#/components/messages/screenFrame'}
+  captureLink:
+    address: /capture-link
+    servers: [{$ref: '#/servers/sourceLoopback'}]
+    description: 'The capture agent (folo-capture) dials its node on loopback (subprotocol folo.capture.v1), with the launch token in the handshake. Text messages carry the handshake; each binary message after it starts with a type byte: 0x01 JSON-RPC 2.0, 0x04 screen frame. No Noise. The node forwards the frames to its effect engine over the local source link (ADR-0037).'
+    messages:
+      captureHello: {$ref: '#/components/messages/captureHello'}
+      captureWelcome: {$ref: '#/components/messages/captureWelcome'}
+      screens.list: {$ref: '#/components/messages/screens.list'}
+      capture.start: {$ref: '#/components/messages/capture.start'}
+      capture.stop: {$ref: '#/components/messages/capture.stop'}
+      restart: {$ref: '#/components/messages/restart'}
+      rpcResponse: {$ref: '#/components/messages/rpcResponse'}
+      notify.capture.status: {$ref: '#/components/messages/notify.capture.status'}
+      screenFrame: {$ref: '#/components/messages/screenFrame'}
   ingest:
     address: /ingest/surfaces
     servers: [{$ref: '#/servers/controller'}]
@@ -164,6 +181,42 @@ operations:
       - {$ref: '#/channels/sourceLink/messages/notify.update.result'}
       - {$ref: '#/channels/sourceLink/messages/surfaceFrame'}
       - {$ref: '#/channels/sourceLink/messages/signalFrame'}
+  sourceScreenFrames:
+    action: send
+    channel: {$ref: '#/channels/sourceLink'}
+    summary: Screen frames the node forwards to its own effect engine, on the local link only.
+    messages:
+      - {$ref: '#/channels/sourceLink/messages/screenFrame'}
+  captureHandshake:
+    action: receive
+    channel: {$ref: '#/channels/captureLink'}
+    summary: The capture agent's handshake payload, answered by the node's.
+    messages:
+      - {$ref: '#/channels/captureLink/messages/captureHello'}
+    reply:
+      channel: {$ref: '#/channels/captureLink'}
+      messages:
+        - {$ref: '#/channels/captureLink/messages/captureWelcome'}
+  captureCommands:
+    action: send
+    channel: {$ref: '#/channels/captureLink'}
+    summary: JSON-RPC requests from the node to the capture agent.
+    messages:
+      - {$ref: '#/channels/captureLink/messages/screens.list'}
+      - {$ref: '#/channels/captureLink/messages/capture.start'}
+      - {$ref: '#/channels/captureLink/messages/capture.stop'}
+      - {$ref: '#/channels/captureLink/messages/restart'}
+    reply:
+      channel: {$ref: '#/channels/captureLink'}
+      messages:
+        - {$ref: '#/channels/captureLink/messages/rpcResponse'}
+  captureUpdates:
+    action: receive
+    channel: {$ref: '#/channels/captureLink'}
+    summary: The capture agent's status and its screen frames.
+    messages:
+      - {$ref: '#/channels/captureLink/messages/notify.capture.status'}
+      - {$ref: '#/channels/captureLink/messages/screenFrame'}
   ingestFrames:
     action: receive
     channel: {$ref: '#/channels/ingest'}
@@ -202,6 +255,27 @@ components:
       contentType: application/octet-stream
       summary: 'FOLG signal frame: a 24-byte header (SignalFrameHeader), then count float32 values.'
       payload: {type: string, format: binary}
+    screenFrame:
+      contentType: application/octet-stream
+      summary: 'FOLC screen frame: a 36-byte header (ScreenFrameHeader), then width x height x 3 bytes of rgb8, row-major. Loopback links only; never on the live channel, ingest or a remote source link. Newest wins.'
+      payload: {type: string, format: binary}
+    captureHello:
+      summary: The capture agent's handshake payload (JSON).
+      payload: {$ref: 'schema/source-link.json#/$defs/CaptureHello'}
+    captureWelcome:
+      summary: The node's handshake payload to the capture agent.
+      payload: {$ref: 'schema/source-link.json#/$defs/CaptureWelcome'}
+    screens.list:
+      summary: Returns a ScreensListResult (schema/source-link.json).
+      payload: {$ref: '#/components/schemas/ScreensList'}
+    capture.start:
+      summary: Starts capturing one screen.
+      payload: {$ref: '#/components/schemas/CaptureStart'}
+    capture.stop:
+      payload: {$ref: '#/components/schemas/CaptureStop'}
+    notify.capture.status:
+      summary: At least once a second (the agent's heartbeat), and when it changes.
+      payload: {$ref: '#/components/schemas/NotifyCaptureStatus'}
     hello:
       summary: The source's handshake payload (CBOR or JSON).
       payload: {$ref: 'schema/source-link.json#/$defs/Hello'}
@@ -263,6 +337,36 @@ components:
     notify.update.result:
       payload: {$ref: '#/components/schemas/NotifyUpdateResult'}
   schemas:
+    ScreensList:
+      description: Returns a ScreensListResult (schema/source-link.json).
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: screens.list}
+      required: [jsonrpc, id, method]
+    CaptureStart:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: capture.start}
+        params: {$ref: 'schema/source-link.json#/$defs/CaptureStartParams'}
+      required: [jsonrpc, id, method, params]
+    CaptureStop:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        id: {type: [integer, string]}
+        method: {const: capture.stop}
+      required: [jsonrpc, id, method]
+    NotifyCaptureStatus:
+      type: object
+      properties:
+        jsonrpc: {const: '2.0'}
+        method: {const: capture.status}
+        params: {$ref: 'schema/source-link.json#/$defs/CaptureStatusParams'}
+      required: [jsonrpc, method, params]
     ConfigApply:
       type: object
       properties:

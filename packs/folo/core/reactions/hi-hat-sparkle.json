@@ -1,0 +1,28 @@
+{
+  "id": "hi-hat-sparkle",
+  "schema_version": 2,
+  "description": "Crisp sparkles on hi-hats and percussion.",
+  "hints": {
+    "group": "Highs",
+    "tempo": "Fast",
+    "anim": "eq",
+    "dur": 0.35
+  },
+  "name": "Hi-hat sparkle",
+  "params": {
+    "freq_lo": 6000,
+    "freq_hi": 16000,
+    "threshold": 5,
+    "ceiling": 15,
+    "trigger": "hits",
+    "beats": 1,
+    "mode": "spectrum",
+    "direction": "forward",
+    "attack": 0,
+    "release": 120,
+    "gain": 1,
+    "curve": 1.4,
+    "floor": 0,
+    "peak": false
+  }
+}

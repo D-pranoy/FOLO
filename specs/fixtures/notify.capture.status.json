@@ -1,0 +1,18 @@
+{
+ "jsonrpc": "2.0",
+ "method": "capture.status",
+ "params": {
+  "state": "capturing",
+  "backend": "dda",
+  "screen": "\\\\?\\DISPLAY#TST0001#5&0&UID1",
+  "fps": 59.8,
+  "hdr": false,
+  "protected": false,
+  "bars": {
+   "top": 0.125,
+   "bottom": 0.125,
+   "left": 0.0,
+   "right": 0.0
+  }
+ }
+}

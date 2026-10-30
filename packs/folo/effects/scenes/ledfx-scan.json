@@ -1,0 +1,72 @@
+{
+  "id": "ledfx-scan",
+  "schema_version": 2,
+  "description": "LedFx-inspired. One eye bounces from end to end, racing with the bass and taking the color of where it is.",
+  "hints": {
+    "tempo": "Fast",
+    "source": "LedFx"
+  },
+  "scene": {
+    "id": "ledfx-scan",
+    "name": "Scan",
+    "tags": [
+      "LedFx",
+      "Techno",
+      "Rock"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Scanner",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 30.0,
+            "freq_hi": 250.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -48.0,
+            "ceiling": -14.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 0.0,
+            "release": 250.0,
+            "floor": 0.15,
+            "mode": "scan",
+            "direction": "forward",
+            "speed": 500.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF",
+              "#FF3399",
+              "#FF00FF",
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

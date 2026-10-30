@@ -1,0 +1,234 @@
+{
+  "id": "techno",
+  "schema_version": 2,
+  "description": "A hard kick strobe in the middle, rumbling mids beside it, cymbal flashes at the ends.",
+  "hints": {
+    "tempo": "Very fast"
+  },
+  "scene": {
+    "id": "techno",
+    "name": "Techno warehouse",
+    "tags": [
+      "Techno",
+      "House",
+      "Strobe"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Hats left",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 14000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 7.0,
+            "ceiling": 18.0,
+            "gain": 1.0,
+            "curve": 1.8,
+            "attack": 0.0,
+            "release": 50.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.16666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Rumble left",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 150.0,
+            "freq_hi": 1000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -25.0,
+            "gain": 1.2,
+            "curve": 1.0,
+            "attack": 600.0,
+            "release": 2500.0,
+            "floor": 0.15,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.16666666666666666,
+            "end": 0.3333333333333333,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Kick",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 40.0,
+            "freq_hi": 100.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 6.0,
+            "ceiling": 12.0,
+            "gain": 1.0,
+            "curve": 2.0,
+            "attack": 0.0,
+            "release": 35.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.3333333333333333,
+            "end": 0.6666666666666666,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "4",
+          "name": "Rumble right",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 150.0,
+            "freq_hi": 1000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -50.0,
+            "ceiling": -25.0,
+            "gain": 1.2,
+            "curve": 1.0,
+            "attack": 600.0,
+            "release": 2500.0,
+            "floor": 0.15,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.6666666666666666,
+            "end": 0.8333333333333334,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "5",
+          "name": "Hats right",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 6000.0,
+            "freq_hi": 14000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 7.0,
+            "ceiling": 18.0,
+            "gain": 1.0,
+            "curve": 1.8,
+            "attack": 0.0,
+            "release": 50.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.8333333333333334,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

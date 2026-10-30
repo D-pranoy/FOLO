@@ -1,0 +1,28 @@
+{
+  "id": "bass-on-the-beat",
+  "schema_version": 2,
+  "description": "A punchy flash on each beat, as bright as the bass is loud.",
+  "hints": {
+    "group": "On the beat",
+    "tempo": "Fast",
+    "anim": "kick",
+    "dur": 0.5
+  },
+  "name": "Bass on the beat",
+  "params": {
+    "freq_lo": 35,
+    "freq_hi": 150,
+    "threshold": -60,
+    "ceiling": -20,
+    "trigger": "beat",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 160,
+    "gain": 1,
+    "curve": 1.6,
+    "floor": 0,
+    "peak": false
+  }
+}

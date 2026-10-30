@@ -1,0 +1,54 @@
+{
+  "id": "folo/genres",
+  "version": "1.0.0",
+  "folo": ">=1.0 <2",
+  "name": "FOLO genres",
+  "description": "Scenes tuned for music genres.",
+  "license": "MIT",
+  "authors": [
+    "FOLO contributors"
+  ],
+  "tags": [
+    "genres"
+  ],
+  "requires": {},
+  "contents": {
+    "palettes": [],
+    "reactions": [],
+    "looks": [],
+    "scenes": [
+      "edm",
+      "techno",
+      "dnb",
+      "dubstep",
+      "trap",
+      "hiphop",
+      "pop",
+      "rnb",
+      "rock",
+      "metal",
+      "jazz",
+      "classical",
+      "lofi",
+      "ambient"
+    ],
+    "zone_templates": []
+  },
+  "files": {
+    "scenes/ambient.json": "fd7a3c753ada9d1b572418df16957f8688c98bdd3e7fbbec97c9003d68b02405",
+    "scenes/classical.json": "e608e79a39ded018b1eeb365f066d96886bc2c7ef67e9e89614eebfa39ffa345",
+    "scenes/dnb.json": "32c5e8dee5f7941d351b4c99985d6799087b0ec56b818e1afae6c9e1e203add9",
+    "scenes/dubstep.json": "7ca7e7665205f0b648afc1fcfce1fa3162b981d6e70dbbdef41afbb8672916db",
+    "scenes/edm.json": "7be2c70833dbca8d8bf1d37b1ffcafbd57a7079a20287cae3febcd7d357e03f1",
+    "scenes/hiphop.json": "e646283e9c0a14942462ba732909e298f88fadf53921fd9a6aa8da3c9ef39c7f",
+    "scenes/jazz.json": "ad7484414ac8067e47119374e23217a09e83e2a1511d630881b807fb4ea8d018",
+    "scenes/lofi.json": "747d422a3d89bee2ce4b2e9d9c7bbea52979079c7759adf0a212de4e9f7b124e",
+    "scenes/metal.json": "b70b91c602373af2532e46eb55ef7c739012316a5d67f631c10eb5d2ed72bd80",
+    "scenes/pop.json": "3254b0894ffee02293d6df51be2dc5238784c2422fd3bb2a48a56765286f4814",
+    "scenes/rnb.json": "d290a8a115133d5e1bb597a1131d899324bf1614c1c29d65eba0dee8a0756160",
+    "scenes/rock.json": "2ea44b8aa550493f6cf1de02f9b9662a4cb0713622cff42788361a74572df3d4",
+    "scenes/techno.json": "c0afda71e7b2cff9738cc430e712b50560abca7727c94ad79a5e964a8e51fcf2",
+    "scenes/trap.json": "91f913c7a0554c087de1c741109797ee0c8befeefcf72556364e02d72b9795f2"
+  },
+  "previews": {}
+}
