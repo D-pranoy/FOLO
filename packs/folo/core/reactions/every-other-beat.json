@@ -1,0 +1,28 @@
+{
+  "id": "every-other-beat",
+  "schema_version": 2,
+  "description": "A deep pulse on the first and third beat of every bar.",
+  "hints": {
+    "group": "On the beat",
+    "tempo": "Medium",
+    "anim": "heartbeat",
+    "dur": 1
+  },
+  "name": "Every other beat",
+  "params": {
+    "freq_lo": 30,
+    "freq_hi": 250,
+    "threshold": -60,
+    "ceiling": -22,
+    "trigger": "beat",
+    "beats": 2,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 450,
+    "gain": 1,
+    "curve": 1.4,
+    "floor": 0.04,
+    "peak": false
+  }
+}

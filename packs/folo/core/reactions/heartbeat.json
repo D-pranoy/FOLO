@@ -1,0 +1,28 @@
+{
+  "id": "heartbeat",
+  "schema_version": 2,
+  "description": "Instant hit with a long soft fade.",
+  "hints": {
+    "group": "Low end",
+    "tempo": "Medium",
+    "anim": "heartbeat",
+    "dur": 1.1
+  },
+  "name": "Heartbeat",
+  "params": {
+    "freq_lo": 40,
+    "freq_hi": 120,
+    "threshold": -40,
+    "ceiling": -14,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 450,
+    "gain": 1,
+    "curve": 1.8,
+    "floor": 0.04,
+    "peak": false
+  }
+}

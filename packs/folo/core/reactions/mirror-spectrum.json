@@ -1,0 +1,28 @@
+{
+  "id": "mirror-spectrum",
+  "schema_version": 2,
+  "description": "Spectrum from the middle out, bass in the center.",
+  "hints": {
+    "group": "Full range",
+    "tempo": "Fast",
+    "anim": "eq",
+    "dur": 0.6
+  },
+  "name": "Mirror spectrum",
+  "params": {
+    "freq_lo": 30,
+    "freq_hi": 12000,
+    "threshold": -70,
+    "ceiling": -25,
+    "trigger": "level",
+    "beats": 1,
+    "mode": "spectrum",
+    "direction": "center",
+    "attack": 5,
+    "release": 180,
+    "gain": 1,
+    "curve": 1,
+    "floor": 0,
+    "peak": false
+  }
+}

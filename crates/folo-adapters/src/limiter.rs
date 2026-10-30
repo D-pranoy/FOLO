@@ -175,6 +175,20 @@ impl FlashLimiter {
         }
     }
 
+    /// Takes over `from`'s history: each element's run, transitions and flashes in the window,
+    /// and what the target showed. A limiter made for new settings of the same lights carries on
+    /// where the old one was, so a change of settings can't open a fresh window. The colour
+    /// order stays this limiter's own.
+    pub(crate) fn inherit(&mut self, from: Self) {
+        self.elements = from.elements;
+        self.shown = from.shown;
+    }
+
+    /// Moves the history out, leaving this limiter limiting from an empty one.
+    pub(crate) fn take(&mut self) -> Self {
+        std::mem::replace(self, Self::new(self.order))
+    }
+
     /// The luminance of each element, 0–1 (see the table in the architecture document).
     fn luminances(&self, colors: &ElementColors) -> Vec<f32> {
         let rgb = |wire: [f32; 3]| {
@@ -561,6 +575,30 @@ mod tests {
             run.push((input, level(&colors)));
         }
         assert!(run.iter().any(|(i, o)| (i - o).abs() > 0.1));
+    }
+
+    #[test]
+    fn an_inherited_history_keeps_holding() {
+        let mut old = FlashLimiter::new([0, 1, 2]);
+        let mut now = 0;
+        let mut edges = 0;
+        let mut last = None;
+        // 10 Hz: three steps white, three black; the limiter is replaced halfway
+        for i in 0..60u64 {
+            if i == 30 {
+                let mut fresh = FlashLimiter::new([0, 1, 2]);
+                fresh.inherit(old.take());
+                old = fresh;
+            }
+            let v = if (i / 3) % 2 == 0 { 255.0 } else { 0.0 };
+            let mut colors = ElementColors::Rgb(vec![[v; 3]]);
+            old.apply(now, &mut colors);
+            let shown = colors.to_bytes()[0];
+            edges += usize::from(last.is_some_and(|l| l != shown));
+            last = Some(shown);
+            now += STEP;
+        }
+        assert!(edges <= 7, "{edges} edges in a second");
     }
 
     #[test]

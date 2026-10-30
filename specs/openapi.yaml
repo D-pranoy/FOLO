@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: FOLO client API
-  version: 1.3.0
+  version: 1.4.0
   summary: The controller's API for the UI, the desktop app, scripts and the Home Assistant client library.
   description: |
     Machine-readable form of docs/specs/client-api.md, which it must agree with.
@@ -177,19 +177,33 @@ paths:
       responses:
         '200': {$ref: '#/components/responses/Show'}
         default: {$ref: '#/components/responses/Error'}
-  /scenes/{id}/apply:
-    parameters: [{$ref: '#/components/parameters/Id'}]
+  /scenes/{ref}/apply:
+    parameters: [{$ref: '#/components/parameters/SceneRef'}]
     post:
       tags: [show]
       operationId: applyScene
-      summary: Apply a scene to a zone, with role overrides
+      summary: Apply a scene to a zone, with role overrides (ADR-0038 D11 to D15)
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
       requestBody:
         required: true
         content:
           application/json:
             schema: {$ref: 'schema/api.json#/$defs/SceneApplyRequest'}
       responses:
-        '200': {$ref: '#/components/responses/Show'}
+        '200': {$ref: '#/components/responses/SceneApplied'}
+        default: {$ref: '#/components/responses/Error'}
+  /show/reset:
+    post:
+      tags: [show]
+      operationId: resetShow
+      summary: Reset all, applying the default scene to zones (ADR-0038 D21)
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: 'schema/api.json#/$defs/ShowResetRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/SceneApplied'}
         default: {$ref: '#/components/responses/Error'}
   /effects:
     get:
@@ -270,7 +284,7 @@ paths:
         in: path
         required: true
         description: A basic administration action of the provider (ADR-0014).
-        schema: {type: string, maxLength: 64}
+        schema: {type: string, minLength: 1, maxLength: 64}
     get:
       tags: [providers]
       operationId: getProviderAdmin
@@ -456,7 +470,12 @@ paths:
     post:
       tags: [library]
       operationId: installPack
-      summary: Install a .folopack (admin)
+      summary: Install a .folopack, at most 10 MB (admin)
+      parameters:
+        - name: replace
+          in: query
+          description: Install over an installed pack of the same or a newer version.
+          schema: {type: boolean, default: false}
       requestBody:
         required: true
         content:
@@ -469,8 +488,8 @@ paths:
             application/json:
               schema: {$ref: 'schema/api.json#/$defs/PackInfo'}
         default: {$ref: '#/components/responses/Error'}
-  /library/packs/{id}:
-    parameters: [{$ref: '#/components/parameters/Id'}]
+  /library/packs/{pack}:
+    parameters: [{$ref: '#/components/parameters/Pack'}]
     get:
       tags: [library]
       operationId: getPack
@@ -484,20 +503,86 @@ paths:
     delete:
       tags: [library]
       operationId: removePack
+      summary: Remove an installed pack (admin)
       responses:
         '204': {description: Removed.}
         default: {$ref: '#/components/responses/Error'}
-  /library/packs/{id}/export:
-    parameters: [{$ref: '#/components/parameters/Id'}]
+  /library/packs/{pack}/export:
+    parameters: [{$ref: '#/components/parameters/Pack'}]
     get:
       tags: [library]
       operationId: exportPack
       responses:
         '200':
-          description: The .folopack.
+          description: The pack's canonical .folopack (ADR-0038 D9).
           content:
             application/zip:
               schema: {type: string, contentEncoding: binary}
+        default: {$ref: '#/components/responses/Error'}
+  /library/packs/{pack}/items/{type}/{item}:
+    parameters:
+      - {$ref: '#/components/parameters/Pack'}
+      - {$ref: '#/components/parameters/ItemType'}
+      - {$ref: '#/components/parameters/Item'}
+    get:
+      tags: [library]
+      operationId: getPackItem
+      responses:
+        '200': {$ref: '#/components/responses/PackItem'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [library]
+      operationId: putPackItem
+      summary: Write an item of a local pack, clamped as its type (ADR-0038 D10)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        '200': {$ref: '#/components/responses/PackItem'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [library]
+      operationId: deletePackItem
+      summary: Remove an item of a local pack
+      responses:
+        '204': {description: Removed.}
+        default: {$ref: '#/components/responses/Error'}
+  /library/packs/{pack}/previews/{file}:
+    parameters:
+      - {$ref: '#/components/parameters/Pack'}
+      - name: file
+        in: path
+        required: true
+        schema: {type: string, maxLength: 255}
+    get:
+      tags: [library]
+      operationId: getPackPreview
+      responses:
+        '200':
+          description: The preview image, sandboxed by a Content Security Policy.
+          content:
+            image/*:
+              schema: {type: string, contentEncoding: binary}
+        default: {$ref: '#/components/responses/Error'}
+  /library/items:
+    get:
+      tags: [library]
+      operationId: getLibraryItems
+      summary: Every item of a type in the installed packs, for the gallery
+      parameters:
+        - name: type
+          in: query
+          schema: {$ref: 'schema/api.json#/$defs/ItemType', default: scenes}
+      responses:
+        '200':
+          description: The items, built-in packs first, then by pack id, each pack's in its contents order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: 'schema/api.json#/$defs/LibraryItem'}
         default: {$ref: '#/components/responses/Error'}
   /clients:
     get:
@@ -665,7 +750,7 @@ paths:
     get:
       tags: [system]
       operationId: getBackup
-      summary: Back up the configuration (secrets excluded)
+      summary: Back up the documents and the library, secrets and client keys excluded (admin; ADR-0038 D25, D26)
       responses:
         '200':
           description: The backup.
@@ -677,6 +762,7 @@ paths:
     post:
       tags: [system]
       operationId: restoreBackup
+      summary: Replace the documents and the library with a backup's, at most 256 MB (admin; ADR-0038 D27)
       requestBody:
         required: true
         content:
@@ -783,13 +869,35 @@ components:
       name: id
       in: path
       required: true
+      schema: {type: string, minLength: 1, maxLength: 64}
+    Pack:
+      name: pack
+      in: path
+      required: true
+      description: A pack id (author/name), its slash percent-encoded (folo%2Fcore).
+      schema: {type: string, maxLength: 65}
+    SceneRef:
+      name: ref
+      in: path
+      required: true
+      description: A pack item (author/pack:item), a built-in id (fx:*, genre:*) or a scene id of the show, percent-encoded; the limit applies to the decoded text (ADR-0038 D2).
+      schema: {type: string, maxLength: 130}
+    ItemType:
+      name: type
+      in: path
+      required: true
+      schema: {$ref: 'schema/api.json#/$defs/ItemType'}
+    Item:
+      name: item
+      in: path
+      required: true
       schema: {type: string, maxLength: 64}
     Node:
       name: node
       in: path
       required: true
       description: A node id.
-      schema: {type: string, maxLength: 64}
+      schema: {type: string, minLength: 1, maxLength: 64}
     IfMatch:
       name: If-Match
       in: header
@@ -836,6 +944,16 @@ components:
       content:
         application/json:
           schema: {$ref: 'schema/show.json'}
+    SceneApplied:
+      description: The show as written, and what each zone got.
+      content:
+        application/json:
+          schema: {$ref: 'schema/api.json#/$defs/SceneApplied'}
+    PackItem:
+      description: The item, as clamped.
+      content:
+        application/json:
+          schema: {type: object}
     Provider:
       description: The provider instance, as clamped.
       content:

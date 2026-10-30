@@ -107,7 +107,7 @@ class AudioVisualizer:
     from one read of each analysis window per frame.
     """
 
-    def __init__(self, analyzer, rng=None):
+    def __init__(self, analyzer, rng=None, inputs=None):
         self.analyzer = analyzer
         self.states = {}
         # Drops and fire are random; tests pass a seeded generator

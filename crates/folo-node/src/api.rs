@@ -12,18 +12,25 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Json, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use folo_controller::Pattern;
 use folo_protocol::clamp::{SCHEMA_VERSION, clamp};
+use folo_protocol::generated::{DiscoverRequest, ProviderInstanceKind};
+use folo_provider::{AdminError, AdminMethod, runbook};
 use folo_store::{Doc, StoreError};
 use folo_supervisor::config::LOCAL_SOURCE;
 use folo_supervisor::{RequestError, RpcError};
 use serde_json::{Value, json};
 
+use crate::defaults;
 use crate::node::Node;
+use crate::output::{ProviderAbsent, TestRefused};
+use crate::providers;
 use crate::server::error;
 use crate::status;
+use crate::zones;
 
 /// The client API's version: `info.version` in specs/openapi.yaml.
-pub const CLIENT_API_VERSION: &str = "1.3.0";
+pub const CLIENT_API_VERSION: &str = "1.4.0";
 /// JSON-RPC: what the request asked for isn't there (docs/specs/source-link.md).
 const NOT_AVAILABLE: i64 = -32000;
 /// JSON-RPC: params the source can't take.
@@ -40,9 +47,9 @@ const ART_TYPES: [&str; 5] = [
 ];
 
 type Shared = State<Arc<Node>>;
-type Body = Result<Bytes, BytesRejection>;
+pub(crate) type Body = Result<Bytes, BytesRejection>;
 /// An answer refusing a request, boxed so results stay small.
-type Refusal = Box<Response>;
+pub(crate) type Refusal = Box<Response>;
 
 static EFFECTS: LazyLock<Value> = LazyLock::new(|| Value::Array(folo_protocol::catalog::effects()));
 
@@ -203,7 +210,7 @@ pub async fn system_logs(
 // ---------------------------------------------------------------- documents
 
 /// A body as JSON, or the answer refusing it.
-fn read_json(body: Body) -> Result<Value, Refusal> {
+pub(crate) fn read_json(body: Body) -> Result<Value, Refusal> {
     let bytes = body.map_err(|rejection| {
         Box::new(if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
             error(
@@ -229,13 +236,28 @@ fn read_json(body: Body) -> Result<Value, Refusal> {
 }
 
 /// Why a document write was refused.
-enum Refused {
+pub(crate) enum Refused {
     Store(StoreError),
     /// `If-Match` named another revision than the document's.
     Stale(u64),
     NotFound,
     /// The list holds as many items as its schema allows.
     Full,
+    /// Nothing to write: the request is answered with this `200` body.
+    Answered(Value),
+    /// `404 not_found` for a scene or a zone an apply names (`details.what`).
+    Absent(&'static str),
+    /// `409 no_base`: nothing to merge against.
+    NoBase,
+    /// `409 no_surface`: no role of the scene could be bound in the zone.
+    NoSurface {
+        zone: String,
+        skipped: Vec<String>,
+    },
+    /// `400 bad_body`, with the reason.
+    BadBody(String),
+    /// An answer already made, such as an unreadable body's.
+    Raw(Refusal),
 }
 
 impl From<StoreError> for Refused {
@@ -245,7 +267,7 @@ impl From<StoreError> for Refused {
 }
 
 impl Refused {
-    fn response(self) -> Response {
+    pub(crate) fn response(self) -> Response {
         match self {
             Self::Store(StoreError::Structural { why, .. }) => {
                 error(StatusCode::UNPROCESSABLE_ENTITY, "structural_error", &why)
@@ -264,14 +286,41 @@ impl Refused {
                 (StatusCode::PRECONDITION_FAILED, Json(body)).into_response()
             }
             Self::NotFound => error(StatusCode::NOT_FOUND, "not_found", "no such item"),
+            Self::Answered(body) => Json(body).into_response(),
             Self::Full => error(
                 StatusCode::CONFLICT,
                 "list_full",
                 "the list holds as many items as it may",
             ),
+            Self::Absent(what) => {
+                let body = json!({"error": {
+                    "code": "not_found",
+                    "message": format!("no such {what}"),
+                    "details": {"what": what},
+                }});
+                (StatusCode::NOT_FOUND, Json(body)).into_response()
+            }
+            Self::NoBase => error(
+                StatusCode::CONFLICT,
+                "no_base",
+                "the zone's scene has no applied copy of this item to merge against",
+            ),
+            Self::NoSurface { zone, skipped } => {
+                let body = json!({"error": {
+                    "code": "no_surface",
+                    "message": "no role of the scene could be bound to a surface of the zone",
+                    "details": {"zone": zone, "skipped": skipped},
+                }});
+                (StatusCode::CONFLICT, Json(body)).into_response()
+            }
+            Self::BadBody(reason) => error(StatusCode::BAD_REQUEST, "bad_body", &reason),
+            Self::Raw(response) => *response,
         }
     }
 }
+
+/// The longest `If-Match` the API reads (`IfMatch` in specs/openapi.yaml).
+const IF_MATCH_MAX: usize = 32;
 
 /// What `If-Match` asks for.
 #[derive(Debug, PartialEq, Eq)]
@@ -289,12 +338,16 @@ fn if_match(headers: &HeaderMap) -> IfMatch {
         return IfMatch::Absent;
     };
     let text = value.to_str().unwrap_or_default().trim();
+    // The parameter's schema allows 32 characters (specs/openapi.yaml): more matches no revision
+    if text.len() > IF_MATCH_MAX {
+        return IfMatch::Unreadable;
+    }
     let text = text.strip_prefix("W/").unwrap_or(text).trim_matches('"');
     text.parse().map_or(IfMatch::Unreadable, IfMatch::Revision)
 }
 
 /// Refuses a write when `If-Match` names another revision than `current`'s.
-fn check_revision(headers: &HeaderMap, current: &Value) -> Result<(), Refused> {
+pub(crate) fn check_revision(headers: &HeaderMap, current: &Value) -> Result<(), Refused> {
     let revision = current["revision"].as_u64().unwrap_or(0);
     match if_match(headers) {
         IfMatch::Absent => Ok(()),
@@ -305,28 +358,33 @@ fn check_revision(headers: &HeaderMap, current: &Value) -> Result<(), Refused> {
 
 /// The items of a list document.
 #[derive(Clone, Copy)]
-struct Items {
-    doc: Doc,
+pub(crate) struct Items {
+    pub(crate) doc: Doc,
     /// The list's key in the document.
-    key: &'static str,
+    pub(crate) key: &'static str,
     /// The schema definition of one item.
-    definition: &'static str,
+    pub(crate) definition: &'static str,
+    /// Fills in what a new item gets by default, given the body as sent.
+    defaults: Option<fn(&Value, &mut Value, defaults::NewId)>,
 }
 
-const ZONES: Items = Items {
+pub(crate) const ZONES: Items = Items {
     doc: Doc::Zones,
     key: "zones",
     definition: "Zone",
+    defaults: Some(defaults::apply),
 };
 const PROVIDERS: Items = Items {
     doc: Doc::Providers,
     key: "providers",
     definition: "ProviderInstance",
+    defaults: None,
 };
 const SOURCES: Items = Items {
     doc: Doc::Sources,
     key: "sources",
     definition: "Source",
+    defaults: None,
 };
 
 /// How many items the list may hold (its schema's `maxItems`).
@@ -337,11 +395,11 @@ fn room(items: Items) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-fn list(document: &Value, items: Items) -> &[Value] {
+pub(crate) fn list(document: &Value, items: Items) -> &[Value] {
     document[items.key].as_array().map_or(&[], Vec::as_slice)
 }
 
-fn find<'a>(document: &'a Value, items: Items, id: &str) -> Option<&'a Value> {
+pub(crate) fn find<'a>(document: &'a Value, items: Items, id: &str) -> Option<&'a Value> {
     list(document, items).iter().find(|item| item["id"] == id)
 }
 
@@ -354,7 +412,10 @@ fn with_list(document: &Value, items: Items, list: Vec<Value>) -> Value {
 
 /// After a write: the engine gets its new configuration when the document
 /// is one it's built from.
-fn written(node: &Node, doc: Doc) {
+pub(crate) fn written(node: &Node, doc: Doc) {
+    if doc == Doc::Zones {
+        node.check_zones();
+    }
     if matches!(doc, Doc::Zones | Doc::Show | Doc::Sources) {
         node.refresh_engine();
     }
@@ -373,11 +434,12 @@ fn get_item(node: &Node, items: Items, id: &str) -> Response {
 }
 
 /// `POST`: adds an item; an id that is missing, empty or taken gets a new one.
-fn create_item(node: &Node, items: Items, body: Body) -> Response {
-    let body = match read_json(body) {
+fn create_item(node: &Node, items: Items, body: Body, defaults: fn(&mut Value)) -> Response {
+    let mut body = match read_json(body) {
         Ok(body) => body,
         Err(refused) => return *refused,
     };
+    defaults(&mut body);
     let mut id = String::new();
     let stored = node.store.update(items.doc, |document| {
         let mut item = clamp(items.definition, &body, &mut folo_store::new_id).map_err(|e| {
@@ -386,6 +448,9 @@ fn create_item(node: &Node, items: Items, body: Body) -> Response {
                 why: e.to_string(),
             }
         })?;
+        if let Some(fill) = items.defaults {
+            fill(&body, &mut item, &mut folo_store::new_id);
+        }
         let taken = |id: &Value| list(document, items).iter().any(|i| &i["id"] == id);
         while taken(&item["id"]) {
             item["id"] = Value::String(folo_store::new_id());
@@ -479,7 +544,7 @@ pub async fn zones(State(node): Shared) -> Json<Value> {
 }
 
 pub async fn create_zone(State(node): Shared, body: Body) -> Response {
-    create_item(&node, ZONES, body)
+    create_item(&node, ZONES, body, |_| {})
 }
 
 pub async fn zone(State(node): Shared, Path(id): Path<String>) -> Response {
@@ -499,6 +564,183 @@ pub async fn delete_zone(State(node): Shared, Path(id): Path<String>) -> Respons
     delete_item(&node, ZONES, &id)
 }
 
+// ---------------------------------------------------------------- zone activation
+
+/// A `ZoneActivation` answer (specs/schema/api.json).
+fn activation_of(zone: &str, active: bool, conflicts: &[String]) -> Value {
+    json!({"zone": zone, "active": active, "conflicts": conflicts})
+}
+
+/// `take_over` from the body of `POST /zones/{id}/activate`, which may be
+/// empty (`ActivateRequest`: only `take_over`, a boolean).
+fn take_over_of(body: Body) -> Result<bool, Refusal> {
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    if empty {
+        return Ok(false);
+    }
+    let request = read_json(body)?;
+    let take_over = request.as_object().and_then(|fields| {
+        let known = fields.keys().all(|key| key == "take_over");
+        let flag = fields.get("take_over").map_or(Some(false), Value::as_bool);
+        known.then_some(flag).flatten()
+    });
+    take_over.ok_or_else(|| {
+        Box::new(error(
+            StatusCode::BAD_REQUEST,
+            "bad_body",
+            "the body isn't an ActivateRequest",
+        ))
+    })
+}
+
+/// Decides and writes an activation change under the store's lock: `change`
+/// returns the new zones, or `Refused::Answered` with the answer when
+/// nothing is to be written (no revision moves then). The answer after a
+/// write is the zone's effective state, with the conflicts that remain.
+/// A change is a write of `active` to `zones.json`, which gives it the next
+/// revision and sends `config_changed` (docs/specs/client-api.md#zone-activation).
+fn write_activation(
+    node: &Node,
+    id: &str,
+    change: impl FnOnce(&Value) -> Result<Value, Refused>,
+) -> Response {
+    match node.store.update(Doc::Zones, change) {
+        Ok(document) => {
+            written(node, Doc::Zones);
+            let active = zones::check(&document).is_active(id);
+            let conflicts = if active {
+                Vec::new()
+            } else {
+                zones::conflicts(&document, id)
+            };
+            Json(activation_of(id, active, &conflicts)).into_response()
+        }
+        Err(refused) => refused.response(),
+    }
+}
+
+pub async fn activate_zone(State(node): Shared, Path(id): Path<String>, body: Body) -> Response {
+    let take_over = match take_over_of(body) {
+        Ok(flag) => flag,
+        Err(refused) => return *refused,
+    };
+    write_activation(&node, &id, |document| {
+        if find(document, ZONES, &id).is_none() {
+            return Err(Refused::NotFound);
+        }
+        if zones::check(document).is_active(&id) {
+            return Err(Refused::Answered(activation_of(&id, true, &[])));
+        }
+        let conflicts = zones::conflicts(document, &id);
+        if !conflicts.is_empty() && !take_over {
+            return Err(Refused::Answered(activation_of(&id, false, &conflicts)));
+        }
+        Ok(if take_over {
+            zones::take_over(document, &id)
+        } else {
+            zones::set_active(document, &id, true)
+        })
+    })
+}
+
+pub async fn deactivate_zone(State(node): Shared, Path(id): Path<String>) -> Response {
+    write_activation(&node, &id, |document| {
+        let Some(zone) = find(document, ZONES, &id) else {
+            return Err(Refused::NotFound);
+        };
+        if zone["active"] == false {
+            return Err(Refused::Answered(activation_of(&id, false, &[])));
+        }
+        Ok(zones::set_active(document, &id, false))
+    })
+}
+
+// ---------------------------------------------------------------- test patterns
+
+/// A `TestRequest` (specs/schema/api.json): the pattern, the target (empty for all) and the
+/// seconds (1–60). An empty body takes the defaults.
+fn test_request_of(body: Body) -> Result<(Pattern, String, f64), Refusal> {
+    let refused = || {
+        Box::new(error(
+            StatusCode::BAD_REQUEST,
+            "bad_body",
+            "the body isn't a TestRequest",
+        ))
+    };
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    let request = if empty { json!({}) } else { read_json(body)? };
+    let fields = request.as_object().ok_or_else(refused)?;
+    let known = ["pattern", "target", "seconds"];
+    if !fields.keys().all(|key| known.contains(&key.as_str())) {
+        return Err(refused());
+    }
+    let pattern = match fields.get("pattern") {
+        None => Pattern::Identify,
+        Some(name) => name
+            .as_str()
+            .and_then(Pattern::from_name)
+            .ok_or_else(refused)?,
+    };
+    let target = match fields.get("target") {
+        None => String::new(),
+        Some(target) => target
+            .as_str()
+            .filter(|t| t.chars().count() <= 64)
+            .ok_or_else(refused)?
+            .to_owned(),
+    };
+    let seconds = match fields.get("seconds") {
+        None => 5.0,
+        Some(seconds) => seconds
+            .as_f64()
+            .filter(|s| (1.0..=60.0).contains(s))
+            .ok_or_else(refused)?,
+    };
+    Ok((pattern, target, seconds))
+}
+
+/// Starts a test pattern and answers `202`, or why not
+/// (docs/specs/client-api.md#test-patterns).
+fn start_test(node: &Node, zone: &str, pattern: Pattern, target: &str, seconds: f64) -> Response {
+    match node.output.test(node, zone, target, pattern, seconds) {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(TestRefused::UnknownZone) => error(StatusCode::NOT_FOUND, "not_found", "no such zone"),
+        Err(TestRefused::UnknownTarget(target)) => error(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            &format!("the zone has no target {target}"),
+        ),
+        Err(TestRefused::Busy(targets)) => {
+            let body = json!({"error": {
+                "code": "target_busy",
+                "message": "another active zone drives the target",
+                "details": {"targets": targets},
+            }});
+            (StatusCode::CONFLICT, Json(body)).into_response()
+        }
+    }
+}
+
+/// `POST /zones/{id}/identify`: always the `identify` pattern.
+pub async fn identify_zone(State(node): Shared, Path(id): Path<String>, body: Body) -> Response {
+    match test_request_of(body) {
+        Ok((_, target, seconds)) => start_test(&node, &id, Pattern::Identify, &target, seconds),
+        Err(refused) => *refused,
+    }
+}
+
+/// `POST /zones/{id}/test`.
+pub async fn test_zone(State(node): Shared, Path(id): Path<String>, body: Body) -> Response {
+    match test_request_of(body) {
+        Ok((pattern, target, seconds)) => start_test(&node, &id, pattern, &target, seconds),
+        Err(refused) => *refused,
+    }
+}
+
 pub async fn show(State(node): Shared) -> Json<Value> {
     get_document(&node, Doc::Show)
 }
@@ -508,13 +750,18 @@ pub async fn put_show(State(node): Shared, headers: HeaderMap, body: Body) -> Re
         Ok(body) => body,
         Err(refused) => return *refused,
     };
+    let _writing = crate::apply_api::show_writes();
+    let zones = node.store.get(Doc::Zones);
     let stored = node.store.update(Doc::Show, |document| {
         check_revision(&headers, document)?;
+        let mut body = body;
+        crate::apply_api::drop_stale_bindings(&mut body, &zones);
         Ok::<_, Refused>(body)
     });
     match stored {
         Ok(document) => {
             written(&node, Doc::Show);
+            crate::apply_api::prune_bases(&node);
             Json((*document).clone()).into_response()
         }
         Err(refused) => refused.response(),
@@ -525,8 +772,21 @@ pub async fn providers(State(node): Shared) -> Json<Value> {
     get_document(&node, Doc::Providers)
 }
 
+/// A new instance whose body names no `rate_hz` gets its kind's default, when the kind's run
+/// book sets one (WLED's 60 Hz); the contract's 40 is for the rest.
+fn kind_rate(body: &mut Value) {
+    let Some(kind) = body["kind"].as_str() else {
+        return;
+    };
+    if let Some(rate) = providers::default_rate_hz(kind)
+        && body.get("rate_hz").is_none()
+    {
+        body["rate_hz"] = json!(rate);
+    }
+}
+
 pub async fn create_provider(State(node): Shared, body: Body) -> Response {
-    create_item(&node, PROVIDERS, body)
+    create_item(&node, PROVIDERS, body, kind_rate)
 }
 
 pub async fn provider(State(node): Shared, Path(id): Path<String>) -> Response {
@@ -543,7 +803,146 @@ pub async fn put_provider(
 }
 
 pub async fn delete_provider(State(node): Shared, Path(id): Path<String>) -> Response {
-    delete_item(&node, PROVIDERS, &id)
+    let answer = delete_item(&node, PROVIDERS, &id);
+    if answer.status() == StatusCode::NO_CONTENT {
+        // A later instance with the same id must not inherit the credentials
+        node.secrets.forget_provider(&id);
+    }
+    answer
+}
+
+/// `POST /providers/discover`: every registered kind among the request's `kinds` (all of them
+/// by default); empty until a provider arrives. It changes no configuration.
+pub async fn discover_providers(State(node): Shared, body: Body) -> Response {
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    let request = if empty {
+        Ok(DiscoverRequest::default())
+    } else {
+        match read_json(body) {
+            // serde would read a struct from an array too
+            Ok(value) if value.is_object() => {
+                serde_json::from_value::<DiscoverRequest>(value).map_err(|_| ())
+            }
+            Ok(_) => Err(()),
+            Err(refused) => return *refused,
+        }
+    };
+    let Ok(request) = request else {
+        return error(
+            StatusCode::BAD_REQUEST,
+            "bad_body",
+            "the body isn't a DiscoverRequest",
+        );
+    };
+    // The two enums list the same names
+    let kinds: Vec<ProviderInstanceKind> = request
+        .kinds
+        .iter()
+        .filter_map(|kind| serde_json::to_value(kind).ok())
+        .filter_map(|kind| serde_json::from_value(kind).ok())
+        .collect();
+    let found = node.output.registry().discover(&kinds).await;
+    Json(json!(found)).into_response()
+}
+
+/// `GET` and `POST /providers/{id}/admin/{action}` through the instance's provider
+/// (docs/architecture/providers.md#describe-discover-and-administration).
+async fn admin(node: &Node, id: &str, action: &str, method: AdminMethod, body: Value) -> Response {
+    let kind = find(&node.store.get(Doc::Providers), PROVIDERS, id).map(|p| p["kind"].clone());
+    let Some(kind) = kind else {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such provider");
+    };
+    let provider = match node.output.provider(node, id) {
+        Ok(provider) => provider,
+        Err(ProviderAbsent::NotImplemented) => {
+            let kind: Option<ProviderInstanceKind> = serde_json::from_value(kind).ok();
+            let book = kind.map_or("RB-10", runbook);
+            return admin_error(&AdminError::NotImplemented { runbook: book });
+        }
+        // In the source role the controller's configuration is dormant: nothing runs
+        Err(ProviderAbsent::Off | ProviderAbsent::Unknown) if node.role != "controller" => {
+            return error(
+                StatusCode::CONFLICT,
+                "provider_disabled",
+                "the controller is dormant in the source role",
+            );
+        }
+        Err(ProviderAbsent::Off) => {
+            return error(
+                StatusCode::CONFLICT,
+                "provider_disabled",
+                "the provider is disabled",
+            );
+        }
+        Err(ProviderAbsent::Failed(message)) => {
+            return error(StatusCode::BAD_GATEWAY, "provider_error", &message);
+        }
+        Err(ProviderAbsent::Unknown) => {
+            return error(StatusCode::NOT_FOUND, "not_found", "no such provider");
+        }
+    };
+    match provider.admin(action, method, body).await {
+        Ok(answer) => {
+            // A login that worked is kept: the next start reads it from secrets.json
+            if method == AdminMethod::Change
+                && let Some(held) = provider.secrets()
+            {
+                node.secrets.keep_provider(id, &held);
+            }
+            Json(answer).into_response()
+        }
+        Err(failure) => admin_error(&failure),
+    }
+}
+
+fn admin_error(failure: &AdminError) -> Response {
+    let status = StatusCode::from_u16(failure.status()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let (message, details) = match failure {
+        AdminError::NotImplemented { runbook } => (
+            format!("this arrives with {runbook}"),
+            json!({"runbook": runbook}),
+        ),
+        AdminError::UnknownAction(action) => (format!("no action {action}"), json!({})),
+        AdminError::BadRequest(why) => (why.clone(), json!({})),
+        AdminError::Provider(why) => (why.to_string(), json!({})),
+    };
+    let body = json!({"error": {"code": failure.code(), "message": message, "details": details}});
+    (status, Json(body)).into_response()
+}
+
+pub async fn get_provider_admin(
+    State(node): Shared,
+    Path((id, action)): Path<(String, String)>,
+) -> Response {
+    admin(&node, &id, &action, AdminMethod::Read, Value::Null).await
+}
+
+pub async fn post_provider_admin(
+    State(node): Shared,
+    Path((id, action)): Path<(String, String)>,
+    body: Body,
+) -> Response {
+    let empty = body
+        .as_ref()
+        .is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace));
+    let request = if empty {
+        json!({})
+    } else {
+        match read_json(body) {
+            Ok(value) if value.is_object() => value,
+            Ok(_) => {
+                return error(
+                    StatusCode::BAD_REQUEST,
+                    "bad_body",
+                    "the body isn't an object",
+                );
+            }
+            Err(refused) => return *refused,
+        }
+    };
+    admin(&node, &id, &action, AdminMethod::Change, request).await
 }
 
 // ---------------------------------------------------------------- sources
@@ -627,9 +1026,20 @@ pub async fn source_inputs(State(node): Shared, Path(id): Path<String>) -> Respo
         return *refused;
     }
     match node.supervisor.request("inputs.list", json!({})).await {
-        Ok(inputs) => Json(inputs).into_response(),
+        Ok(inputs) => Json(with_screens(&node, inputs).await).into_response(),
         Err(failure) => request_failed(&failure, StatusCode::NOT_FOUND),
     }
+}
+
+/// The engine leaves `screens` empty: the capture agent's list goes in its
+/// place (ADR-0037 D15), from the linked agent or `folo-capture screens
+/// --json`. A list that can't be had leaves it empty.
+pub async fn with_screens(node: &Node, mut inputs: Value) -> Value {
+    match node.capture.screens().await {
+        Ok(listed) => inputs["screens"] = listed["screens"].clone(),
+        Err(why) => log::debug!("no screen list: {why:?}"),
+    }
+    inputs
 }
 
 /// The source's latest `media` notification, while it's linked.
@@ -743,6 +1153,9 @@ mod tests {
             assert_eq!(if_match(&headers), IfMatch::Revision(revision), "{text}");
         }
         headers.insert(header::IF_MATCH, "*".parse().unwrap());
+        assert_eq!(if_match(&headers), IfMatch::Unreadable);
+        // Longer than the schema allows, though it would parse as a revision
+        headers.insert(header::IF_MATCH, "0".repeat(33).parse().unwrap());
         assert_eq!(if_match(&headers), IfMatch::Unreadable);
         let current = json!({"revision": 3});
         assert!(matches!(

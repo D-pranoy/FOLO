@@ -95,6 +95,21 @@ impl AdapterChain {
             && self.limiter.is_none()
     }
 
+    /// Takes over `previous`'s flash-limiter history when both limit: a chain rebuilt for new
+    /// settings of the same target, or for another zone that now drives it, carries on with the
+    /// flashes already in the window, so no edit or hand-over can let a fourth through.
+    pub fn inherit_limiter(&mut self, previous: &mut Self) {
+        // `previous` keeps a limiter, with an empty history: the history moved here
+        if let (Some(limiter), Some(old)) = (&mut self.limiter, &mut previous.limiter) {
+            limiter.inherit(old.take());
+        }
+    }
+
+    /// Empties the delay line, so frames from before a pause don't come out after it.
+    pub fn clear_delay(&mut self) {
+        self.delay.clear();
+    }
+
     /// The target's colours for the projected elements of the step at `now_us`.
     pub fn run(&mut self, now_us: u64, input: &[[f32; 3]]) -> ElementColors {
         let resolved = resolution::fit(input, self.count);

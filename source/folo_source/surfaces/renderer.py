@@ -2,7 +2,8 @@
 Surfaces (RB-04 steps 5 and 6): a strip or a canvas with its layer stack.
 Each layer's effect draws a line; the line fills the layer's region, along
 the layer's axis on a canvas. Post-processing layers change what is below
-them instead. The stack is worked bottom first over the background, then
+them instead, and canvas effects (Screen) draw a picture of the region
+itself, on a canvas only. The stack is worked bottom first over the background, then
 `master` scales the result and it's clipped to 0-255
 (docs/architecture/pipeline.md#surfaces-and-layer-stacks).
 """
@@ -23,7 +24,15 @@ from folo_source.effects import base
 from folo_source.effects import post as _post  # registers the post-processing effects
 from folo_source.effects import screen as _screen  # registers the screen effect
 from folo_source.effects import visualizers as _visualizers  # registers the audio visualizer
-from folo_source.effects.base import Effect, LayerSpec, Levels, Line, PostEffect
+from folo_source.effects.base import (
+    CanvasEffect,
+    Effect,
+    EffectInputs,
+    LayerSpec,
+    Levels,
+    Line,
+    PostEffect,
+)
 from folo_source.effects.colors import hex_to_rgb
 from folo_source.inputs.audio.analyzer import Analyzer, Spectrum
 
@@ -31,6 +40,21 @@ Values = npt.NDArray[np.float64]
 Indices = npt.NDArray[np.intp]
 
 _ = (_post, _screen, _visualizers)
+
+
+def round_half_up(value: float) -> int:
+    """`value` rounded to the nearest integer, halves up, as JavaScript's `Math.round`."""
+    whole = math.floor(value)
+    return whole + 1 if value - whole >= 0.5 else whole
+
+
+def nearest_cells(lo: float, hi: float, size: int) -> tuple[int, int]:
+    """
+    The first and last cell of a `relative` region with `snap: nearest` on a
+    strip of `size` cells (ADR-0038 D14), not yet clipped below zero.
+    """
+    first = min(round_half_up(lo * size), size - 1)
+    return first, min(max(first, round_half_up(hi * size) - 1), size - 1)
 
 
 def strip_cells(region: Mapping[str, Any], size: int) -> tuple[int, int]:
@@ -47,8 +71,11 @@ def strip_cells(region: Mapping[str, Any], size: int) -> tuple[int, int]:
             hi = lo + float(region.get('width', 1.0))
         else:
             lo, hi = float(region.get('start', 0.0)), float(region.get('end', 1.0))
-        first = math.floor(lo * size)
-        last = max(first, math.ceil(hi * size) - 1)
+        if kind == 'relative' and region.get('snap') == 'nearest':
+            first, last = nearest_cells(lo, hi, size)
+        else:
+            first = math.floor(lo * size)
+            last = max(first, math.ceil(hi * size) - 1)
     return max(0, first), min(last, size - 1) + 1
 
 
@@ -117,6 +144,7 @@ class _Entry:
     rows: slice | None = None  # canvases only
     index: Indices | None = None  # canvases: the line cell of every cell
     post: bool = False  # a post-processing layer: it changes what is below it
+    picture: bool = False  # a canvas effect's layer: it draws its whole rectangle
 
 
 class SurfaceRenderer:
@@ -127,10 +155,16 @@ class SurfaceRenderer:
     callers replace them as a whole, never edit them.
     """
 
-    def __init__(self, analyzer: Analyzer, rng: np.random.Generator | None = None) -> None:
+    def __init__(
+        self,
+        analyzer: Analyzer,
+        rng: np.random.Generator | None = None,
+        inputs: EffectInputs | None = None,
+    ) -> None:
         self.analyzer = analyzer
+        self.inputs = EffectInputs() if inputs is None else inputs
         self._rng = np.random.default_rng() if rng is None else rng
-        self.effects: dict[str, Effect | PostEffect] = {}
+        self.effects: dict[str, Effect | PostEffect | CanvasEffect] = {}
         self._surface: object = None
         self._layers: object = None
         self._colors: tuple[str, ...] = ()
@@ -178,10 +212,11 @@ class SurfaceRenderer:
                 axis = str(layer.get('axis', 'linear_x'))
                 length, index = (0, None) if empty else axis_line(axis, r1 - r0, c1 - c0)
                 rows: slice | None = slice(r0, r1)
+                shape = (0, 0) if empty else (r1 - r0, c1 - c0)
             else:
                 c0, c1 = strip_cells(region, width)
                 empty = c1 <= c0
-                length, index, rows = c1 - c0, None, None
+                length, index, rows, shape = c1 - c0, None, None, (0, 0)
             specs = grouped.setdefault(effect_id, [])
             visible = shown and not empty
             entries.append(
@@ -201,11 +236,14 @@ class SurfaceRenderer:
                 max(0, length),
                 visible,
                 str(layer.get('axis', 'linear_x')),
+                *shape,
             )
             specs.append(spec)
-        effects: dict[str, Effect | PostEffect] = {}
+        effects: dict[str, Effect | PostEffect | CanvasEffect] = {}
         for effect_id, specs in grouped.items():
-            effect = self.effects.get(effect_id) or base.create(effect_id, self.analyzer, self._rng)
+            effect = self.effects.get(effect_id) or base.create(
+                effect_id, self.analyzer, self._rng, self.inputs
+            )
             if effect is None:  # an effect this engine doesn't have draws nothing
                 continue
             effect.prepare(specs, colors)
@@ -213,6 +251,8 @@ class SurfaceRenderer:
         for entry in entries:
             entry.visible = entry.visible and entry.effect_id in effects
             entry.post = isinstance(effects.get(entry.effect_id), PostEffect)
+            entry.picture = isinstance(effects.get(entry.effect_id), CanvasEffect)
+            entry.visible = entry.visible and (canvas or not entry.picture)  # none on a strip
         self.effects = effects
         self._entries = entries
         self._surface, self._layers, self._colors = surface, layers, colors
@@ -236,11 +276,16 @@ class SurfaceRenderer:
         out = self._base.copy()
         levels: Levels = {}
         lines: dict[str, list[Line | None]] = {}
+        pictures: dict[str, list[Values | None]] = {}
         timings = dict.fromkeys(self.effects, 0.0)
         for effect_id, effect in self.effects.items():
             if isinstance(effect, PostEffect):
                 continue
             started = time.perf_counter()
+            if isinstance(effect, CanvasEffect):
+                pictures[effect_id] = effect.draw(dt)
+                timings[effect_id] = time.perf_counter() - started
+                continue
             lines[effect_id], effect_levels = effect.render(spectrum, dt, beat)
             timings[effect_id] = time.perf_counter() - started
             levels.update(effect_levels)
@@ -254,6 +299,11 @@ class SurfaceRenderer:
                 started = time.perf_counter()
                 effect.apply(entry.position, below, dt)
                 timings[entry.effect_id] += time.perf_counter() - started
+                continue
+            if entry.picture:
+                picture = pictures[entry.effect_id][entry.position]
+                if picture is not None:
+                    blend(entry.blend, out[entry.rows, entry.cols], picture)
                 continue
             line = lines[entry.effect_id][entry.position]
             if line is None:

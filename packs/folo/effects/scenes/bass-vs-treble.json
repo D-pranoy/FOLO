@@ -1,0 +1,149 @@
+{
+  "id": "bass-vs-treble",
+  "schema_version": 2,
+  "description": "Bass fills up from one end, treble from the other, mids glow where they meet.",
+  "hints": {
+    "tempo": "Medium"
+  },
+  "scene": {
+    "id": "bass-vs-treble",
+    "name": "Bass vs treble",
+    "tags": [
+      "Hip-hop",
+      "Rock"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Bass",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 35.0,
+            "freq_hi": 150.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 2.0,
+            "ceiling": 10.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 0.0,
+            "release": 140.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": true,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 0.5,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Treble",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 4000.0,
+            "freq_hi": 16000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 3.0,
+            "ceiling": 13.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 0.0,
+            "release": 160.0,
+            "floor": 0.0,
+            "mode": "fill",
+            "direction": "reverse",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.5,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "3",
+          "name": "Mids",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 250.0,
+            "freq_hi": 2000.0,
+            "trigger": "hits",
+            "beats": 1,
+            "threshold": 1.0,
+            "ceiling": 9.0,
+            "gain": 1.0,
+            "curve": 1.2,
+            "attack": 25.0,
+            "release": 300.0,
+            "floor": 0.0,
+            "mode": "pulse",
+            "direction": "center",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#FF3399",
+              "#FF00FF",
+              "#800080"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.45,
+            "end": 0.55,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}

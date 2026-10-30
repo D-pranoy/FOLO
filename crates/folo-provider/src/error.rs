@@ -43,6 +43,8 @@ pub enum AdminError {
     NotImplemented { runbook: &'static str },
     /// The kind has no such action: `404 not_found`.
     UnknownAction(String),
+    /// The request's body isn't what the action takes: `400 bad_body`.
+    BadRequest(String),
     /// The device refused or didn't answer: `502 provider_error`.
     Provider(ProviderError),
 }
@@ -54,6 +56,7 @@ impl AdminError {
         match self {
             Self::NotImplemented { .. } => 501,
             Self::UnknownAction(_) => 404,
+            Self::BadRequest(_) => 400,
             Self::Provider(_) => 502,
         }
     }
@@ -64,6 +67,7 @@ impl AdminError {
         match self {
             Self::NotImplemented { .. } => "not_implemented",
             Self::UnknownAction(_) => "not_found",
+            Self::BadRequest(_) => "bad_body",
             Self::Provider(_) => "provider_error",
         }
     }
@@ -74,6 +78,7 @@ impl fmt::Display for AdminError {
         match self {
             Self::NotImplemented { runbook } => write!(f, "arrives with {runbook}"),
             Self::UnknownAction(a) => write!(f, "no such action: {a}"),
+            Self::BadRequest(why) => write!(f, "bad request: {why}"),
             Self::Provider(e) => e.fmt(f),
         }
     }

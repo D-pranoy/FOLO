@@ -1,0 +1,28 @@
+{
+  "id": "half-beat-strobe",
+  "schema_version": 2,
+  "description": "Short hard flashes twice a beat.",
+  "hints": {
+    "group": "On the beat",
+    "tempo": "Very fast",
+    "anim": "kick",
+    "dur": 0.25
+  },
+  "name": "Half-beat strobe",
+  "params": {
+    "freq_lo": 30,
+    "freq_hi": 16000,
+    "threshold": -75,
+    "ceiling": -35,
+    "trigger": "beat",
+    "beats": 0.5,
+    "mode": "pulse",
+    "direction": "forward",
+    "attack": 0,
+    "release": 45,
+    "gain": 1,
+    "curve": 1.8,
+    "floor": 0,
+    "peak": false
+  }
+}

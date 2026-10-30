@@ -1,0 +1,28 @@
+{
+  "id": "kick-punch",
+  "schema_version": 2,
+  "description": "Sharp flash on every kick drum.",
+  "hints": {
+    "group": "Low end",
+    "tempo": "Fast",
+    "anim": "kick",
+    "dur": 0.5
+  },
+  "name": "Kick punch",
+  "params": {
+    "freq_lo": 40,
+    "freq_hi": 120,
+    "threshold": 4,
+    "ceiling": 12,
+    "trigger": "hits",
+    "beats": 1,
+    "mode": "pulse",
+    "direction": "center",
+    "attack": 0,
+    "release": 90,
+    "gain": 1,
+    "curve": 1.6,
+    "floor": 0,
+    "peak": false
+  }
+}

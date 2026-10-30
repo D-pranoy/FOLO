@@ -1,0 +1,112 @@
+{
+  "id": "ambient",
+  "schema_version": 2,
+  "description": "Colors drift slowly across the whole strip with faint twinkles of air on top.",
+  "hints": {
+    "tempo": "Slow"
+  },
+  "scene": {
+    "id": "ambient",
+    "name": "Ambient space",
+    "tags": [
+      "Ambient",
+      "Chill"
+    ],
+    "layers_by_role": {
+      "strip.main": [
+        {
+          "id": "1",
+          "name": "Drift",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 40.0,
+            "freq_hi": 4000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -45.0,
+            "ceiling": -15.0,
+            "gain": 1.0,
+            "curve": 1.0,
+            "attack": 400.0,
+            "release": 1500.0,
+            "floor": 0.45,
+            "mode": "shift",
+            "direction": "forward",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#0033CC",
+              "#000080",
+              "#4B00FF",
+              "#FF3399",
+              "#FF00FF",
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        },
+        {
+          "id": "2",
+          "name": "Twinkle",
+          "effect": {
+            "id": "audio-visualizer",
+            "version": "1.0.0"
+          },
+          "params": {
+            "freq_lo": 10000.0,
+            "freq_hi": 20000.0,
+            "trigger": "level",
+            "beats": 1,
+            "threshold": -75.0,
+            "ceiling": -50.0,
+            "gain": 1.2,
+            "curve": 1.4,
+            "attack": 0.0,
+            "release": 250.0,
+            "floor": 0.0,
+            "mode": "spectrum",
+            "direction": "edges",
+            "speed": 120.0,
+            "width": 20.0,
+            "peak": false,
+            "palette": [
+              "#800080",
+              "#8F00FF",
+              "#4B0082"
+            ]
+          },
+          "region": {
+            "kind": "relative",
+            "start": 0.0,
+            "end": 1.0,
+            "snap": "nearest"
+          },
+          "blend": "max",
+          "axis": "linear_x",
+          "enabled": true,
+          "solo": false,
+          "lane": -1
+        }
+      ]
+    },
+    "macros": []
+  },
+  "led_count": 0,
+  "fallbacks": {}
+}
