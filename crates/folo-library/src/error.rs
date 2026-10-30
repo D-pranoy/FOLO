@@ -12,6 +12,12 @@ pub enum LibraryError {
     Incompatible { folo: String },
     /// `422 missing_dependency`: `requires` entries not installed in a matching version.
     MissingDependency { requires: Vec<(String, String)> },
+    /// `422 incompatible`: a backup from a newer FOLO (its `format` or `schema_version`).
+    IncompatibleBackup {
+        what: &'static str,
+        found: i64,
+        supported: i64,
+    },
     /// `409 reserved_id`: the author `folo` or `local`.
     ReservedId { id: String },
     /// `409 already_installed`.
@@ -54,6 +60,7 @@ impl LibraryError {
         match self {
             Self::Structural { .. }
             | Self::Incompatible { .. }
+            | Self::IncompatibleBackup { .. }
             | Self::MissingDependency { .. } => 422,
             Self::NotFound { .. } => 404,
             Self::BadBody { .. } => 400,
@@ -67,7 +74,7 @@ impl LibraryError {
     pub const fn code(&self) -> &'static str {
         match self {
             Self::Structural { .. } => "structural_error",
-            Self::Incompatible { .. } => "incompatible",
+            Self::Incompatible { .. } | Self::IncompatibleBackup { .. } => "incompatible",
             Self::MissingDependency { .. } => "missing_dependency",
             Self::ReservedId { .. } => "reserved_id",
             Self::AlreadyInstalled { .. } => "already_installed",
@@ -90,6 +97,11 @@ impl LibraryError {
         match self {
             Self::Structural { path, reason } => json!({"path": path, "reason": reason}),
             Self::Incompatible { folo } => json!({"folo": folo}),
+            Self::IncompatibleBackup {
+                what,
+                found,
+                supported,
+            } => json!({"what": what, "found": found, "supported": supported}),
             Self::MissingDependency { requires } => {
                 let map: serde_json::Map<String, Value> = requires
                     .iter()
@@ -112,6 +124,14 @@ impl std::fmt::Display for LibraryError {
             Self::Structural { path, reason } if path.is_empty() => write!(f, "{reason}"),
             Self::Structural { path, reason } => write!(f, "{path}: {reason}"),
             Self::Incompatible { folo } => write!(f, "the pack needs FOLO {folo}"),
+            Self::IncompatibleBackup {
+                what,
+                found,
+                supported,
+            } => write!(
+                f,
+                "the backup's {what} is {found}; this FOLO reads up to {supported}"
+            ),
             Self::MissingDependency { requires } => {
                 let list: Vec<String> =
                     requires.iter().map(|(id, r)| format!("{id} {r}")).collect();

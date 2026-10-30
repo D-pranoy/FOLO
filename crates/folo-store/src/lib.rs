@@ -112,15 +112,29 @@ fn clamped(definition: &str, value: &Value, file: &Path) -> Result<Value, StoreE
     })
 }
 
+/// Parses and clamps a document's bytes.
+fn parse_document(bytes: &[u8], path: &Path, definition: &str) -> Result<Value, StoreError> {
+    let parsed = serde_json::from_slice::<Value>(bytes).map_err(|e| StoreError::Structural {
+        file: path.to_path_buf(),
+        why: format!("it isn't JSON ({e})"),
+    })?;
+    clamped(definition, &parsed, path)
+}
+
+/// A document's bytes (a backup's) parsed and clamped, not stored.
+///
+/// # Errors
+///
+/// [`StoreError::Structural`] when they aren't JSON, aren't an object, or
+/// are from a newer FOLO.
+pub fn parse(doc: Doc, bytes: &[u8]) -> Result<Value, StoreError> {
+    parse_document(bytes, Path::new(doc.file()), doc.definition())
+}
+
 /// Reads and clamps a document file; a missing file gives the defaults.
 fn read_document(path: &Path, definition: &str) -> Result<Value, StoreError> {
     let parsed = match std::fs::read(path) {
-        Ok(bytes) => {
-            serde_json::from_slice::<Value>(&bytes).map_err(|e| StoreError::Structural {
-                file: path.to_path_buf(),
-                why: format!("it isn't JSON ({e})"),
-            })?
-        }
+        Ok(bytes) => return parse_document(&bytes, path, definition),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Value::Object(Map::new()),
         Err(error) => {
             return Err(StoreError::Io {
@@ -144,7 +158,12 @@ pub fn read(dir: &Path, doc: Doc) -> Result<Value, StoreError> {
 
 /// How documents are written: indented UTF-8 JSON with a final newline, as
 /// the migration writes them.
-fn encode(document: &Value) -> Vec<u8> {
+///
+/// # Panics
+///
+/// Never: a JSON value always encodes.
+#[must_use]
+pub fn encode(document: &Value) -> Vec<u8> {
     let mut out = serde_json::to_vec_pretty(document).expect("a JSON value always encodes");
     out.push(b'\n');
     out
@@ -292,6 +311,45 @@ impl Store {
             self.shared.wake.notify_all();
         }
         Ok(value)
+    }
+
+    /// Replaces documents as a restore does: each gets the next revision and
+    /// this server's id, and `place` is given their files' bytes to put in
+    /// the folder itself. No document is written and none changes meanwhile;
+    /// when `place` fails they stay as they were.
+    ///
+    /// # Errors
+    ///
+    /// What `place` returns.
+    pub fn restore<E>(
+        &self,
+        documents: Vec<(Doc, Value)>,
+        place: impl FnOnce(&[(Doc, Vec<u8>)]) -> Result<(), E>,
+    ) -> Result<(), E> {
+        // The order of the writer, so a write in flight finishes first
+        let _writing = locked(&self.shared.writing);
+        let mut state = locked(&self.shared.state);
+        let stamped: Vec<(Doc, Arc<Value>)> = documents
+            .into_iter()
+            .map(|(doc, mut value)| {
+                stamp(
+                    &mut value,
+                    revision_of(&state.docs[index(doc)]) + 1,
+                    &self.server_id,
+                );
+                (doc, Arc::new(value))
+            })
+            .collect();
+        let files: Vec<(Doc, Vec<u8>)> = stamped
+            .iter()
+            .map(|(doc, value)| (*doc, encode(value)))
+            .collect();
+        place(&files)?;
+        for (doc, value) in stamped {
+            state.docs[index(doc)] = value;
+            state.dirty.remove(&doc);
+        }
+        Ok(())
     }
 
     /// Writes every changed document now.

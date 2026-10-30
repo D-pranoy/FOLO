@@ -22,8 +22,8 @@ fails unless EXPECTED_ERRORS lists its phase with a reason.
 DIR holds one message per file, named after its AsyncAPI message
 (components/messages), optionally with --<anything> before the extension:
 `config.apply.json`, `subscribe--empty.json`, `surfaceFrame--rgb8.fols`.
-JSON files are checked against the message's payload schema; `.fols` and
-`.folg` files are surface and signal frames, checked against their layout
+JSON files are checked against the message's payload schema; `.fols`, `.folg`
+and `.folc` files are surface, signal and screen frames, checked against their layout
 (specs/schema/source-link.json). An implementation's tests can dump what it
 sends into a folder and run this. CI runs it on specs/fixtures/.
 """
@@ -64,6 +64,7 @@ FIXTURES = SPECS / 'fixtures'
 
 Json = Any
 PIXEL_BYTES = {1: 3, 2: 6, 3: 12}  # rgb8, rgb16, rgbf32: bytes per cell
+SCREEN_MAX = (480, 270)  # the widest and highest screen frame the capture agent sends
 NODE_START_S = 30.0  # how long a node of its own has to answer /health
 NODE_STOP_S = 10.0
 # Errored cases schemathesis reports that are expected, by phase, with the
@@ -254,9 +255,38 @@ def _fields(data: bytes, layout: list[dict[str, Json]]) -> dict[str, Json]:
     return out
 
 
+_HEADERS = {
+    'surface': 'SurfaceFrameHeader',
+    'signal': 'SignalFrameHeader',
+    'screen': 'ScreenFrameHeader',
+}
+
+
+def _check_screen_frame(fields: dict[str, Json], payload: int) -> list[str]:
+    problems: list[str] = []
+    if fields['pixel_format'] != 1:
+        return [f'unknown pixel format {fields["pixel_format"]}']
+    if fields['flags'] & ~0b111:
+        problems.append(f'unknown flags {fields["flags"]:#04x}')
+    width, height = fields['width'], fields['height']
+    if width < 1 or height < 1:
+        problems.append('width and height must be at least 1')
+    elif width > SCREEN_MAX[0] or height > SCREEN_MAX[1]:
+        problems.append(f'{width} x {height} cells are wider than 480 or higher than 270')
+    if payload != width * height * 3:
+        problems.append(
+            f'payload is {payload} bytes; {width} x {height} cells need {width * height * 3}'
+        )
+    if fields['bars_top'] + fields['bars_bottom'] >= max(height, 1):
+        problems.append('the top and bottom bars leave no row')
+    if fields['bars_left'] + fields['bars_right'] >= max(width, 1):
+        problems.append('the left and right bars leave no column')
+    return problems
+
+
 def check_frame(data: bytes, kind: str) -> list[str]:
-    """A surface (FOLS) or signal (FOLG) frame against its layout."""
-    layout, size = _layout('SurfaceFrameHeader' if kind == 'surface' else 'SignalFrameHeader')
+    """A surface (FOLS), signal (FOLG) or screen (FOLC) frame against its layout."""
+    layout, size = _layout(_HEADERS[kind])
     if len(data) < size:
         return [f'shorter than the {size}-byte header']
     fields = _fields(data, layout)
@@ -273,6 +303,8 @@ def check_frame(data: bytes, kind: str) -> list[str]:
     if any(value != 0 for value in fields.get('reserved', [])):
         problems.append('a reserved field is not 0')
     payload = len(data) - size
+    if kind == 'screen':
+        return [*problems, *_check_screen_frame(fields, payload)]
     if kind == 'surface':
         fmt = fields['pixel_format']
         if fmt not in PIXEL_BYTES:
@@ -296,14 +328,17 @@ def check_frame(data: bytes, kind: str) -> list[str]:
     return problems
 
 
+FRAME_FILES = {'.fols': 'surfaceFrame', '.folg': 'signalFrame', '.folc': 'screenFrame'}
+
+
 def message_of(path: Path) -> str:
     return path.name.split('--')[0].removesuffix(path.suffix)
 
 
 def check_message_file(path: Path) -> list[str]:
     message = message_of(path)
-    if path.suffix in ('.fols', '.folg'):
-        expected = 'surfaceFrame' if path.suffix == '.fols' else 'signalFrame'
+    if path.suffix in FRAME_FILES:
+        expected = FRAME_FILES[path.suffix]
         if message != expected:
             return [f'{path.name}: {path.suffix} files hold {expected} messages']
         return [
@@ -324,7 +359,9 @@ def check_message_file(path: Path) -> list[str]:
 
 
 def message_files(folder: Path) -> Iterator[Path]:
-    return iter(sorted(p for p in folder.iterdir() if p.suffix in ('.json', '.fols', '.folg')))
+    return iter(
+        sorted(p for p in folder.iterdir() if p.suffix == '.json' or p.suffix in FRAME_FILES)
+    )
 
 
 def check_messages(folder: Path) -> list[str]:

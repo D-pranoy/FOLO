@@ -22,6 +22,8 @@ const KEEP: u32 = 4;
 const RETRY_AFTER: u64 = 1024 * 1024;
 /// The logger name of engine lines that aren't JSON.
 const ENGINE_LOGGER: &str = "folo-source";
+/// The same for the capture agent's.
+const CAPTURE_LOGGER: &str = "folo-capture";
 
 struct Logger {
     level: AtomicUsize,
@@ -150,6 +152,16 @@ fn current() -> LevelFilter {
 /// A line the effect engine wrote: kept as it is when it's a JSON object,
 /// filtered by its level; otherwise logged at `error` (ADR-0034 D8).
 pub fn engine_line(line: &str) {
+    worker_line(line, ENGINE_LOGGER);
+}
+
+/// A line the capture agent wrote, kept the same way (ADR-0034 D8). The
+/// agent never writes pixels (ADR-0037 D9).
+pub fn capture_line(line: &str) {
+    worker_line(line, CAPTURE_LOGGER);
+}
+
+fn worker_line(line: &str, logger: &str) {
     let line = line.trim_end();
     if line.is_empty() {
         return;
@@ -165,7 +177,7 @@ pub fn engine_line(line: &str) {
             emit(line);
         }
     } else if Level::Error <= current() {
-        emit(&format_line(Level::Error, ENGINE_LOGGER, line));
+        emit(&format_line(Level::Error, logger, line));
     }
 }
 

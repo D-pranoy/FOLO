@@ -4,6 +4,7 @@
 //! item hash over canonical JSON (RFC 8785).
 
 pub mod archive;
+pub mod backup;
 pub mod bind;
 pub mod builtin;
 pub mod canonical;

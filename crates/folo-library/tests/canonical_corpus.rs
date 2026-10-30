@@ -36,6 +36,31 @@ fn the_cases_agree_with_python() {
     }
 }
 
+/// These seven shortest-decimal ties were generated from their IEEE-754 bits
+/// with Node's `Buffer.readDoubleBE().toString()`, with the engine recorded in
+/// the corpus. A committed oracle keeps the Rust CI job independent of Node.
+#[test]
+fn number_ties_match_the_committed_node_oracle() {
+    let corpus = corpus();
+    assert_eq!(corpus["node_number_oracle"]["engine"], "Node.js");
+    let cases: Vec<&Value> = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| case["node_bits"].is_string())
+        .collect();
+    assert_eq!(cases.len(), 7);
+    for case in cases {
+        let bits = u64::from_str_radix(case["node_bits"].as_str().unwrap(), 16).unwrap();
+        let value = serde_json::json!(f64::from_bits(bits));
+        assert_eq!(
+            to_canonical(&value).unwrap(),
+            case["canonical"].as_str().unwrap(),
+            "{bits:016x}"
+        );
+    }
+}
+
 #[test]
 fn the_built_in_items_hash_as_python_does() {
     let corpus = corpus();

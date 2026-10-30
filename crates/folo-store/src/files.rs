@@ -146,7 +146,7 @@ fn create(path: &Path, private: bool) -> io::Result<File> {
 }
 
 /// Makes the rename durable where the platform allows it.
-fn sync_dir(dir: &Path) {
+pub fn sync_dir(dir: &Path) {
     #[cfg(unix)]
     if let Ok(handle) = File::open(dir) {
         let _ = handle.sync_all();

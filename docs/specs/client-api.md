@@ -14,6 +14,7 @@ The controller's API for clients: the UI, the desktop app, the Android app later
   - Unauthenticated: `/api/v1/health`, static UI files and the pairing endpoints, which use their own proofs.
 - **Scopes:** `control` (everyday use) and `admin` (configuration, pairing, packs, updates).
 - **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header ([RFC 9110, section 15.5.6](https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed)).
+- **Ids in paths:** a path parameter (`{id}`, `{node}`, `{action}`) is 1–64 characters. (Ids in documents are different: an empty one gets a new id.) An empty one names no resource: an empty segment anywhere in a path (`/zones//identify`) gets 404 `not_found`, like any id that isn't there. A client that leaves the segment out sends a different path (`/zones/identify` is the zone `identify`, and `POST` to it is a 405).
 - **Concurrency:** documents carry `revision` and `server_id`. Writers may send `If-Match: <revision>`; without it, the last writer wins, as today.
 - **Body limit:** 1 MB by default; 10 MB for a pack install and 256 MB for a restore, which send `application/zip` ([library](#library)).
 - **Caching:** API responses carry `Cache-Control: no-store`, and every response carries `X-Content-Type-Options: nosniff`.
@@ -30,7 +31,7 @@ Every request goes through these checks in order. The first that fails answers:
 | Authentication: loopback clients and the unauthenticated endpoints need no key; every other request to `/api/` does. Until client keys and sessions arrive ([RB-15](../runbooks/m7-network.md#rb-15-client-access)), no key is valid. | 401 `unauthorized` |
 | The resource exists | 404 `not_found` |
 | The resource takes the method | 405 `method_not_allowed` |
-| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either (the install route today; the restore route when it lands) | 415 `json_required` / `zip_required` |
+| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either | 415 `json_required` / `zip_required` |
 | The body fits the limit | 413 `body_too_large` |
 
 Routes that answer loopback clients only (`/system/status`, `/system/reload`) answer others with 403 `loopback_only`.
@@ -53,8 +54,6 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/zones/{id}/activate`, `/deactivate`, `/identify`, `/test`; `/providers/discover`; `/providers/{id}/admin/...` | [RB-08](../runbooks/m3-controller-core.md#rb-08-zones-projection-and-adapters) |
-| `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
 | `DELETE /sources/{id}`; `/sources/invites`; `/sources/join-requests/...`; `/ingest/surfaces` | [RB-16](../runbooks/m7-network.md#rb-16-source-pairing-and-link) |
@@ -62,7 +61,8 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 Until then:
 - `GET /system` reports `start_at_sign_in` as `false` (until [RB-19](../runbooks/m8-release.md#rb-19-desktop-app)), and the service's `installed` and `running` as whether this node was launched with `--service` (until [RB-20](../runbooks/m8-release.md#rb-20-windows-service-and-installer)).
-- On the live channel, every zone reports `active` false, `ambient` 0 and `quiet_s` 0, every provider reports `off`, and `target:` topics carry nothing (until RB-08). Sources other than `local` report `offline` (until RB-16).
+- On the live channel, sources other than `local` report `offline` (until RB-16).
+- The node registers the Hyperion, WLED and Hue kinds. An instance of a kind that isn't registered (a node built for a test) reports `off` with "arrives with RB-NN", and its administration answers 501. A malformed administration body is `400 bad_body`; a device that refuses or doesn't answer is `502 provider_error`.
 
 ## Resources
 
@@ -83,7 +83,7 @@ Until then:
 | `/providers/{id}/admin/...` | GET, POST | Basic device administration ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)) |
 | `/providers/{id}/hue/pair` | POST | The link-button pairing flow, with progress |
 | `/sources`, `/sources/{id}` | GET, PUT, DELETE | Sources, inputs, assignments, priorities |
-| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens. The UI refreshes it every 5 s while the input editor is open. |
+| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens (listed by the source's capture agent; on Linux the one entry `portal`, of unknown size). The UI refreshes it every 5 s while the input editor is open. |
 | `/sources/{id}/media` | GET | Now-playing state: off, unavailable, error, none, playing, paused or stopped; app, title, artist, album, art id, colours |
 | `/sources/{id}/media/art` | GET | The current album art image. Clients add the art id to bust caches. |
 | `/sources/{id}/media/control` | POST | `{"action": "play_pause" \| "next" \| "previous"}` on the source's shown media session |
@@ -170,18 +170,19 @@ Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D25 to D27. Both
 
 | Pattern | What the lights show |
 |---|---|
-| `identify` | White at 25%, pulsing between 0 and 25% at 1 Hz. `/identify` always runs this pattern and ignores `pattern`. |
-| `sweep` | One element lit white at 25%, moving along the target's elements in their order: one pass in 2 s, repeating until `seconds` is over. The others are dark. |
+| `identify` | White at 25%, pulsing between 0 and 25% at 1 Hz: a raised cosine, dark at the start of each second and at 25% halfway. `/identify` always runs this pattern and ignores `pattern`. |
+| `sweep` | One element lit white at 25%, moving along the target's elements in their order: one pass in 2 s (element `⌊N · t / 2 s⌋` of `N` lights at `t` into the pass), repeating until `seconds` is over. The others are dark. |
 | `position` | Each element shows its position in the zone's box as red, green and blue: `(x + bx/2) / bx`, `(y + by/2) / by` and `z / bz`, each × 255. An element without a position (an unplaced path) is dark. |
 
 - A pattern replaces what its targets show: the frames come in place of the projected ones, so they go through the adapters (the [flash limiter](../architecture/capabilities.md#flash-limiter) included) and appear on the `target:<id>` topics. A target running a pattern is driven, so it is started and released like one ([providers](../architecture/providers.md#lifecycle)).
-- A new test on targets that already run one **replaces** it.
-- A target that **another active zone drives** is refused with 409 `target_busy`. The targets of an inactive zone can be tested.
+- A new test on targets that already run one **replaces** it. A pattern ends early when another active zone comes to drive its target.
+- A target that **another active zone drives** is refused with 409 `target_busy`, with the refused targets in `details.targets`, and nothing starts. "Drives" uses the [shared-target](../architecture/spatial-model.md#zone-activation-rules) rule: the same target id, or overlapping addresses on its provider instance. The targets of an inactive zone can be tested.
+- A zone or target that isn't there gets 404 `not_found`. A body that isn't a `TestRequest` (an unknown field, a pattern that isn't listed, `seconds` outside 1–60) gets 400 `bad_body`; an empty body takes the defaults.
 
 ### Providers
 
 - **Discovery:** `POST /providers/discover` answers the devices every registered provider kind found, as a list of `DiscoveredDevice`s: empty until a provider arrives. It changes no configuration ([providers](../architecture/providers.md#describe-discover-and-administration)).
-- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`.
+- **Administration:** `GET /providers/{id}/admin/{action}` reads, including what a `POST` to the action would change, and `POST` makes the change. An instance whose kind has no implementation yet gets 501 `not_implemented` naming its run book, an action the kind doesn't have gets 404 `not_found`, and a device that refuses or doesn't answer gets 502 `provider_error`. An instance that is disabled has no provider running and gets 409 `provider_disabled`; one that isn't in `providers.json` gets 404 `not_found`; a body the action can't take gets 400 `bad_body`. In the source role the controller's configuration is dormant ([control plane](../architecture/control-plane.md)): no provider runs, so administration answers 409 `provider_disabled` for every instance and test patterns 404 `not_found`.
 - **States:** `ProviderStatus.state` here and `ProviderLive.state` on the live channel are two lists for one thing, mapped as in [providers](../architecture/providers.md#states): `stopped` is `off`, `connecting` is `disconnected`, `connected` and `error` are the same. A kind without an implementation is `stopped` here and `off` on the live channel, where its `message` says "arrives with RB-NN" (`ProviderStatus` has no message).
 
 ### Requests to sources
@@ -203,13 +204,13 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
   |---|---|
   | `status` | `status` messages: every source's state, every zone and every provider |
   | `zone:<id>` | `status` messages: that zone (whether it is active, and its reactive state: ambient fade 0–1, seconds of silence) |
-  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) |
+  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) and its screen capture (state, rate, protected and HDR flags, black bars: never any pixels) |
   | `beat:<source>` | `status` messages: the source's beat (BPM, confidence, locked, phase, bar beat) |
   | `media:<source>` | `status` messages: the source's now playing |
   | `levels:<source>` | `levels` messages, one per surface of the source |
   | `spectrum:<source>` | signal frames: the source's [spectrum](source-link.md#signal-frames) |
   | `surface:<id>` | surface frames: the surface's pixels |
-  | `target:<id>` | surface frames: the target's projected element colours after the ambient light and before the adapters (`rgb8`, one row of as many cells as the target has elements) |
+  | `target:<id>` | surface frames: the target's projected element colours after the ambient light and before the adapters (`rgb8`, one row of as many cells as the target has elements; the timestamp is the controller's clock, and a frame is sent when the colours change) |
 
 - **Server → client:**
   - JSON messages: `status`, `levels`, `config_changed {document, revision}`, `event` (job progress, update states), and `subscribed`, which acknowledges a subscription and gives each binary topic its frame index.
@@ -243,4 +244,5 @@ The node serves the UI's files outside `/api/`, with no key ([ADR-0035](../decis
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/ingest/surfaces` (WebSocket) | Third parties stream surface frames to the controller using a scoped ingest token. Framing as in the [source link](source-link.md#surface-frames). Appears as a source in the compositor. |
+| `GET /api/v1/capture-link` (WebSocket) | The node's own capture agent, on loopback only, with its launch token in the handshake ([source link](source-link.md#the-capture-link)). No key; the Host, Origin and client-address checks apply before the upgrade, and other machines get 403 `loopback_only`. Served by the node from [RB-14](../runbooks/m6-screen.md) step 6. |
 | `GET /api/v1/source-link` (WebSocket) | Source nodes ([source link](source-link.md)). The `local` purpose is taken from loopback clients only; until RB-16 brings the other purposes, clients on other machines get 403 `loopback_only` before the upgrade. |
