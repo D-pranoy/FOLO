@@ -23,7 +23,7 @@ use crate::cli::{
     EXIT_FAILED, EXIT_NOT_HERE, EXIT_OK, EXIT_USAGE, Failure, LocationArgs, Place, RunArgs,
     env_var, locate,
 };
-use crate::{import, live, lock, logs, output, providers, server, zones};
+use crate::{import, live, lock, logs, output, providers, restore, server, zones};
 
 /// How long the server has to finish its connections when the node stops.
 const SERVER_STOP: Duration = Duration::from_secs(3);
@@ -470,6 +470,8 @@ async fn start(
     let engine = engine.unwrap_or_else(|| EngineCommand::find(&place.exe_dir));
     std::fs::create_dir_all(&folders.data)
         .map_err(|e| Failure::new(EXIT_FAILED, format!("{}: {e}", folders.data.display())))?;
+    // Before the first-run check and the documents: a restore may be half done
+    finish_restore(&folders.data)?;
     if !folders.data.join(Doc::Zones.file()).exists() {
         import::first_run(&engine, &folders.home, &place.cwd, &folders.data);
     }
@@ -535,6 +537,16 @@ async fn start(
 /// The node's identity from `secrets.json`, made on the first run. Keys
 /// that don't fit together stop the node rather than changing its id. It runs before anything
 /// else writes `secrets.json` (`providers::SecretsFile` is made after it).
+/// Finishes a restore that was interrupted, or refuses to start.
+fn finish_restore(data: &std::path::Path) -> Result<(), Failure> {
+    restore::recover(data).map_err(|e| {
+        Failure::new(
+            EXIT_FAILED,
+            format!("the interrupted restore can't be finished: {e}"),
+        )
+    })
+}
+
 fn ensure_identity(store: &Store) -> Result<Identity, Failure> {
     let failed = |message: String| Failure::new(EXIT_FAILED, message);
     let dir = store.dir();

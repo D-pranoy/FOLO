@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod apply_api;
+pub mod backup_api;
 pub mod cli;
 pub mod client;
 pub mod defaults;
@@ -16,6 +17,7 @@ pub mod logs;
 pub mod node;
 pub mod output;
 pub mod providers;
+pub mod restore;
 pub mod server;
 pub mod status;
 pub mod ui;

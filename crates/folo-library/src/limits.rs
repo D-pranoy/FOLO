@@ -18,3 +18,9 @@ pub const LIBRARY_PACKS: usize = 100;
 pub const LIBRARY_BYTES: u64 = 128 * 1024 * 1024;
 /// An item id.
 pub const ITEM_ID: usize = 64;
+/// A document in a backup, counted on the bytes decompressed.
+pub const DOCUMENT_FILE: u64 = 32 * 1024 * 1024;
+/// A backup: at most 10,000 entries (ADR-0038 D27).
+pub const BACKUP_ENTRIES: usize = 10_000;
+/// A backup: at most 512 MB, counted on the bytes decompressed.
+pub const BACKUP_UNCOMPRESSED: u64 = 512 * 1024 * 1024;
