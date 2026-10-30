@@ -3,7 +3,9 @@ The local link (RB-04 step 7, docs/specs/source-link.md#the-local-link,
 ADR-0032): the effect engine dials its node over loopback, proves it is the
 node's own engine with the launch token, then sends surface frames, signal
 frames and notifications, newest wins, and answers the node's JSON-RPC
-requests. It runs on a thread of its own with an asyncio loop.
+requests. The node also forwards the capture agent's screen frames (0x04),
+which the link decodes and hands on. It runs on a thread of its own with an
+asyncio loop.
 """
 
 from __future__ import annotations
@@ -27,12 +29,20 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.typing import Subprotocol
 
-from folo_source.publish.frames import SIGNAL_MAGIC, SURFACE_MAGIC
+from folo_source.publish.frames import (
+    SIGNAL_MAGIC,
+    SURFACE_MAGIC,
+    FrameError,
+    ScreenFrame,
+    decode_screen_frame,
+)
 
 log = logging.getLogger(__name__)
 
 SUBPROTOCOL = Subprotocol('folo.source-link.v1')
-CONTRACT_VERSION = '1.3'
+CONTRACT_VERSION = '1.4'
+# The node picks the newest it knows; 1.3 differs only in the screen frames it never sends
+CONTRACT_VERSIONS = (CONTRACT_VERSION, '1.3')
 ENV_URL = 'FOLO_SOURCE_LINK'
 ENV_TOKEN = 'FOLO_SOURCE_TOKEN'
 
@@ -40,6 +50,7 @@ ENV_TOKEN = 'FOLO_SOURCE_TOKEN'
 TYPE_RPC = 0x01
 TYPE_SURFACE = 0x02
 TYPE_SIGNAL = 0x03
+TYPE_SCREEN = 0x04
 
 # JSON-RPC 2.0 error codes
 INVALID_REQUEST = -32600
@@ -53,6 +64,7 @@ JITTER = 0.25  # each delay is cut by up to this share, at random
 GIVE_UP = 30.0  # seconds without the node before the engine exits
 OPEN_TIMEOUT = 5.0  # seconds for the connection and for the node's handshake response
 CLOSE_TIMEOUT = 1.0
+SCREEN_WARN_EVERY = 10.0  # seconds between warnings about bad screen frames
 MAX_MESSAGE = 16 * 1024 * 1024  # bytes the node may send at once (config.apply, packs)
 
 # What the node's requests are handed to: the method and its params, giving
@@ -135,11 +147,15 @@ class LocalLink:
         handler: Handler,
         on_end: Callable[[str], None],
         node: Mapping[str, str] | None = None,
+        on_screen: Callable[[ScreenFrame], None] | None = None,
     ) -> None:
         self.url = url
         self._token = token
         self.handler = handler
         self.on_end = on_end
+        self.on_screen = on_screen
+        self.screen_rejected = 0  # screen frames that failed their checks
+        self._screen_warned = -SCREEN_WARN_EVERY
         self.node = dict(node) if node is not None else engine_summary()
         self.backoff_first = BACKOFF_FIRST
         self.backoff_max = BACKOFF_MAX
@@ -282,7 +298,7 @@ class LocalLink:
 
     async def _handshake(self, ws: ClientConnection) -> None:
         hello = {
-            'version': [CONTRACT_VERSION],
+            'version': list(CONTRACT_VERSIONS),
             'node': self.node,
             'purpose': {'kind': 'local', 'token': self._token},
         }
@@ -322,6 +338,9 @@ class LocalLink:
         async for message in ws:
             if isinstance(message, str):
                 continue  # only the handshake is text
+            if message[:1] == bytes([TYPE_SCREEN]):
+                self._take_screen_frame(message)
+                continue
             reply = self._answer(message)
             if reply is not None:
                 with self._lock:
@@ -344,6 +363,24 @@ class LocalLink:
             self._woken = False
         for message in messages:
             await ws.send(message)
+
+    def _take_screen_frame(self, message: bytes) -> None:
+        """
+        Checks a screen frame and hands it on. A frame that fails is dropped
+        with its reason in the log, never its pixels (ADR-0037 D9); the
+        messages arrive in order, so the last one handed on is the newest.
+        """
+        if self.on_screen is None:
+            return
+        try:
+            frame = decode_screen_frame(message[1:])
+        except FrameError as error:
+            self.screen_rejected += 1
+            if time.monotonic() - self._screen_warned >= SCREEN_WARN_EVERY:
+                self._screen_warned = time.monotonic()
+                log.warning('dropped a screen frame: %s (%d so far)', error, self.screen_rejected)
+            return
+        self.on_screen(frame)
 
     def _answer(self, message: bytes) -> bytes | None:
         """The reply to a message from the node, if it needs one."""

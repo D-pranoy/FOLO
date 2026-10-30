@@ -98,9 +98,27 @@
         "state": {"enum": ["connected", "connecting", "offline", "pending"]},
         "input": {"$ref": "#/$defs/InputStatus"},
         "beat": {"$ref": "#/$defs/BeatStatus"},
-        "media": {"$ref": "api.json#/$defs/MediaState"}
+        "media": {"$ref": "api.json#/$defs/MediaState"},
+        "screen": {"$ref": "#/$defs/ScreenStatus"}
       },
       "required": ["state"],
+      "additionalProperties": false
+    },
+    "ScreenStatus": {
+      "description": "The screen capture: what the capture agent last reported, without the restore token. Never carries frames or anything drawn from them (ADR-0037 D9). unavailable: capture is wanted but no agent can run (no user session, or the desktop app hasn't started it); message says why.",
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["off", "starting", "waiting_consent", "capturing", "paused", "error", "unavailable"]},
+        "backend": {"description": "dda, wgc, gdi, portal, synthetic or replay; empty while off.", "type": "string", "maxLength": 32},
+        "screen": {"description": "The screen being captured; empty while off.", "type": "string", "maxLength": 128},
+        "fps": {"type": "number", "minimum": 0},
+        "hdr": {"type": "boolean"},
+        "protected": {"description": "Protected content is on screen and can't be captured.", "type": "boolean"},
+        "bars": {"$ref": "source-link.json#/$defs/ScreenBars"},
+        "message": {"type": "string", "maxLength": 500},
+        "settings_uri": {"description": "An ms-settings: link to the Windows privacy setting.", "type": "string", "maxLength": 2048, "pattern": "^ms-settings:"}
+      },
+      "required": ["state", "backend", "screen", "fps", "hdr", "protected", "bars"],
       "additionalProperties": false
     },
     "InputStatus": {
@@ -183,7 +201,7 @@
       "type": "object",
       "properties": {
         "kind": {"type": "string", "maxLength": 64},
-        "id": {"type": "string", "maxLength": 64},
+        "id": {"description": "The job's id; for kind library, the pack's id, empty after a restore (ADR-0038).", "type": "string", "maxLength": 65},
         "state": {"type": "string", "maxLength": 32},
         "progress": {"type": "number", "minimum": 0, "maximum": 1},
         "message": {"type": "string", "maxLength": 1000}

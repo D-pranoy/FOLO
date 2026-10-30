@@ -14,8 +14,9 @@ The controller's API for clients: the UI, the desktop app, the Android app later
   - Unauthenticated: `/api/v1/health`, static UI files and the pairing endpoints, which use their own proofs.
 - **Scopes:** `control` (everyday use) and `admin` (configuration, pairing, packs, updates).
 - **Errors:** `{"error": {"code": "<machine code>", "message": "<text>", "details": {...}}}` with an appropriate HTTP status. A method a path doesn't support gets 405 with an `Allow` header ([RFC 9110, section 15.5.6](https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed)).
+- **Ids in paths:** a path parameter (`{id}`, `{node}`, `{action}`) is 1–64 characters. (Ids in documents are different: an empty one gets a new id.) An empty one names no resource: an empty segment anywhere in a path (`/zones//identify`) gets 404 `not_found`, like any id that isn't there. A client that leaves the segment out sends a different path (`/zones/identify` is the zone `identify`, and `POST` to it is a 405).
 - **Concurrency:** documents carry `revision` and `server_id`. Writers may send `If-Match: <revision>`; without it, the last writer wins, as today.
-- **Body limit:** 1 MB by default.
+- **Body limit:** 1 MB by default; 10 MB for a pack install and 256 MB for a restore, which send `application/zip` ([library](#library)).
 - **Caching:** API responses carry `Cache-Control: no-store`, and every response carries `X-Content-Type-Options: nosniff`.
 
 ### Request checks
@@ -30,7 +31,7 @@ Every request goes through these checks in order. The first that fails answers:
 | Authentication: loopback clients and the unauthenticated endpoints need no key; every other request to `/api/` does. Until client keys and sessions arrive ([RB-15](../runbooks/m7-network.md#rb-15-client-access)), no key is valid. | 401 `unauthorized` |
 | The resource exists | 404 `not_found` |
 | The resource takes the method | 405 `method_not_allowed` |
-| A mutating request sends JSON | 415 `json_required` |
+| A mutating request sends `Content-Type: application/json`, with an empty body where it takes none; a pack install or a restore sends `application/zip` instead, which a page can't send without a preflight either (from RB-09; until then they get the JSON rule) | 415 `json_required` / `zip_required` |
 | The body fits the limit | 413 `body_too_large` |
 
 Routes that answer loopback clients only (`/system/status`, `/system/reload`) answer others with 403 `loopback_only`.
@@ -53,7 +54,7 @@ An endpoint whose subsystem arrives with a later run book answers 501 `not_imple
 
 | Endpoints | Run book |
 |---|---|
-| `/scenes/{id}/apply`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
+| `/scenes/{ref}/apply`; `/show/reset`; `/library/...`; `/system/backup`, `/system/restore` | [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) |
 | `/providers/{id}/hue/pair` | [RB-13](../runbooks/m5-devices.md#rb-13-hue-provider-and-zone-sync) |
 | `/clients/...`; `/auth/...`; `PUT /system` | [RB-15](../runbooks/m7-network.md#rb-15-client-access) |
 | `DELETE /sources/{id}`; `/sources/invites`; `/sources/join-requests/...`; `/ingest/surfaces` | [RB-16](../runbooks/m7-network.md#rb-16-source-pairing-and-link) |
@@ -75,20 +76,24 @@ Until then:
 | `/zones/{id}/activate`, `/deactivate` | POST | Zone activation, following the [activation rules](../architecture/spatial-model.md#zone-activation-rules) |
 | `/zones/{id}/identify`, `/test` | POST | Identify a target; run test sweeps |
 | `/show` | GET, PUT | Scenes per zone, master, background. A whole-document write keeps today's edit flow. |
-| `/scenes/{id}/apply` | POST | Apply a scene to a zone, with role overrides |
+| `/show/reset` | POST | Reset all: the default scene in every zone, or those listed ([applying](#applying-scenes-and-reset-all)) |
+| `/scenes/{ref}/apply` | POST | Apply a scene to a zone, with role overrides ([applying](#applying-scenes-and-reset-all)) |
 | `/effects` | GET | The effect catalog with parameter schemas |
 | `/providers`, `/providers/{id}` | GET, POST, PUT, DELETE | Provider instances |
 | `/providers/discover` | POST | Run discovery (mDNS, Hue discovery) |
 | `/providers/{id}/admin/...` | GET, POST | Basic device administration ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)) |
 | `/providers/{id}/hue/pair` | POST | The link-button pairing flow, with progress |
 | `/sources`, `/sources/{id}` | GET, PUT, DELETE | Sources, inputs, assignments, priorities |
-| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens. The UI refreshes it every 5 s while the input editor is open. |
+| `/sources/{id}/inputs` | GET | Available inputs: outputs, inputs, apps currently playing audio, screens (listed by the source's capture agent; on Linux the one entry `portal`, of unknown size). The UI refreshes it every 5 s while the input editor is open. |
 | `/sources/{id}/media` | GET | Now-playing state: off, unavailable, error, none, playing, paused or stopped; app, title, artist, album, art id, colours |
 | `/sources/{id}/media/art` | GET | The current album art image. Clients add the art id to bust caches. |
 | `/sources/{id}/media/control` | POST | `{"action": "play_pause" \| "next" \| "previous"}` on the source's shown media session |
 | `/sources/invites` | POST | Create an invite ([pairing and connect](pairing-and-connect.md)) |
 | `/sources/join-requests`, `/{id}/approve`, `/{id}/reject` | GET, POST | Join requests |
-| `/library/packs`, `/library/packs/{id}` | GET, POST (install), DELETE | Packs; export through `GET …/{id}/export` |
+| `/library/packs`, `/library/packs/{pack}` | GET, POST (install), DELETE | Packs; export through `GET …/{pack}/export` ([library](#library)) |
+| `/library/packs/{pack}/items/{type}/{item}` | GET, PUT, DELETE | A pack's item; writing and removing in local packs only |
+| `/library/packs/{pack}/previews/{file}` | GET | A preview image of the pack |
+| `/library/items` | GET | Every item of a type in the installed packs, for the gallery |
 | `/clients`, `/clients/{id}` | GET, POST (issue key and connect code), DELETE (revoke) | Client keys |
 | `/updates` | GET | Update status for every node |
 | `/updates/{node}/approve`, `/skip` | POST | Approvals |
@@ -114,6 +119,47 @@ Decided in [ADR-0036](../decisions/ADR-0036-controller-output.md) D3 to D6, with
   - Activating an effectively active zone answers `{active: true, conflicts: []}`.
 - **`POST /zones/{id}/deactivate`** deactivates the zone and releases its targets that no other active zone drives. A zone the check had suppressed may become active by it.
 - A change is a write of `active` to `zones.json`: it gives the document its next revision and sends `config_changed`. `POST` and `PUT` of a zone never refuse a conflict: the check decides which zone is effectively active.
+
+### Library
+
+Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D1 to D10; the format is the [pack format](pack-format.md). Pack ids (`author/name`) and item references (`author/pack:item`) are percent-encoded in paths: `/library/packs/folo%2Fcore`.
+
+| Request | Answer | Errors |
+|---|---|---|
+| `GET /library/packs` | 200, a `PackInfo` per pack: the built-in packs first, then by id | |
+| `POST /library/packs[?replace=true]` with a `.folopack` (`application/zip`, at most 10 MB) | 201, the installed pack's `PackInfo` | 422 `structural_error` (`details`: `path`, `reason`); 422 `incompatible` (its `folo` range); 422 `missing_dependency` (`details.requires`); 409 `reserved_id` (author `folo` or `local`); 409 `already_installed` (the same or a newer version is installed; `details`: `installed`, `offered`); 409 `library_full` (100 packs or 128 MB) |
+| `GET /library/packs/{pack}` | 200, its manifest in the canonical form | 404 `not_found` |
+| `DELETE /library/packs/{pack}` | 204 | 404 `not_found`; 409 `protected_pack` (a built-in pack or `local/my-presets`); 409 `required_by` (`details.packs`) |
+| `GET /library/packs/{pack}/export` | 200, the canonical `.folopack` | 404 `not_found` |
+| `GET /library/packs/{pack}/items/{type}/{item}` | 200, the item | 404 `not_found` |
+| `PUT /library/packs/{pack}/items/{type}/{item}` | 200, the item as clamped and stored; its id is the one in the path. No `If-Match`: the last writer wins. | 404 `not_found` (no such pack); 409 `read_only_pack` (not a `local/*` pack); 409 `pack_unreadable` (the pack's folder failed its checks at start); 409 `id_taken` (the id is another type's item); 409 `list_full` (500 items, or 60 scenes in `local/my-presets`); 400 `bad_body`; 422 `structural_error` |
+| `DELETE /library/packs/{pack}/items/{type}/{item}` | 204 | 404 `not_found`; 409 `read_only_pack` |
+| `GET /library/packs/{pack}/previews/{file}` | 200, the image, with the sandboxing Content Security Policy album art has | 404 `not_found` |
+| `GET /library/items?type=<type>` (default `scenes`) | 200, a `LibraryItem` per item: built-in packs first, then by pack id, each pack's items in its `contents` order | |
+
+- An install, a removal, an item write and a restore each send `event {kind: library, id: <pack id>, state: installed | removed | changed | restored}` on the [live channel](#live-websocket) (`id` empty for a restore), so clients reload the gallery.
+- Paths take pack ids and references percent-encoded; their length limits apply to the decoded text.
+- Scopes, from RB-15: installing, replacing and removing packs need `admin`; the rest need `control`.
+
+### Applying scenes and Reset all
+
+Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D11 to D21.
+
+- **`POST /scenes/{ref}/apply`** with `{zone, roles, keep_changes}` copies the scene `ref` names into the zone:
+  - `ref` is read, in this order, as a pack item (`author/pack:item`), a built-in id (`fx:*`, `genre:*`, through the alias table), a scene of the show by its id, or `local/my-presets:<id>` ([ADR-0038](../decisions/ADR-0038-content-library.md) D2).
+  - **A scene of the show** only becomes the zone's active scene: nothing is copied; `roles` must be empty and `keep_changes` false, else 400 `bad_body`.
+  - **A pack item** is copied into the zone's active scene in place when no other zone has that scene active, else into a new scene that becomes the zone's active one. Its roles are bound to the zone's surfaces as [ADR-0038](../decisions/ADR-0038-content-library.md) D12 says, and it carries `provenance {pack, version, item, hash}`.
+  - `roles` names a surface for a role and remembers it for this scene and zone (`bindings` in the show); `""` returns the role to automatic.
+  - `keep_changes: true` merges the scene into the zone's active scene, keeping what the user changed since it was applied.
+  - The answer is 200 with a `SceneApplied`: the show as written and, for the zone, the scene it now has active, where each role went and the roles skipped. Errors: 404 `not_found` (the scene or the zone; `details.what`); 409 `list_full` (256 scenes); 409 `no_base` (`keep_changes` on a scene with no base to merge against); 412 `revision_mismatch` with `If-Match`.
+- **`POST /show/reset`** with `{zones}` (empty, or an empty body: every zone) applies the show's `default_scene` to each zone, as an apply without `roles`, and sets the `master` of the zone's surfaces to 1 and their `background` to `#000000`. An empty `default_scene`, or one that names nothing, applies `folo/core:default`. The answer is a `SceneApplied` with one result per zone; a zone that doesn't exist gets 404 `not_found` and nothing changes.
+- Both write the show once (`If-Match` names its revision), and Reset all then `zones.json` when a surface changed, with `config_changed` and the new configuration to the engine, as any [document](#documents) write.
+
+### Backup and restore
+
+Decided in [ADR-0038](../decisions/ADR-0038-content-library.md) D25 to D27. Both need `admin` from RB-15.
+- **`GET /system/backup`** answers a zip archive (`folo-backup-<UTC date and time>.zip`): `folo-backup.json` (a `BackupManifest`), `zones.json`, `show.json`, `providers.json`, `sources.json`, the installed and local packs under `library/` in their canonical form, and the bases of applied scenes under `applied/`. `secrets.json`, `clients.json`, `node.toml` and the built-in packs are never in it.
+- **`POST /system/restore`** (`application/zip`, at most 256 MB) checks the whole archive first: at most 10,000 entries and 512 MB uncompressed, only the paths a backup holds, the manifest and its hashes, every document, and every pack as an install checks it, in the folder its `id` names ([ADR-0038](../decisions/ADR-0038-content-library.md) D27). A failure gets 422 `structural_error` (`details`: `path`, `reason`), or 422 `incompatible` for a newer `format` or `schema_version`, and changes nothing. Then the four documents, the installed and local packs and the bases become exactly the backup's, each document with its next revision and this node's `server_id`; secrets, clients and `node.toml` stay. The answer is 204, after `config_changed` for each document and `event {kind: library, state: restored}`.
 
 ### Test patterns
 
@@ -155,7 +201,7 @@ The node answers `/sources/{id}/inputs`, `/media/art` and `/media/control` throu
   |---|---|
   | `status` | `status` messages: every source's state, every zone and every provider |
   | `zone:<id>` | `status` messages: that zone (whether it is active, and its reactive state: ambient fade 0–1, seconds of silence) |
-  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) |
+  | `input:<source>` | `status` messages: the source's input (meters, stats, current gain and auto gain) and its screen capture (state, rate, protected and HDR flags, black bars: never any pixels) |
   | `beat:<source>` | `status` messages: the source's beat (BPM, confidence, locked, phase, bar beat) |
   | `media:<source>` | `status` messages: the source's now playing |
   | `levels:<source>` | `levels` messages, one per surface of the source |
@@ -195,4 +241,5 @@ The node serves the UI's files outside `/api/`, with no key ([ADR-0035](../decis
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/ingest/surfaces` (WebSocket) | Third parties stream surface frames to the controller using a scoped ingest token. Framing as in the [source link](source-link.md#surface-frames). Appears as a source in the compositor. |
+| `GET /api/v1/capture-link` (WebSocket) | The node's own capture agent, on loopback only, with its launch token in the handshake ([source link](source-link.md#the-capture-link)). No key; the Host, Origin and client-address checks apply before the upgrade, and other machines get 403 `loopback_only`. Served by the node from [RB-14](../runbooks/m6-screen.md) step 6. |
 | `GET /api/v1/source-link` (WebSocket) | Source nodes ([source link](source-link.md)). The `local` purpose is taken from loopback clients only; until RB-16 brings the other purposes, clients on other machines get 403 `loopback_only` before the upgrade. |

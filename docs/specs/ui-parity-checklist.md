@@ -221,4 +221,4 @@ Moves to Sources → source → inputs.
 - 14 genre presets with layouts (alternate, mirror, zones, stack)
 - 8 categories, 7 bands, 6 colour ranges, genre tags
 
-All move into packs ([content](../architecture/content.md#built-in-library)).
+The palettes, reactive presets, effects, genre presets and categories move into packs ([content](../architecture/content.md#built-in-library)). The bands and colour ranges set up editors and stay in the UI; the genre tags are the scenes' tags ([ADR-0038](../decisions/ADR-0038-content-library.md) D17).

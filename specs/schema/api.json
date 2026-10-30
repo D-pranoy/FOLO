@@ -109,9 +109,39 @@
       "type": "object",
       "properties": {
         "zone": {"type": "string", "maxLength": 64},
-        "roles": {"description": "Role: surface id, overriding the automatic match.", "type": "object", "additionalProperties": {"type": "string", "maxLength": 64}, "default": {}}
+        "roles": {"description": "Role: surface id, overriding the automatic match and remembered for this scene and zone; an empty string returns the role to automatic (ADR-0038 D12, D13).", "type": "object", "additionalProperties": {"type": "string", "maxLength": 64}, "default": {}},
+        "keep_changes": {"description": "Merge into the zone's active scene, keeping what the user changed since it was applied (ADR-0038 D15).", "type": "boolean", "default": false}
       },
       "required": ["zone"],
+      "additionalProperties": false
+    },
+    "ApplyResult": {
+      "description": "What an apply did in one zone.",
+      "type": "object",
+      "properties": {
+        "zone": {"type": "string", "maxLength": 64},
+        "scene": {"description": "The id of the scene the zone now has active.", "type": "string", "maxLength": 64},
+        "roles": {"description": "Each bound role of the applied scene: the surface it went to.", "type": "object", "additionalProperties": {"type": "string", "maxLength": 64}},
+        "skipped": {"description": "Roles no surface of the zone could take.", "type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 64}
+      },
+      "required": ["zone", "scene", "roles", "skipped"],
+      "additionalProperties": false
+    },
+    "SceneApplied": {
+      "type": "object",
+      "properties": {
+        "show": {"$ref": "show.json"},
+        "results": {"type": "array", "items": {"$ref": "#/$defs/ApplyResult"}, "maxItems": 256}
+      },
+      "required": ["show", "results"],
+      "additionalProperties": false
+    },
+    "ShowResetRequest": {
+      "description": "Reset all: the zones to reset; empty for every zone (ADR-0038 D21).",
+      "type": "object",
+      "properties": {
+        "zones": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 256, "default": []}
+      },
       "additionalProperties": false
     },
     "DiscoverRequest": {
@@ -178,8 +208,8 @@
       "properties": {
         "id": {"type": "string", "maxLength": 128},
         "name": {"type": "string", "maxLength": 128},
-        "width": {"type": "integer", "minimum": 1},
-        "height": {"type": "integer", "minimum": 1},
+        "width": {"description": "In pixels; 0 while it isn't known (the Linux portal entry, before the user has chosen a screen).", "type": "integer", "minimum": 0},
+        "height": {"description": "In pixels; 0 while it isn't known.", "type": "integer", "minimum": 0},
         "primary": {"type": "boolean"}
       },
       "required": ["id", "name", "width", "height", "primary"],
@@ -285,10 +315,48 @@
         "version": {"type": "string", "maxLength": 32},
         "name": {"type": "string", "maxLength": 64},
         "description": {"type": "string", "maxLength": 500},
-        "builtin": {"description": "folo-core, folo-genres and folo-effects can't be removed.", "type": "boolean"},
-        "items": {"type": "integer", "minimum": 0, "maximum": 500}
+        "builtin": {"description": "folo/core, folo/genres and folo/effects ship with the node and can't be removed.", "type": "boolean"},
+        "editable": {"description": "A local pack (author local), whose items can be written.", "type": "boolean"},
+        "items": {"type": "integer", "minimum": 0, "maximum": 500},
+        "hash": {"description": "SHA-256 (hex) of the pack's canonical .folopack (ADR-0038 D9).", "type": "string", "pattern": "^[0-9a-f]{64}$"}
       },
-      "required": ["id", "version", "name", "description", "builtin", "items"],
+      "required": ["id", "version", "name", "description", "builtin", "editable", "items", "hash"],
+      "additionalProperties": false
+    },
+    "ItemType": {
+      "description": "A pack item type, as its folder is named.",
+      "enum": ["palettes", "reactions", "looks", "scenes", "zone-templates"]
+    },
+    "LibraryItem": {
+      "description": "An item of an installed pack, for the gallery.",
+      "type": "object",
+      "properties": {
+        "ref": {"description": "author/pack:item.", "type": "string", "maxLength": 130},
+        "pack": {"type": "string", "maxLength": 65},
+        "version": {"description": "The pack's version.", "type": "string", "maxLength": 32},
+        "type": {"$ref": "#/$defs/ItemType"},
+        "hash": {"description": "SHA-256 (hex) of the item's file, as provenance records it.", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "preview": {"description": "The preview's path under /library/packs/{pack}/previews/, or empty.", "type": "string", "maxLength": 255},
+        "item": {"description": "The item, as clamped (pack.json's item of this type).", "type": "object"}
+      },
+      "required": ["ref", "pack", "version", "type", "hash", "preview", "item"],
+      "additionalProperties": false
+    },
+    "BackupManifest": {
+      "description": "folo-backup.json, the manifest of a backup archive (ADR-0038 D25).",
+      "type": "object",
+      "properties": {
+        "format": {"description": "1; a newer format is refused with 422 incompatible.", "type": "integer", "minimum": 1},
+        "created": {"description": "Unix seconds.", "type": "integer", "minimum": 0},
+        "node_version": {"type": "string", "maxLength": 32},
+        "schema_version": {"description": "The documents' schema_version; a newer one than the node reads is refused with 422 incompatible.", "type": "integer", "minimum": 2},
+        "files": {
+          "description": "path: SHA-256 (hex) of every other file in the archive.",
+          "type": "object",
+          "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      },
+      "required": ["format", "created", "node_version", "schema_version", "files"],
       "additionalProperties": false
     },
     "UpdateStatus": {

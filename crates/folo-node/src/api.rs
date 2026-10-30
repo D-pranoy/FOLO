@@ -29,7 +29,7 @@ use crate::status;
 use crate::zones;
 
 /// The client API's version: `info.version` in specs/openapi.yaml.
-pub const CLIENT_API_VERSION: &str = "1.3.0";
+pub const CLIENT_API_VERSION: &str = "1.4.0";
 /// JSON-RPC: what the request asked for isn't there (docs/specs/source-link.md).
 const NOT_AVAILABLE: i64 = -32000;
 /// JSON-RPC: params the source can't take.
@@ -950,9 +950,20 @@ pub async fn source_inputs(State(node): Shared, Path(id): Path<String>) -> Respo
         return *refused;
     }
     match node.supervisor.request("inputs.list", json!({})).await {
-        Ok(inputs) => Json(inputs).into_response(),
+        Ok(inputs) => Json(with_screens(&node, inputs).await).into_response(),
         Err(failure) => request_failed(&failure, StatusCode::NOT_FOUND),
     }
+}
+
+/// The engine leaves `screens` empty: the capture agent's list goes in its
+/// place (ADR-0037 D15), from the linked agent or `folo-capture screens
+/// --json`. A list that can't be had leaves it empty.
+pub async fn with_screens(node: &Node, mut inputs: Value) -> Value {
+    match node.capture.screens().await {
+        Ok(listed) => inputs["screens"] = listed["screens"].clone(),
+        Err(why) => log::debug!("no screen list: {why:?}"),
+    }
+    inputs
 }
 
 /// The source's latest `media` notification, while it's linked.

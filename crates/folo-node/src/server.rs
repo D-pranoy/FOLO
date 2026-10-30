@@ -13,6 +13,7 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{MethodRouter, get, post};
+use folo_supervisor::capture::{self, MAX_MESSAGE_BYTES};
 use folo_supervisor::link::SUBPROTOCOL;
 use folo_supervisor::{LinkSocket, Message};
 use serde_json::json;
@@ -27,9 +28,10 @@ const BODY_LIMIT: usize = 1024 * 1024;
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
 /// proofs, or reveal nothing (ADR-0035 D1).
-const WITHOUT_KEY: [&str; 4] = [
+const WITHOUT_KEY: [&str; 5] = [
     "/api/v1/health",
     "/api/v1/source-link",
+    "/api/v1/capture-link",
     "/api/v1/auth/login",
     "/api/v1/auth/requests",
 ];
@@ -70,6 +72,32 @@ fn later_post(runbook: &'static str) -> MethodRouter<Arc<Node>> {
     post(later(runbook))
 }
 
+/// The content library's paths (RB-09), apart for `router`'s length.
+fn library_routes() -> Router<Arc<Node>> {
+    let v1 = |path: &str| format!("/api/v1{path}");
+    Router::new()
+        .route(
+            &v1("/library/packs"),
+            later_get("RB-09").post(later("RB-09")),
+        )
+        .route(
+            &v1("/library/packs/{pack}"),
+            later_get("RB-09").delete(later("RB-09")),
+        )
+        .route(&v1("/library/packs/{pack}/export"), later_get("RB-09"))
+        .route(
+            &v1("/library/packs/{pack}/items/{type}/{item}"),
+            later_get("RB-09")
+                .put(later("RB-09"))
+                .delete(later("RB-09")),
+        )
+        .route(
+            &v1("/library/packs/{pack}/previews/{file}"),
+            later_get("RB-09"),
+        )
+        .route(&v1("/library/items"), later_get("RB-09"))
+}
+
 /// Every path of specs/openapi.yaml, with the methods it lists.
 pub fn router(node: Arc<Node>) -> Router {
     let v1 = |path: &str| format!("/api/v1{path}");
@@ -87,7 +115,8 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/zones/{id}/identify"), post(api::identify_zone))
         .route(&v1("/zones/{id}/test"), post(api::test_zone))
         .route(&v1("/show"), get(api::show).put(api::put_show))
-        .route(&v1("/scenes/{id}/apply"), later_post("RB-09"))
+        .route(&v1("/show/reset"), later_post("RB-09"))
+        .route(&v1("/scenes/{ref}/apply"), later_post("RB-09"))
         .route(&v1("/effects"), get(api::effects))
         .route(
             &v1("/providers"),
@@ -127,15 +156,7 @@ pub fn router(node: Arc<Node>) -> Router {
             &v1("/sources/join-requests/{id}/reject"),
             later_post("RB-16"),
         )
-        .route(
-            &v1("/library/packs"),
-            later_get("RB-09").post(later("RB-09")),
-        )
-        .route(
-            &v1("/library/packs/{id}"),
-            later_get("RB-09").delete(later("RB-09")),
-        )
-        .route(&v1("/library/packs/{id}/export"), later_get("RB-09"))
+        .merge(library_routes())
         .route(&v1("/clients"), later_get("RB-15").post(later("RB-15")))
         .route(
             &v1("/clients/{id}"),
@@ -161,11 +182,13 @@ pub fn router(node: Arc<Node>) -> Router {
         .route(&v1("/live"), get(live::live))
         .route(&v1("/ingest/surfaces"), later_get("RB-16"))
         .route(&v1("/source-link"), get(source_link))
+        .route(&v1("/capture-link"), get(capture_link))
         // Only requests a route takes; the rest get their 404 or 405
         .route_layer(middleware::from_fn(json_only))
         .fallback(fallback)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(middleware::from_fn(no_empty_segments))
         .layer(middleware::from_fn_with_state(Arc::clone(&node), guard))
         .layer(middleware::from_fn(headers))
         .with_state(node)
@@ -324,6 +347,18 @@ fn is_json(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
 }
 
+/// An empty segment in an API path names no resource, so it gets the 404 of
+/// any id that isn't there, rather than the `{id}` route its neighbours match
+/// (`/zones//identify`) (docs/specs/client-api.md#conventions). Runs after
+/// the request checks, as "the resource exists" does.
+async fn no_empty_segments(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    if path.starts_with("/api/") && path.contains("//") {
+        return error(StatusCode::NOT_FOUND, "not_found", "no such resource");
+    }
+    next.run(request).await
+}
+
 /// Paths no route takes: 404 under `/api/`, the UI's files elsewhere.
 async fn fallback(request: Request) -> Response {
     if request.uri().path().starts_with("/api/") {
@@ -364,6 +399,35 @@ async fn source_link(
     let endpoint = node.supervisor.endpoint();
     upgrade
         .protocols([SUBPROTOCOL])
+        .on_upgrade(move |socket| async move { endpoint.serve(Socket(socket), loopback).await })
+}
+
+/// The capture link's endpoint: the node's own capture agent, from loopback
+/// clients only, even with remote access on (docs/specs/source-link.md#the-capture-link,
+/// ADR-0037 D1). The Host, Origin and client-address checks have run
+/// already (`guard`); a connection from another machine is refused before
+/// the upgrade, and the upgrade itself limits a message to what the link allows.
+async fn capture_link(
+    State(node): State<Arc<Node>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    upgrade: Result<WebSocketUpgrade, ws::rejection::WebSocketUpgradeRejection>,
+) -> Response {
+    let loopback = peer.ip().to_canonical().is_loopback();
+    if !loopback {
+        return error(
+            StatusCode::FORBIDDEN,
+            "loopback_only",
+            "the capture agent links from this machine only",
+        );
+    }
+    let Ok(upgrade) = upgrade else {
+        return not_a_websocket();
+    };
+    let endpoint = node.capture.endpoint();
+    upgrade
+        .protocols([capture::SUBPROTOCOL])
+        .max_message_size(MAX_MESSAGE_BYTES)
+        .max_frame_size(MAX_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move { endpoint.serve(Socket(socket), loopback).await })
 }
 
@@ -471,6 +535,7 @@ mod tests {
             .await
             .unwrap();
         let body = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        node.capture.shutdown().await;
         node.supervisor.shutdown().await;
         (status, headers, body)
     }
@@ -491,6 +556,37 @@ mod tests {
         let (status, _, body) = ask("", LAN_PEER, get("/api/v1/health", "localhost")).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert_eq!(body["error"]["code"], "client_not_allowed");
+    }
+
+    #[tokio::test]
+    async fn the_capture_link_is_for_loopback_clients_with_the_checks_before_the_upgrade() {
+        const LINK: &str = "/api/v1/capture-link";
+        // Other machines are refused, with remote access on and their host allowed
+        let (status, _, body) = ask(REMOTE, LAN_PEER, get(LINK, "tv.local")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "loopback_only");
+        let (status, _, body) = ask("", LAN_PEER, get(LINK, "localhost")).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "client_not_allowed");
+        // A name outside the allowlist, or a page on another site, never reaches the route
+        let (status, _, body) = ask("", "127.0.0.1:50000", get(LINK, "evil.example")).await;
+        assert_eq!(
+            (status, &body["error"]["code"]),
+            (StatusCode::FORBIDDEN, &"host_not_allowed".into())
+        );
+        let from_page = Request::builder()
+            .uri(LINK)
+            .header(header::HOST, "localhost:8777")
+            .header(header::ORIGIN, "https://evil.example")
+            .body(Body::empty())
+            .unwrap();
+        let (status, _, body) = ask("", "127.0.0.1:50000", from_page).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "origin_not_allowed");
+        // A loopback client that is no WebSocket gets told so
+        let (status, _, body) = ask("", "127.0.0.1:50000", get(LINK, "localhost:8777")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"]["code"], "websocket_required");
     }
 
     #[tokio::test]
