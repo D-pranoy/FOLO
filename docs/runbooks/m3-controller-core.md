@@ -1,6 +1,6 @@
 # M3 Controller core
 
-Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-09 step 1, the library service, done)
+Status: Accepted · Implementation: Partial (RB-06, RB-07 and RB-08 done; RB-09 step 1, the library service, done)
 
 ## RB-06: Node core
 
@@ -85,29 +85,29 @@ Status: Accepted · Implementation: Partial (RB-06 and RB-07 done; RB-09 step 1,
      - solid or breathe (30–100% over 8 s)
      - fade in 1.5 s eased, fade out 0.15 s
      - blended into the composited surface before projection, as `colour × level × master`; a fade of 0 leaves the frame byte-exact; the result is truncated
-     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when at least one linked source has a media session and all of those are paused
-   - golden tests against the current engine's ambient frames (within ±1 per channel)
+     - silence from the sources' gain-free activity, counted on the controller's clock; the on-pause switch after 0.3 s when every linked player that has a media session is paused
+   - golden tests against the current engine's ambient frames (within ±1 per channel on the controller's clock; the frames where the current engine's float silence ties a threshold, and the fade after them, are compared one frame shifted, [parity mode](../architecture/pipeline.md#parity-mode))
 4. **Adapter chain** per [capabilities](../architecture/capabilities.md#adapter-chain-per-target-in-order), in the order resolution → colour model → calibration → latency → flash limiter:
    - resolution (fitting to `address.count`), colour models (RGBW, CCT, dimmer, on/off with hysteresis, xy gamut), calibration, the latency delay line
    - **flash limiter** per zone, off by default ([ADR-0033](../decisions/ADR-0033-flash-limiter-off-by-default.md)), by the [algorithm](../architecture/capabilities.md#algorithm)
    - the rate belongs to step 6's sender
 5. **Zone activation and test patterns:**
-   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation))
-   - the engine's `config.apply` assigns the surfaces of active zones only
-   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns))
+   - exclusive targets, with conflicts reported for the UI to confirm; `take_over` deactivates the conflicting zones; activation stored in the zone's `active` flag ([client API](../specs/client-api.md#zone-activation)) (done: `folo-node`'s `zones` module and the two endpoints)
+   - the engine's `config.apply` assigns the surfaces of active zones only (done: the node passes the effective flags; the live channel reports them)
+   - `identify`, `sweep` and `position` patterns, refused with `target_busy` for a target another active zone drives ([test patterns](../specs/client-api.md#test-patterns)) (done: `folo-controller`'s patterns, the node's two endpoints)
    - default surfaces and roles per zone type, applied on creation only ([defaults](../architecture/spatial-model.md#defaults))
 6. **Provider interface** ([providers](../architecture/providers.md)):
    - discover, describe (targets with capabilities), connect (the control connection), start (realtime output for a target), send, wire key (what the sender compares), release (per target), status, admin
    - `ElementOutput` now; `RasterOutput` reserved
    - one sender task per provider instance, each at its own rate, sending **only changed frames** plus a per-provider keepalive inside the device's timeout
    - a recording provider for tests
-   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...`
+   - in the node: provider states on the live channel (mapped from the client API's), `target:<id>` frames, `POST /providers/discover` and `/providers/{id}/admin/...` (done: `folo-node`'s `output` module; the node takes a registry, which has no kind until RB-10)
 7. **Tests:**
    - geometry unit tests
    - projection golden images (frames stacked into PNGs in `tests/golden/projection/`, written when `FOLO_BLESS=1` is set)
    - ambient inputs from `scripts/make_golden.py --only ambient`, checked against the **existing** `tests/golden/renderer/ambient-*.png` frames; no existing golden is regenerated
    - adapter unit tests, flash limiter tests
-   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames
+   - parity path: identity adapters reproduce the input bytes exactly, on the reactive `renderer/*.png` frames (done: `crates/folo-controller/tests/parity.rs`, through a sender to a recording provider too, and with the migrated configurations)
 
 **Done when:** golden images and adapter tests are green, and parity-path frames equal the engine's output.
 
@@ -161,6 +161,7 @@ Changes 7 and 8 block every public binary, not the rest of the rebuild.
 ## RB-10: Hyperion provider
 
 **Goal:** Hyperion on the provider interface, with parity and basic administration.
+**Status:** steps 1 to 5 are implemented: the provider in `crates/folo-provider-hyperion` ([how it is built](../integrations/hyperion.md#how-it-is-built)), registered by the node, and the parity test `crates/folo-node/tests/hyperion_parity.rs`. Layout watching in step 3 is not wired to the store yet. Step 6, live verification, is a person's.
 **Depends on:** RB-08 step 6 (the [provider interface](../architecture/providers.md)); step 5 below also needs the rest of RB-08, the controller's output.
 
 1. **Fake first:** a Hyperion JSON server in tests that records frames and answers `serverinfo`, `clear`, `sourceselect` and `componentstate`.
@@ -171,7 +172,7 @@ Changes 7 and 8 block every public binary, not the rest of the rebuild.
    - clear on stop; reconnect with backoff
 3. **Describe:** line targets from `serverinfo` LED rectangles on the zone's TV plane; layout watching with proportional mapping scaling.
 4. **Administration:** instances, priorities with clear, component toggles, automatic source selection, brightness, token support ([ADR-0014](../decisions/ADR-0014-device-administration-scope.md)).
-5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio.
+5. **Parity end to end:** a migrated v1 configuration drives the fake Hyperion with frames byte-identical to the legacy engine for the same synthetic audio. Done: the migrations `builtin` and `default` run through the node's real output path (the engine's frames, compositor, projection, adapters, the sender and `HyperionKind`) with the legacy origin "Audio Effects" set on the instance (the default origin is "FOLO"), and the `color` lines are those of `tests/golden/hyperion/parity.json`, which the legacy `JsonClient` wrote for sampled frames of the renderer goldens (`--only hyperion`). The migration's target `strip` drives Hyperion instance 0 ([target ids](../integrations/hyperion.md#how-it-is-built)).
 6. **Live verification** per the [testing policy](../process/testing-policy.md).
 
 **Done when:** the end-to-end parity test is green and live verification has passed.
