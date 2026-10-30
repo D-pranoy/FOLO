@@ -4,6 +4,7 @@
 mod common;
 
 use std::io::Write as _;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::{build, entries, open, palette, rehash, scratch, zip};
 use folo_library::archive::Entries;
@@ -13,11 +14,19 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 fn refused(bytes: &[u8]) -> (String, String) {
-    let library = open(&scratch("structure"), "0.0.0");
-    match library.install(bytes, false) {
+    // A folder per call: the tests run in parallel, and with one folder for all of them, Windows
+    // refused one test's creating it while another's removal was still under way
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    let dir = scratch(&format!(
+        "structure-{}",
+        CALLS.fetch_add(1, Ordering::Relaxed)
+    ));
+    let refusal = match open(&dir, "0.0.0").install(bytes, false) {
         Err(LibraryError::Structural { path, reason }) => (path, reason),
         other => panic!("expected a structural error, got {other:?}"),
-    }
+    };
+    let _ = std::fs::remove_dir_all(&dir);
+    refusal
 }
 
 fn refused_entries(files: &Entries) -> (String, String) {

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import conformance
+from scripts import conformance, schemathesis_hooks
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -178,3 +178,14 @@ def test_api_harness_fails_a_wrong_response() -> None:
         # 1 is "the API failed a check"; anything else would be the tool failing
         assert result.returncode == 1, result.stdout[-3000:]
         assert 'schema' in result.stdout.lower()
+
+
+def test_path_parameters_a_client_would_rewrite_are_left_out() -> None:
+    # `/zones/./deactivate` goes out as `/zones/deactivate`, and `..` climbs a level
+    for rewritten in ('.', '..'):
+        assert not schemathesis_hooks.reaches_the_node({'id': rewritten})
+        assert not schemathesis_hooks.reaches_the_node({'id': 'z1', 'action': rewritten})
+    for kept in ('...', '.a', 'a.', 'z1', '%2E', ' . '):
+        assert schemathesis_hooks.reaches_the_node({'id': kept})
+    assert schemathesis_hooks.reaches_the_node(None)
+    assert schemathesis_hooks.reaches_the_node({})

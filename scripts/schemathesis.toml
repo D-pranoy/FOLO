@@ -18,12 +18,11 @@ negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", 
 
 # Endpoints before their run books answer 501
 # (docs/specs/client-api.md#before-their-run-books): the routes server.rs
-# gives `later`, and nothing else; and the administration of an instance
-# whose kind has no implementation yet (docs/specs/client-api.md#providers)
+# gives `later`, and nothing else
 [[operations]]
 include-operation-id = [
   "activateZone", "deactivateZone",
-  "getProviderAdmin", "postProviderAdmin", "pairHueBridge",
+  "pairHueBridge",
   "applyScene", "resetShow", "getPacks", "getPack", "removePack", "exportPack",
   "getPackItem", "putPackItem", "deletePackItem", "getPackPreview", "getLibraryItems",
   "getBackup",
@@ -36,6 +35,15 @@ include-operation-id = [
 checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", "501"]
 checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "412", "429", "501"]
 checks.negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", "406", "409", "412", "415", "422", "428", "429", "501"]
+
+# Administration (docs/specs/client-api.md#providers): 501 for an instance
+# whose kind has no implementation yet, and 502 `provider_error` for a device
+# that refuses or doesn't answer, as the devices generated instances name don't
+[[operations]]
+include-operation-id = ["getProviderAdmin", "postProviderAdmin"]
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", "501", "502"]
+checks.positive_data_acceptance.expected-statuses = ["2xx", "3xx", "401", "403", "404", "409", "412", "429", "501", "502"]
+checks.negative_data_rejection.expected-statuses = ["400", "401", "403", "404", "405", "406", "409", "412", "415", "422", "428", "429", "501", "502"]
 
 # Requests to a source: 503 when it isn't linked, 504 when it doesn't answer
 # (docs/specs/client-api.md#requests-to-sources)

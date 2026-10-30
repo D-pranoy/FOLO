@@ -9,8 +9,10 @@ API or WebSocket channels against the contracts in specs/.
 `api` runs schemathesis against specs/openapi.yaml: every operation with
 generated requests, every response checked against the spec, with every
 check but those scripts/schemathesis.toml says the client API's documented
-answers rule out. Point it at a node of its own on loopback
-(docs/process/testing-policy.md), never at a live setup. With `--node`, the
+answers rule out, and without the cases scripts/schemathesis_hooks.py leaves
+out because the HTTP client would send another URL than the one generated.
+Point it at a node of its own on loopback (docs/process/testing-policy.md),
+never at a live setup. With `--node`, the
 harness starts that `folo` itself, with a temporary home, a free loopback
 port and no effect engine, and stops it afterwards; CI runs it so.
 
@@ -57,6 +59,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SPECS = ROOT / 'specs'
 # How schemathesis treats the client API's documented answers
 SCHEMATHESIS_CONFIG = ROOT / 'scripts' / 'schemathesis.toml'
+# The cases a client can't send as generated (path parameters `.` and `..`)
+SCHEMATHESIS_HOOKS = ROOT / 'scripts' / 'schemathesis_hooks.py'
 OPENAPI = SPECS / 'openapi.yaml'
 ASYNCAPI = SPECS / 'asyncapi.yaml'
 SOURCE_LINK = SPECS / 'schema' / 'source-link.json'
@@ -139,7 +143,12 @@ def run_api(url: str, key: str | None, extra: list[str]) -> int:
         if key:
             cmd += ['--header', f'Authorization: Bearer {key}']
         # Its report has non-ASCII characters, which a Windows console can't take otherwise
-        env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
+        env = {
+            **os.environ,
+            'PYTHONUTF8': '1',
+            'PYTHONIOENCODING': 'utf-8',
+            'SCHEMATHESIS_HOOKS': str(SCHEMATHESIS_HOOKS),
+        }
         status = subprocess.run(cmd + extra, check=False, env=env).returncode
         # schemathesis exits 0 with errored cases, which would pass silently
         if not report.exists():

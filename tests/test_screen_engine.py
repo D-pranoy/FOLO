@@ -22,6 +22,7 @@ import pytest
 from folo_source.inputs.audio.analyzer import Analyzer, channel_peaks
 from folo_source.inputs.screen import STALE_US, ScreenInput
 from folo_source.publish import frames, link
+from folo_source.runtime.engine import IDLE_AFTER
 from folo_source.runtime.executor import Executor, Step
 from folo_source.runtime.source import SourceEngine
 from scripts import conformance
@@ -314,14 +315,29 @@ def test_audio_steps_carry_the_newest_frame_while_audio_plays(
     signal = golden_cases.signal('medley')
     block = next(iter(synth.packets(signal)))
     threading.Event().wait(0.3)  # let the idle steps settle
-    renders = count_renders(engine, monkeypatch)
-    engine.submit(engine.audio.analyse(block, channel_peaks(block), False))
+    packet = engine.audio.analyse(block, channel_peaks(block), False)
+    # When each step rendered, and whether it was the packet's
+    renders: list[tuple[float, bool]] = []
+    original = engine._render  # type: ignore[reportPrivateUsage]
+
+    def recording(steps: list[Step]) -> None:
+        renders.append((time.perf_counter(), any(s.spectrum is packet.spectrum for s in steps)))
+        original(steps)
+
+    monkeypatch.setattr(engine, '_render', recording)
+    engine.submit(packet)
     started = time.perf_counter()
     while time.perf_counter() - started < 0.06:
         engine.screen.push(sf.screen_frame(sf.solid(8, 16, (50, 60, 70))))
         threading.Event().wait(0.005)
-    # The packet's step, and no step of the frames' own while audio is recent
-    assert len(renders) == 1
+    deadline = time.perf_counter() + 2.0
+    while not any(mine for _, mine in renders) and time.perf_counter() < deadline:
+        threading.Event().wait(0.01)
+    # The packet's step, and no step of the frames' own while audio is recent. An idle step
+    # that fell due before the packet came may render first: it isn't counted.
+    assert [mine for _, mine in renders].count(True) == 1
+    audio_at = next(at for at, mine in renders if mine)
+    assert [at for at, _ in renders if audio_at < at < audio_at + IDLE_AFTER] == []
     wait_for_canvas(node, (50, 60, 70))
 
 
