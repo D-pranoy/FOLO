@@ -192,4 +192,23 @@ mod tests {
             assert!(clock.now_us() >= first + 15_000, "{choice:?}");
         }
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_backends_stamp_with_the_performance_counter() {
+        for choice in [
+            BackendChoice::Auto,
+            BackendChoice::Dda,
+            BackendChoice::Wgc,
+            BackendChoice::Gdi,
+        ] {
+            let counter = folo_capture_windows::clock::QpcClock::new().now_us();
+            let stamp = choice.clock().now_us();
+            // A process clock would start near 0; the counter has run since the system started
+            assert!(
+                stamp.abs_diff(counter) < 1_000_000,
+                "{choice:?}: {stamp} against {counter}"
+            );
+        }
+    }
 }
