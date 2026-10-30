@@ -1,0 +1,25 @@
+[package]
+name = "folo-library"
+description = "The content library: built-in, installed and local packs, install and export, item hashes over canonical JSON (RB-09 step 1, ADR-0038)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+folo-protocol = { path = "../folo-protocol" }
+log = "0.4"
+ryu-js = "1.0.3"
+semver = "1"
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+sha2 = "0.10"
+zip = { version = "9.1.2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+zip = { version = "9.1.2", default-features = false, features = ["deflate"] }

@@ -226,11 +226,16 @@ struct Client {
     sent: HashMap<(String, u16), u64>,
     /// The revision of each document as last told.
     revisions: HashMap<&'static str, u64>,
+    /// The newest library event told (ADR-0038 D28).
+    library_seen: u64,
 }
 
 impl Client {
     fn new(node: &Node) -> Self {
-        let mut client = Self::default();
+        let mut client = Self {
+            library_seen: node.library.last_event(),
+            ..Self::default()
+        };
         for (doc, name) in DOCUMENTS {
             client.revisions.insert(name, revision(node, doc));
         }
@@ -291,6 +296,11 @@ impl Client {
                 let data = json!({"document": name, "revision": revision});
                 out.push(text(&json!({"type": "config_changed", "data": data})));
             }
+        }
+        for event in node.library.events_since(self.library_seen) {
+            self.library_seen = event.seq;
+            let data = json!({"kind": "library", "id": event.id, "state": event.state});
+            out.push(text(&json!({"type": "event", "data": data})));
         }
         if let Some(status) = self.status_of(node)
             && self.status.as_ref() != Some(&status)

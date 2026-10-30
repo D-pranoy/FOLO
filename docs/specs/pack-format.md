@@ -1,6 +1,6 @@
 # Pack format
 
-Status: Accepted · Implementation: Partial (JSON Schemas for the manifest and the items, and the built-in packs in `packs/folo/`; nothing reads packs yet)
+Status: Accepted · Implementation: Done for the library (the `folo-library` crate reads, installs, edits and exports packs; applying them is [RB-09](../runbooks/m3-controller-core.md#rb-09-content-library) code change 4)
 
 Decided in [ADR-0021](../decisions/ADR-0021-content-packs.md) and [ADR-0038](../decisions/ADR-0038-content-library.md). The model is in [content](../architecture/content.md), and the library's routes in the [client API](client-api.md#library).
 

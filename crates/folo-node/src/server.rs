@@ -20,10 +20,16 @@ use serde_json::json;
 use tokio::net::TcpListener;
 
 use crate::node::Node;
-use crate::{api, live, ui};
+use crate::{api, library_api, live, ui};
 
 /// The client API's body limit (docs/specs/client-api.md#conventions).
 const BODY_LIMIT: usize = 1024 * 1024;
+/// A pack install's body limit: 10 MB (docs/specs/client-api.md#conventions).
+const INSTALL_BODY_LIMIT: usize = 10 * 1024 * 1024;
+/// Mutating requests that send a zip archive instead of JSON (ADR-0038 D28).
+/// `application/zip` isn't a type a page can send without a preflight, so
+/// the JSON rule's protection holds.
+const ZIP_ROUTES: [(Method, &str); 1] = [(Method::POST, "/api/v1/library/packs")];
 /// Host names always allowed by the Host check.
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
 /// Endpoints other machines may call without a key: they use their own
@@ -78,24 +84,28 @@ fn library_routes() -> Router<Arc<Node>> {
     Router::new()
         .route(
             &v1("/library/packs"),
-            later_get("RB-09").post(later("RB-09")),
+            get(library_api::packs)
+                .post(post(library_api::install).layer(DefaultBodyLimit::max(INSTALL_BODY_LIMIT))),
         )
         .route(
             &v1("/library/packs/{pack}"),
-            later_get("RB-09").delete(later("RB-09")),
+            get(library_api::pack).delete(library_api::remove_pack),
         )
-        .route(&v1("/library/packs/{pack}/export"), later_get("RB-09"))
+        .route(
+            &v1("/library/packs/{pack}/export"),
+            get(library_api::export),
+        )
         .route(
             &v1("/library/packs/{pack}/items/{type}/{item}"),
-            later_get("RB-09")
-                .put(later("RB-09"))
-                .delete(later("RB-09")),
+            get(library_api::item)
+                .put(library_api::put_item)
+                .delete(library_api::delete_item),
         )
         .route(
             &v1("/library/packs/{pack}/previews/{file}"),
-            later_get("RB-09"),
+            get(library_api::preview),
         )
-        .route(&v1("/library/items"), later_get("RB-09"))
+        .route(&v1("/library/items"), get(library_api::items))
 }
 
 /// Every path of specs/openapi.yaml, with the methods it lists.
@@ -277,13 +287,24 @@ fn private(ip: IpAddr) -> bool {
     }
 }
 
-/// JSON for mutating requests (docs/specs/client-api.md#conventions).
+/// JSON for mutating requests (docs/specs/client-api.md#conventions), a zip
+/// archive for the routes that take one.
 async fn json_only(request: Request, next: Next) -> Response {
     let mutating = matches!(
         *request.method(),
         Method::POST | Method::PUT | Method::PATCH | Method::DELETE
     );
-    if mutating && !is_json(request.headers()) {
+    let zip = ZIP_ROUTES
+        .iter()
+        .any(|(method, path)| method == request.method() && *path == request.uri().path());
+    if zip && !is_zip(request.headers()) {
+        return error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "zip_required",
+            "this request must send Content-Type: application/zip",
+        );
+    }
+    if mutating && !zip && !is_json(request.headers()) {
         return error(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "json_required",
@@ -340,11 +361,19 @@ fn host_name(host: &str) -> &str {
 }
 
 fn is_json(headers: &HeaderMap) -> bool {
+    has_media_type(headers, "application/json")
+}
+
+fn is_zip(headers: &HeaderMap) -> bool {
+    has_media_type(headers, "application/zip")
+}
+
+fn has_media_type(headers: &HeaderMap, wanted: &str) -> bool {
     headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(';').next())
-        .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
+        .is_some_and(|v| v.trim().eq_ignore_ascii_case(wanted))
 }
 
 /// An empty segment in an API path names no resource, so it gets the 404 of
